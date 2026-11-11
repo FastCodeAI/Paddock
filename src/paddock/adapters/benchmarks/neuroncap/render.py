@@ -260,7 +260,10 @@ def _outcome(metrics: dict) -> str:
     if score is None:
         return ""
     if metrics.get("collision_rate"):
-        return f"NCAP {score:.1f} · hit at {3.6 * metrics.get('impact_speed', 0.0):.0f} km/h"
+        # neuroNCAP's impact_speed is how fast the two cars move toward each other (the norm of
+        # their velocity difference, evaluator.py), so for an oncoming car it is both speeds
+        # added. "hit at 76 km/h" read as the model's own speed when it was driving at 41.
+        return f"NCAP {score:.1f} · the cars met at {3.6 * metrics.get('impact_speed', 0.0):.0f} km/h"
     return f"NCAP {score:.1f} · no collision"
 
 

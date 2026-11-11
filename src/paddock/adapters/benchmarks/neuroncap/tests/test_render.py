@@ -95,7 +95,8 @@ def test_a_finished_episode_freezes_dimmed_on_its_last_frame() -> None:
     body = slice(R.BAR + 10, R.BAR + h - 10)
     assert frame[body, 10 : w - 10].mean() < 140  # the short episode is over: dimmed
     assert frame[body, w + 10 : 2 * w - 10].mean() > 250  # the long one is still running
-    assert R._outcome(tiles[0].metrics) == "NCAP 0.0 · hit at 36 km/h"
+    # impact_speed is the two cars' speed toward each other, never the model's own speed.
+    assert R._outcome(tiles[0].metrics) == "NCAP 0.0 · the cars met at 36 km/h"
     assert R._outcome(tiles[1].metrics) == "NCAP 5.0 · no collision"
 
 

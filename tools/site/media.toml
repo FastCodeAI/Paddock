@@ -16,7 +16,7 @@
 # poster = "neuroncap/hero.jpg"
 # alt = "Every model driving the same neuroNCAP scene, side by side"
 
-base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/532aa8293311cd2f0651367e3f2512da9a2b9fd4/"
+base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/283fcfdcfc1b85516dae5344e3f95817664ba7d5/"
 
 [[video]]
 benchmark = "neuroncap"
