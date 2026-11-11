@@ -59,7 +59,7 @@ with `paddock data fetch kitscenes` still cannot score a model on it; issue
 | openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire ([⊜](#notes-on-the-matrix-cells)) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
-| alpamayo2edge | `20261111T223048-5eab9f` | 223 | 0.752 | a paddock run; the route as text (`command_source = "gt"`), as Alpamayo 1.5's matrix cell (`legacy-full-nav`) is; five ring cameras in its six slots, the front twice; see below |
+| alpamayo2edge | `20261111T230906-22b8a7` | 223 | 0.752 | a paddock run; the route as text (`command_source = "gt"`), as Alpamayo 1.5's matrix cell (`legacy-full-nav`) is; five ring cameras in its six slots, the front twice; see below |
 | autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
 
 All eight carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,

@@ -265,7 +265,7 @@ frame is the one at the time Edge asks for and no pose history is extrapolated. 
 
 | Route | ADE@3s ↓ (m) | FDE@3s ↓ (m) | Run |
 |---|---:|---:|---|
-| as text, `command_source = "gt"` | **0.752** | 1.393 | `kitscenes/alpamayo2edge/20261111T223048-5eab9f` |
+| as text, `command_source = "gt"` | **0.752** | 1.393 | `kitscenes/alpamayo2edge/20261111T230906-22b8a7` |
 | "Continue straight" on every keyframe | 0.762 | 1.423 | `kitscenes/alpamayo2edge/20261111T223048-778679` |
 
 The first is the support-matrix cell. It is given the route the way Alpamayo 1.5's
@@ -275,6 +275,8 @@ says how that column was made here). The second shows what the route is worth. T
 keyframes told to go straight give identical plans in both runs; on the 39 turns ADE
 moves from 1.068 to 1.012 m, a paired bootstrap 95% interval of −0.172 to +0.014 m.
 
-Both runs were made at `f8a51e6` with no local changes, one per H200, about 13 minutes
-each. The model wrote `<NOMINAL>` on 74 of the 223 keyframes, and no plan was drawn
-again.
+Both runs were made with no local changes, one per H200, about 13 minutes each: the
+second at `f8a51e6`, the first at `30b616e`. The first was made again at that later
+commit so that its record lists the turn commands it was given, and every number came
+out the same as the first time. In each, the model wrote `<NOMINAL>` on 74 of the 223
+keyframes, and no plan was drawn again.
