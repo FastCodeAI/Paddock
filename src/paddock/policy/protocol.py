@@ -21,7 +21,9 @@ The wire contract, unchanged from NeuroNCAP:
               nav_lane_change_m optional: along-route metres to it
               calibration  camera2image (3x3 per camera), camera2ego (4x4)
 
-    response  trajectory   ego frame, x forward and y LEFT, spaced by waypoint dt
+    response  trajectory   ego frame, x forward and y LEFT, six points 0.5 s apart
+                           (`WIRE_DT`), taken from the plan at its own spacing
+              plan         the whole plan as the model returned it, with its dt
 
 Two details that look like rounding errors and are not:
 
@@ -74,6 +76,23 @@ CAMERAS = (
 )
 
 N_WAYPOINTS = 6
+#: The spacing of `/infer`'s six ``trajectory`` points. Every closed-loop client that
+#: reads them assumes it: neuroNCAP's engine (``--engine.waypoint-dt``), Bench2Drive's
+#: agent and HUGSIM's bridge. A plan given finer is sent as its own points at these times.
+WIRE_DT = 0.5
+
+
+def wire_stride(dt: float) -> int | None:
+    """How many of a plan's points make one `WIRE_DT` step, or None if they never land on it.
+
+    A plan 0.5 s apart is sent point for point (stride 1); one 0.1 s apart has a point
+    at every 0.5 s time, every fifth (stride 5). Any other spacing would have to be
+    interpolated, which would send a smoothed plan, not the one the model gave.
+    """
+    if dt <= 0:
+        return None
+    stride = round(WIRE_DT / dt)
+    return stride if stride >= 1 and abs(stride * dt - WIRE_DT) < 1e-6 else None
 
 
 class Command(IntEnum):
@@ -553,9 +572,13 @@ class Trajectory:
     def to_wire(self, aux: dict[str, Any] | None = None) -> dict[str, Any]:
         """Package for a simulator expecting exactly `N_WAYPOINTS` waypoints.
 
-        In ``trajectory`` anything past the sixth is dropped: neuroNCAP has no
-        timestamp to attach to it and indexes the list positionally, and it
-        reads only ``trajectory`` and ``aux_outputs``.
+        ``trajectory`` is the plan's own points at 0.5, 1.0, ... 3.0 s (`WIRE_DT`):
+        neuroNCAP's engine gives the six it reads those times, indexes them
+        positionally, and reads only ``trajectory`` and ``aux_outputs``. A plan
+        0.5 s apart goes point for point; a finer one (Alpamayo 2 Edge's, 0.1 s)
+        sends every fifth point rather than its first 0.6 s read as 3 s. A plan
+        with no points on that grid, or too short to fill it, is refused here
+        rather than driven mis-timed.
 
         ``plan`` is the whole plan as the model returned it, in the same shape
         `/infer_sequence` returns its waypoints: every row, with the yaw column
@@ -565,12 +588,20 @@ class Trajectory:
         that steers a full pose (AlpaSim) reads this key; one that does not
         never sees it.
         """
-        if len(self.waypoints) < N_WAYPOINTS:
+        stride = wire_stride(self.dt)
+        if stride is None:
             raise ValueError(
-                f"trajectory needs >= {N_WAYPOINTS} waypoints for closed-loop, got {len(self.waypoints)}"
+                f"a plan {self.dt:g} s apart has no points on the {WIRE_DT:g} s grid closed-loop "
+                f"clients drive; its spacing must divide {WIRE_DT:g} s"
+            )
+        grid = self.xy[stride - 1 :: stride]
+        if len(grid) < N_WAYPOINTS:
+            raise ValueError(
+                f"trajectory needs >= {N_WAYPOINTS} waypoints on the {WIRE_DT:g} s grid for "
+                f"closed-loop, got {len(grid)} ({len(self.waypoints)} points {self.dt:g} s apart)"
             )
         wire: dict[str, Any] = {
-            "trajectory": self.xy[:N_WAYPOINTS].tolist(),
+            "trajectory": grid[:N_WAYPOINTS].tolist(),
             "aux_outputs": aux if aux is not None else empty_aux(),
             "plan": {"waypoints": self.waypoints.tolist(), "dt": self.dt},
         }

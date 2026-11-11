@@ -9,6 +9,7 @@ import pytest
 
 from paddock.policy.protocol import (
     EXTRAS_KEYS,
+    WIRE_DT,
     Command,
     Observation,
     Policy,
@@ -16,6 +17,7 @@ from paddock.policy.protocol import (
     constant_velocity,
     load_frame,
     validate_extras,
+    wire_stride,
 )
 
 
@@ -249,6 +251,43 @@ def test_extras_survive_the_closed_loop_wire_and_validate() -> None:
     # No extras at all is the common case and must not add a wire key.
     assert "extras" not in Trajectory(np.zeros((6, 2))).to_wire()
     validate_extras(None)
+
+
+def test_a_plan_half_a_second_apart_crosses_the_wire_point_for_point() -> None:
+    """Every model before Alpamayo 2 Edge plans 0.5 s apart; its six points must not move."""
+    waypoints = np.random.default_rng(0).normal(size=(8, 2))
+    assert Trajectory(waypoints, dt=0.5).to_wire()["trajectory"] == waypoints[:6].tolist()
+
+
+def test_a_finer_plan_sends_its_own_points_at_every_half_second() -> None:
+    """Edge's 64 points 0.1 s apart: the client drives the six at 0.5 ... 3.0 s, so it
+    gets points 5, 10, ... 30 -- not the first six, which reach only 0.6 s."""
+    t = 0.1 * np.arange(1, 65)
+    waypoints = np.column_stack([10.0 * t, 0.2 * t**2, 0.01 * t])
+    wire = Trajectory(waypoints, dt=0.1).to_wire()
+    expected = np.column_stack([10.0 * WIRE_DT * np.arange(1, 7), 0.2 * (WIRE_DT * np.arange(1, 7)) ** 2])
+    np.testing.assert_allclose(wire["trajectory"], expected, atol=1e-9)
+    # The whole plan still goes back for a client that drives every point (AlpaSim).
+    assert wire["plan"] == {"waypoints": waypoints.tolist(), "dt": 0.1}
+
+
+@pytest.mark.parametrize("dt", [0.2, 0.3, 0.75, 1.0])
+def test_a_plan_with_no_points_on_the_half_second_grid_is_refused(dt: float) -> None:
+    with pytest.raises(ValueError, match="no points on the 0.5 s grid"):
+        Trajectory(np.ones((64, 2)), dt=dt).to_wire()
+
+
+def test_a_fine_plan_too_short_to_reach_three_seconds_is_refused() -> None:
+    # 20 points 0.1 s apart reach 2 s: four points on the grid, not six.
+    with pytest.raises(ValueError, match="got 4"):
+        Trajectory(np.ones((20, 2)), dt=0.1).to_wire()
+
+
+@pytest.mark.parametrize(
+    ("dt", "stride"), [(0.5, 1), (0.25, 2), (0.1, 5), (0.05, 10), (0.2, None), (0.0, None)]
+)
+def test_wire_stride(dt: float, stride: int | None) -> None:
+    assert wire_stride(dt) == stride
 
 
 @pytest.mark.parametrize("columns", [2, 3])
