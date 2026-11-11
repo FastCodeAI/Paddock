@@ -43,7 +43,7 @@ project's licence.
 | `patches/neuro-ncap/` | [neuro-ncap](https://github.com/atonderski/neuro-ncap) | MIT, Copyright (c) 2024 William Ljungbergh & Adam Tonderski |
 | `patches/Drive-JEPA/` | [Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) | Apache-2.0 |
 | `patches/HUGSIM/` | [HUGSIM](https://github.com/hyzhou404/HUGSIM) | MIT, Copyright (c) 2024 X-Dimensional Representations Lab (X-D Lab) of Zhejiang University |
-| `patches/Bench2Drive/` | [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | The file they edit, `leaderboard/leaderboard/leaderboard_evaluator.py`, is headed "Copyright (c) 2018-2019 Intel Corporation" and "licensed under the terms of the MIT license". Bench2Drive's README says: "All assets and code are under the CC-BY-NC-ND unless specified otherwise." |
+| `patches/Bench2Drive/` | [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | The file they edit, `leaderboard/leaderboard/leaderboard_evaluator.py`, is headed "Copyright (c) 2018-2019 Intel Corporation" and "licensed under the terms of the MIT license". The code the patches change, the crash handler's kill command and the loop that connects to CARLA, was added by Bench2Drive and is not in CARLA's original file, so that header may not cover it. Bench2Drive's README says: "All assets and code are under the CC-BY-NC-ND unless specified otherwise." |
 
 ## Results, and the datasets behind them
 
