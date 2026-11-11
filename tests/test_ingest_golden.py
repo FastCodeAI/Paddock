@@ -21,7 +21,9 @@ from pathlib import Path
 
 import pytest
 
+from paddock import runner
 from paddock.config import ConfigError, SiteConfig
+from paddock.registry import Registry
 from paddock.results.report import has_direction, lower_is_better
 from paddock.results.store import scrub, sequence_hash, summarise
 
@@ -59,6 +61,13 @@ def test_scrub_keeps_what_is_not_a_machine_path() -> None:
     assert scrub("https://github.com/commaai/openpilot") == "https://github.com/commaai/openpilot"
     assert scrub("models/supercombo.onnx") == "models/supercombo.onnx"
     assert scrub("20260917T101500-a1b2c3") == "20260917T101500-a1b2c3"
+    # How model.yaml names a file at any site, and so how a record's declared_env does: the
+    # `/` after a template variable is not the start of a disk. Cut, they read
+    # `{weights}checkpoint.pt` (#173). Every model's declared_env, not a few values copied
+    # here, so the next shape scrub() would cut fails the day a model.yaml brings it.
+    for name, spec in Registry.load().models.items():
+        declared = runner._declared_env(spec)
+        assert scrub(declared) == declared, name
 
 
 def test_sequence_hash_is_order_independent_and_content_sensitive() -> None:

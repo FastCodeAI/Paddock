@@ -128,7 +128,8 @@ def test_written_run_record_names_no_machine_path(tmp_path: Path) -> None:
 
 
 def test_a_route_that_never_scored_is_expected_not_absent(tmp_path: Path) -> None:
-    """The 23695 case: every attempt crashed, and `routes` is unset.
+    """A route every attempt of which crashed, as 23695's did here before it was set aside,
+    and `routes` is unset.
 
     Before this was fixed the expected set was built from the samples that
     survived, so `missing` was empty by construction: the route left no trace in
@@ -136,18 +137,18 @@ def test_a_route_that_never_scored_is_expected_not_absent(tmp_path: Path) -> Non
     the mean silently came from a smaller route set.
     """
     root = _tree(tmp_path)
-    # Route 23695 in this repo's real trees: several attempts, every one of them
-    # with an empty `_checkpoint.records`. Not set aside, so it is lost.
+    # Several attempts, every one of them with an empty `_checkpoint.records`, as route
+    # 23695 had in this repo's real trees. Not set aside, so it is lost.
     for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
-        _write(root, run, "23695-Town13-InterurbanAdvancedActorFlow", _unscored("23695"))
+        _write(root, run, "3248-Town13-ParkingCrossingPedestrian", _unscored("3248"))
 
     ((run, metrics, samples),) = bench2drive.ingest(root, model="modelx", site="s")
 
-    assert "23695" not in {s["native_id"]["route_id"] for s in samples}, "it did not score"
-    assert "23695" in run.config["routes_subset"], "but it was attempted, so it was expected"
+    assert "3248" not in {s["native_id"]["route_id"] for s in samples}, "it did not score"
+    assert "3248" in run.config["routes_subset"], "but it was attempted, so it was expected"
     assert run.dataset["n_expected"] == 4 and run.dataset["n_failed"] == 1
     assert run.status == "partial" and not run.valid
-    assert "23695" in run.notes and "did not score" in run.notes
+    assert "3248" in run.notes and "did not score" in run.notes
     assert metrics.n == 3, "the three routes that scored are what the mean is over"
 
 
@@ -280,26 +281,26 @@ def test_a_failure_record_gives_the_reason_a_route_never_scored(tmp_path: Path) 
     """A CARLA crash and an attempt cut off by a restart leave the same empty checkpoint;
     the harness's failure.json says which."""
     root = _tree(tmp_path)
-    folder = "23695-Town13-InterurbanAdvancedActorFlow"
-    _write(root, "20260904T000000-dddddd", folder, _unscored("23695"))
+    folder = "3248-Town13-ParkingCrossingPedestrian"
+    _write(root, "20260904T000000-dddddd", folder, _unscored("3248"))
     failure = {"kind": "carla_crash", "signal": 11, "game_time_s": 36.4, "returncode": -15}
     (root / "20260904T000000-dddddd" / folder / "failure.json").write_text(json.dumps(failure))
     ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
-    said = run.config["routes_never_scored"]["23695"]
+    said = run.config["routes_never_scored"]["3248"]
     assert said == "20260904T000000-dddddd: CARLA crashed (signal 11) at 36.4 s of game time"
 
 
 def test_an_attempt_cut_off_later_does_not_hide_the_failures_on_record(tmp_path: Path) -> None:
     """Five crashes and then a cut-off attempt (route 11715's real trees): the reason is the crash."""
     root = _tree(tmp_path)
-    folder = "23695-Town13-InterurbanAdvancedActorFlow"
+    folder = "3248-Town13-ParkingCrossingPedestrian"
     failure = {"kind": "carla_crash", "signal": 11, "game_time_s": 36.4, "returncode": -15}
     for run in ("20260904T000000-dddddd", "20260905T000000-eeeeee"):
-        _write(root, run, folder, _unscored("23695"))
+        _write(root, run, folder, _unscored("3248"))
         (root / run / folder / "failure.json").write_text(json.dumps(failure))
-    _write(root, "20260906T000000-ffffff", folder, _unscored("23695"))  # cut off: no failure record
+    _write(root, "20260906T000000-ffffff", folder, _unscored("3248"))  # cut off: no failure record
     ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
-    said = run.config["routes_never_scored"]["23695"]
+    said = run.config["routes_never_scored"]["3248"]
     assert said == "20260905T000000-eeeeee: CARLA crashed (signal 11) at 36.4 s of game time"
 
 
@@ -307,25 +308,25 @@ def test_without_a_failure_record_the_reason_is_the_parsers_unchanged(tmp_path: 
     """routes_never_scored is hashed into the run id, so a stored record ingested again must read
     exactly as it did."""
     root = _tree(tmp_path)
-    _write(root, "20260904T000000-dddddd", "23695-Town13-InterurbanAdvancedActorFlow", _unscored("23695"))
+    _write(root, "20260904T000000-dddddd", "3248-Town13-ParkingCrossingPedestrian", _unscored("3248"))
     ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
-    said = run.config["routes_never_scored"]["23695"]
+    said = run.config["routes_never_scored"]["3248"]
     assert said == "20260904T000000-dddddd: no records in _checkpoint (the route did not score)"
 
 
 def test_the_rejection_reason_names_the_run_and_no_machine_path(tmp_path: Path) -> None:
     """`notes` is tracked, so the reason may name a run id but never a disk."""
     root = _tree(tmp_path)
-    _write(root, "20260904T000000-dddddd", "23695-Town13-InterurbanAdvancedActorFlow", _unscored("23695"))
+    _write(root, "20260904T000000-dddddd", "3248-Town13-ParkingCrossingPedestrian", _unscored("3248"))
     ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
     assert "20260904T000000-dddddd" in run.notes
-    assert str(tmp_path) not in run.notes and "/" not in run.notes.split("23695", 1)[1]
+    assert str(tmp_path) not in run.notes and "/" not in run.notes.split("3248", 1)[1]
 
 
 def test_an_unreadable_results_file_is_a_rejection_not_a_crash(tmp_path: Path) -> None:
     """One truncated file on a network mount used to abort the whole walk."""
     root = _tree(tmp_path)
-    truncated = root / "20260904T000000-dddddd" / "23695-Town13-InterurbanAdvancedActorFlow" / "results.json"
+    truncated = root / "20260904T000000-dddddd" / "3248-Town13-ParkingCrossingPedestrian" / "results.json"
     truncated.parent.mkdir(parents=True)
     truncated.write_text('{"_checkpoint": {"records": [')
 

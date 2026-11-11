@@ -184,9 +184,10 @@ CRASH_STATUSES = frozenset(
     }
 )
 
-#: Routes left out of every model's numbers, with the reason. Each fails in the simulator
-#: on every attempt, whichever model drives, so it measures no model -- and a mean with it
-#: for one model and without it for another would not be over the same routes. Poor
+#: Routes left out of every model's numbers, with the reason. Each failed in the simulator
+#: on every attempt by whichever model drives (11715), or by Alpamayo 1.5 at its declared
+#: 10 Hz (3800, 23695, 24071), so it measures no model, and a mean with it for one
+#: model and without it for another would not be over the same routes. Poor
 #: driving is never a reason: a route the car is blocked on, deviates from, times out on or
 #: has ended early scores. Nor is a model's own node failing (an HTTP 500, out of memory):
 #: that is the model's to fix. A route joins after three attempts that failed in the
@@ -199,6 +200,25 @@ SET_ASIDE: dict[str, str] = {
     # time. The client's traceback lands in route_scenario.spawn_parked_vehicles only because
     # that is its first call to the server after the crash.
     "11715": "CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives",
+    # Three Town13 routes on which CARLA crashed on every attempt Alpamayo 1.5 made at its declared
+    # 10 Hz (three each, 9 Nov 2026), each time at about the same point of game time. openpilot
+    # completed each sooner (24.6-39.4 s), and METEOR and AutoE2E were stopped by the 30 s rule by
+    # 34.4 s. It is not game time alone: at 20 Hz in September, with no early stop, Alpamayo 1.5
+    # drove 3800 to the 200 s tick cap without a crash. 3800 also crashed at ~1300-1411 frames
+    # (65-71 s) for Alpamayo 1.5 and Qwen-Drive at their rates in October, and 23695 on seven of
+    # seven openpilot attempts at another site.
+    "3800": (
+        "CARLA crashes (signal 11) 63-69 s into the route on every attempt by Alpamayo 1.5 "
+        "at its declared 10 Hz"
+    ),
+    "23695": (
+        "CARLA crashes (signal 11) about 40 s into the route on every attempt by Alpamayo 1.5 "
+        "at its declared 10 Hz"
+    ),
+    "24071": (
+        "CARLA crashes (signal 11) 37-40 s into the route on every attempt by Alpamayo 1.5 "
+        "at its declared 10 Hz"
+    ),
 }
 
 #: Everything ``agent.py`` imports, checked in the client interpreter by
