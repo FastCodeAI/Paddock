@@ -586,3 +586,53 @@ def test_preflight_names_a_scene_whose_map_no_tier_holds(tmp_path, monkeypatch) 
     assert "maps/map.osm" in problem and SCENE in problem
     off = _benchmark(tmp_path, monkeypatch, [fast], settings='map = false\nroute = "none"\n')
     assert off.preflight() == []
+
+
+# ---------------------------------------------------------------------------
+# Plans not 0.5 s apart
+# ---------------------------------------------------------------------------
+
+
+def _curving_plan(dt: float, horizon_s: float = 6.4) -> np.ndarray:
+    """A plan that speeds up and bends left, so a wrongly picked point shows."""
+    t = dt * np.arange(1, int(round(horizon_s / dt)) + 1)
+    return np.column_stack([8.0 * t + 0.4 * t**2, 0.15 * t**2])
+
+
+def test_a_plan_a_tenth_of_a_second_apart_is_scored_on_its_own_half_second_points(tmp_path, monkeypatch) -> None:
+    """alpamayo2edge returns 64 points 0.1 s apart. Read as if they were 0.5 s apart,
+    its 3 s score would pair 0.6 s of plan with 3 s of recorded future."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive])
+    fine = _curving_plan(0.1)
+    ground_truth = np.column_stack([_curving_plan(0.5)[:8] + [0.3, -0.2], np.zeros(8)])
+    sample = SimpleNamespace(ground_truth=ground_truth)
+
+    tenth = bench.score(sample, H.Trajectory(fine, dt=0.1))
+    half = bench.score(sample, H.Trajectory(fine[4::5], dt=0.5))
+
+    for key in ("ade", "fde@1s", "fde@2s", "fde@3s", "longitudinal_mae", "lateral_mae", "pdm_ep"):
+        assert tenth[key] == pytest.approx(half[key], abs=1e-12), key
+    assert tenth["ade"] == pytest.approx(np.hypot(0.3, 0.2))
+
+
+def test_a_plan_already_half_a_second_apart_is_scored_point_for_point() -> None:
+    """Every model scored here before alpamayo2edge plans 0.5 s apart; its numbers must not move."""
+    plan = _curving_plan(0.5)
+    assert np.array_equal(H.plan_on_grid(H.Trajectory(plan, dt=0.5)), plan)
+
+
+@pytest.mark.parametrize(("dt", "stride"), [(0.5, 1), (0.25, 2), (0.1, 5), (0.05, 10), (0.3, None), (1.0, None)])
+def test_only_a_spacing_that_divides_half_a_second_has_points_on_the_grid(dt, stride) -> None:
+    assert H.grid_stride(dt) == stride
+
+
+def test_a_model_whose_plan_misses_the_grid_is_refused_before_it_loads(tmp_path, monkeypatch) -> None:
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive])
+    (problem,) = bench.model_problems(SimpleNamespace(name="coarse", waypoint_dt=1.0))
+    assert "coarse" in problem and "does not interpolate" in problem
+    declared = [m for m in Registry.load().models.values() if "kitscenes" in m.benchmarks]
+    assert declared and all(bench.model_problems(m) == [] for m in declared)
