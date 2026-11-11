@@ -441,11 +441,28 @@ def why_cards(body: str, link: Links) -> str:
 
 
 def media() -> dict:
+    """tools/site/media.toml, with every src and poster made a whole https URL.
+
+    A path with no scheme is relative to the file's `base`, which names one commit of the
+    Hugging Face dataset: re-pinning the videos, or moving them, is one line.
+    """
     body = tomllib.loads(MEDIA.read_text(encoding="utf-8")) if MEDIA.exists() else {}
+    base = body.get("base", "")
+    if base and not (base.startswith("https://") and base.endswith("/")):
+        raise ValueError(f"tools/site/media.toml: base must be an https URL ending in '/', got {base!r}")
     for item in [body.get("hero", {}), *body.get("video", [])]:
         for k in ("src", "poster"):
-            if item.get(k) and not item[k].startswith("https://"):
-                raise ValueError(f"tools/site/media.toml: {k} must be an https URL, got {item[k]!r}")
+            value = item.get(k)
+            if not value:
+                continue
+            if "://" not in value:
+                if not base:
+                    raise ValueError(
+                        f"tools/site/media.toml: {k} {value!r} is a path, so the file needs a base URL"
+                    )
+                value = item[k] = base + value
+            if not value.startswith("https://"):
+                raise ValueError(f"tools/site/media.toml: {k} must be an https URL, got {value!r}")
     return body
 
 
@@ -457,19 +474,46 @@ def video_html(v: dict, cls: str = "") -> str:
     )
 
 
-def gallery(videos: list[dict]) -> str:
+def gallery(videos: list[dict], bench_rows: list[list[str]]) -> str:
+    """The videos, one block per benchmark in the README's order.
+
+    Every clip is in the page, so with no script they stack; site.js turns each block into
+    one player with a tab per clip, which keeps a six-model video wide enough to read.
+    """
     if not videos:
         return ""
-    figs = "".join(
-        f'<figure class="clip">{video_html(v)}<figcaption><strong>{escape(v["title"])}</strong>'
-        + (f" · {escape(v['caption'])}" if v.get("caption") else "")
-        + "</figcaption></figure>"
-        for v in videos
-    )
+    benches = {}
+    for row in bench_rows:
+        name, page = _first_link(row[0])
+        benches[Path(page).stem] = (name, row[1])  # docs/benchmarks/neuroncap.md -> neuroncap
+    named = {v.get("benchmark", "") for v in videos}
+    if named - set(benches):
+        raise ValueError(
+            "tools/site/media.toml: each [[video]] needs a benchmark from the README's table "
+            f"({', '.join(benches)}); got {sorted(named - set(benches))}"
+        )
+    blocks = []
+    for key, (name, test) in benches.items():
+        figs = "".join(
+            f'<figure class="clip" data-title="{escape(v["title"])}">{video_html(v)}'
+            f"<figcaption><strong>{escape(v['title'])}</strong>"
+            + (f" · {escape(v['caption'])}" if v.get("caption") else "")
+            + "</figcaption></figure>"
+            for v in videos
+            if v["benchmark"] == key
+        )
+        if figs:
+            blocks.append(
+                f'<div class="bench-clips" id="videos-{escape(key)}">'
+                f'<h3>{escape(name)} <span class="test">{escape(test)}</span></h3>{figs}</div>'
+            )
     return (
-        '<section id="videos" aria-labelledby="videos-h"><div class="sec-head"><h2 id="videos-h">Side by side</h2>'
-        '<p class="sub">Every model on the same scene.</p></div>'
-        f'<div class="clips">{figs}</div></section>'
+        '<section id="videos" aria-labelledby="videos-h"><div class="wrap">'
+        '<div class="sec-head"><h2 id="videos-h">Side by side</h2>'
+        '<p class="sub">Every model on the same hard moments. Each benchmark picks its own by a rule '
+        "in its code, never by hand: the hardest of each kind, then where the models disagree most.</p></div>"
+        + "".join(blocks)
+        + "</div></section>"
     )
 
 
@@ -595,7 +639,8 @@ def page(
         "MATRIX": table_html,
         "MATRIX_NOTES": markdown(details(sec["Support matrix"]), link),
         "SUPPORT_TOML": escape(link("docs/support-matrix.toml")),
-        "GALLERY": gallery(m.get("video", [])),
+        "GALLERY": gallery(m.get("video", []), bench_rows),
+        "NAV_VIDEOS": '<a href="#videos">Videos</a>' if m.get("video") else "",
         "WHY": why_cards(sec["Why Paddock"], link),
         "MODELS": cards,
         "BENCHES": benchmark_table(bench_rows, link),

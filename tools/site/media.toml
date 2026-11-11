@@ -1,18 +1,47 @@
-# Videos the website shows, hosted outside git (Hugging Face). Each section of the page is
-# left out while its entry is empty. Every URL must be https.
+# Videos the website shows, hosted outside git on Hugging Face. Each section of the page is
+# left out while it has no entry. Every URL must be https; a path with no scheme is relative
+# to `base`.
 #
-# Which scenes may be shown is a question about each dataset's terms: settle it before adding
-# a clip from that dataset.
+# `base` names one commit of the dataset, so the page shows exactly the files it was reviewed
+# with. After uploading new videos, set it to the commit the upload made.
 #
-# The clip at the top of the page, beside the title:
+# Each benchmark's videos come from `python -m tools.site.videos <benchmark> --out DIR`, which
+# writes the [[video]] entries to paste below; see that file for the steps. The dataset's
+# card on Hugging Face credits each source dataset and states its licence. Whether Renesas
+# may show these scenes is still to be confirmed with Renesas legal.
+#
+# The clip at the top of the page, beside the title, if there is one:
 # [hero]
-# src = "https://huggingface.co/datasets/OWNER/paddock-media/resolve/main/hero.mp4"
-# poster = "https://huggingface.co/datasets/OWNER/paddock-media/resolve/main/hero.jpg"
+# src = "neuroncap/hero.mp4"
+# poster = "neuroncap/hero.jpg"
 # alt = "Every model driving the same neuroNCAP scene, side by side"
-#
-# The side-by-side gallery, one entry per clip, made with `paddock render`:
-# [[video]]
-# title = "neuroNCAP 0103, frontal"
-# caption = "eight models, one stationary car ahead"
-# src = "https://huggingface.co/datasets/OWNER/paddock-media/resolve/main/neuroncap-0103.mp4"
-# poster = "https://huggingface.co/datasets/OWNER/paddock-media/resolve/main/neuroncap-0103.jpg"
+
+base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/532aa8293311cd2f0651367e3f2512da9a2b9fd4/"
+
+[[video]]
+benchmark = "neuroncap"
+title = "Oncoming car, scene 0923"
+caption = "The hardest frontal scenario: the models average 1.5 of 5. Run 9 of 10, the most typical one. Not shown yet: AutoE2E."
+src = "neuroncap/frontal-0923-run8.mp4"
+poster = "neuroncap/frontal-0923-run8.jpg"
+
+[[video]]
+benchmark = "neuroncap"
+title = "Car crossing from the side, scene 0278"
+caption = "The hardest side scenario: the models average 1.1 of 5. Run 1 of 10, the most typical one. Not shown yet: AutoE2E."
+src = "neuroncap/side-0278-run0.mp4"
+poster = "neuroncap/side-0278-run0.jpg"
+
+[[video]]
+benchmark = "neuroncap"
+title = "Stopped car ahead, scene 0966"
+caption = "The hardest stationary scenario: the models average 2.7 of 5. Run 5 of 10, the most typical one. Not shown yet: AutoE2E."
+src = "neuroncap/stationary-0966-run4.mp4"
+poster = "neuroncap/stationary-0966-run4.jpg"
+
+[[video]]
+benchmark = "neuroncap"
+title = "Car crossing from the side, scene 0108"
+caption = "Where the models disagree most: their averages run from 0.0 to 5.0 of 5. Run 2 of 10, the most typical one. Not shown yet: AutoE2E."
+src = "neuroncap/side-0108-run1.mp4"
+poster = "neuroncap/side-0108-run1.jpg"

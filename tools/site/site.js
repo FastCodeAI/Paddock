@@ -246,4 +246,42 @@
       ev.target.textContent = "Select the text to copy";
     }
   });
+
+  // -- videos: one player per benchmark, a tab per clip --------------------------------
+  // Every clip is in the page, so without this they stack. With it a benchmark shows one
+  // clip at a time, full width: a six-model video in a grid cell is too small to read.
+  for (const block of document.querySelectorAll(".bench-clips")) {
+    const figs = [...block.querySelectorAll("figure.clip")];
+    if (figs.length < 2) continue;
+    const bar = document.createElement("div");
+    bar.className = "tabs";
+    bar.setAttribute("role", "tablist");
+    bar.setAttribute("aria-label", `${block.querySelector("h3").firstChild.textContent.trim()} videos`);
+    const tabs = figs.map((fig, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tab";
+      b.setAttribute("role", "tab");
+      b.textContent = fig.dataset.title;
+      b.addEventListener("click", () => show(i, true));
+      b.addEventListener("keydown", (ev) => {
+        const step = { ArrowRight: 1, ArrowLeft: -1 }[ev.key];
+        if (step) show((i + step + figs.length) % figs.length, true);
+      });
+      bar.append(b);
+      return b;
+    });
+    function show(k, focus) {
+      figs.forEach((fig, i) => {
+        const on = i === k;
+        fig.hidden = !on;
+        tabs[i].setAttribute("aria-selected", String(on));
+        tabs[i].tabIndex = on ? 0 : -1;
+        if (!on) fig.querySelector("video").pause();
+      });
+      if (focus) tabs[k].focus();
+    }
+    block.querySelector("h3").after(bar);
+    show(0, false);
+  }
 })();
