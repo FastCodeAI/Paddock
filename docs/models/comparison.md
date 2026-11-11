@@ -50,8 +50,9 @@ disagree, so check with NVIDIA before relying on either. Drive-JEPA's,
 VisionPilot's and Qwen-Drive's weights carry permissive licences but were trained
 partly on data licensed for non-commercial use (the next table), and Waymo's
 licence, behind VisionPilot's OpenLane and Qwen-Drive's WOD-E2E, also covers
-models trained on its data. OpenPilot's (MIT) and METEOR's (Apache-2.0) were
-trained on their publishers' own recordings.
+models trained on its data. OpenPilot's (MIT) were trained on comma.ai's own
+recordings, and METEOR's (Apache-2.0) mostly on TIER IV's, from an
+ImageNet-trained backbone.
 
 ## Training data — the important table
 
