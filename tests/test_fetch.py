@@ -481,6 +481,34 @@ def test_a_link_out_of_its_own_folder_is_refused(tmp_path, target) -> None:
     assert not (tmp_path / "into/a/lib.so").is_symlink()
 
 
+@pytest.mark.parametrize("kind", ["tar", "zip"])
+def test_an_executable_stays_executable(tmp_path, kind) -> None:
+    """CARLA is started by running CarlaUE4.sh; unpacked without its mode, the shell says Permission denied."""
+    archive = tmp_path / f"carla.{kind}"
+    members = {"CarlaUE4.sh": (b"#!/bin/sh\n", 0o4755), "VERSION": (b"0.9.15", 0o644)}
+    if kind == "tar":
+        with tarfile.open(archive, "w:gz") as tf:
+            for name, (data, mode) in members.items():
+                info = tarfile.TarInfo(name)
+                info.size, info.mode = len(data), mode
+                tf.addfile(info, io.BytesIO(data))
+    else:
+        with zipfile.ZipFile(archive, "w") as zf:
+            for name, (data, mode) in members.items():
+                info = zipfile.ZipInfo(name)
+                info.create_system, info.external_attr = 3, (0o100000 | mode) << 16
+                zf.writestr(info, data)
+    into = tmp_path / "into"
+
+    fetch.unpack(archive, into)
+
+    umask = os.umask(0)
+    os.umask(umask)
+    assert (into / "CarlaUE4.sh").stat().st_mode & 0o7777 == 0o755 & ~umask, "setuid dropped, umask applied"
+    assert os.access(into / "CarlaUE4.sh", os.X_OK)
+    assert not os.access(into / "VERSION", os.X_OK)
+
+
 def test_a_link_to_a_file_beside_it_is_kept(tmp_path) -> None:
     """CARLA's release ships libsqlite3.so -> libsqlite3.so.0.8.6, and CARLA loads it by the link."""
     linked = tmp_path / "carla.tar.gz"

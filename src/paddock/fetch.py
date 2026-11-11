@@ -552,10 +552,16 @@ def unpack(archive: Path, into: Path, strip: int = 0) -> int:
     own folder, as CARLA's release ships `libsqlite3.so -> libsqlite3.so.0.8.6`.
     Any other link or a device stops the fetch, because following a link that
     points elsewhere is how an archive writes outside its destination.
+
+    Each file keeps the permissions the archive gives it, less the umask, as
+    tar does for a user who is not root: CARLA is started by running
+    `CarlaUE4.sh`, which must stay executable.
     """
     into.mkdir(parents=True, exist_ok=True)
     base = into.resolve()
     written = 0
+    umask = os.umask(0)
+    os.umask(umask)
     # By content, not by name: nuPlan publishes some tar archives named .zip.
     if zipfile.is_zipfile(archive):
         with zipfile.ZipFile(archive) as zf:
@@ -570,6 +576,8 @@ def unpack(archive: Path, into: Path, strip: int = 0) -> int:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, target.open("wb") as dst:
                     shutil.copyfileobj(src, dst, 1 << 20)
+                if info.create_system == 3 and (info.external_attr >> 16) & 0o777:  # made on Unix
+                    target.chmod((info.external_attr >> 16) & 0o777 & ~umask)
                 written += 1
         return written
     # "r|*" streams: a 3.7 GB shard is read once, front to back, never seeked.
@@ -587,6 +595,7 @@ def unpack(archive: Path, into: Path, strip: int = 0) -> int:
                 assert src is not None
                 with target.open("wb") as dst:
                     shutil.copyfileobj(src, dst, 1 << 20)
+                target.chmod(member.mode & 0o777 & ~umask)
                 written += 1
             elif member.issym() and _sibling(member.linkname):
                 _symlink(base, relative, member.linkname)
