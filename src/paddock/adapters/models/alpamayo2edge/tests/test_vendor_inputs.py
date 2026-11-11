@@ -23,7 +23,12 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("alpamayo2_edge")
 
 from paddock.adapters.models.alpamayo2edge import inputs  # noqa: E402
-from paddock.adapters.models.alpamayo2edge.policy import prepare_inputs, vendor_sample  # noqa: E402
+from paddock.adapters.models.alpamayo2edge.policy import (  # noqa: E402
+    INCOMPLETE_RATIONALE,
+    draw_until_complete,
+    prepare_inputs,
+    vendor_sample,
+)
 from paddock.adapters.models.alpamayo2edge.tests.test_policy import _loaded, _sequence  # noqa: E402
 
 NAVSIM_TIMES = (-1.5, -1.0, -0.5, 0.0)
@@ -70,6 +75,28 @@ def test_the_restated_constants_are_the_vendors() -> None:
     assert {
         camera_id: len(inputs.offsets_for(camera_id)) for camera_id, _, _ in inputs.SLOTS
     } == CAMERA_FRAME_COUNTS
+
+
+def test_the_vendors_refusal_of_an_incomplete_rationale_is_drawn_again() -> None:
+    """policy.py knows the vendor's refusal only by the start of its message. Were the
+    vendor to reword it, the adapter would stop drawing again with every other test
+    green, and a NAVSIM run would again lose the scenarios it refuses."""
+    from alpamayo2_edge.models.expert_utils import find_eos_offset
+
+    anchor, cpu = 7, torch.device("cpu")
+    no_anchor, empty = torch.tensor([[3, 4, 5, 6]]), torch.zeros((1, 0), dtype=torch.long)
+    for generated in (no_anchor, empty):
+        with pytest.raises(ValueError) as refused:
+            find_eos_offset(generated, anchor, cpu)
+        assert str(refused.value).startswith(INCOMPLETE_RATIONALE), str(refused.value)
+
+    def attempt(seed: int):
+        # The first draw's rationale never reaches the trajectory token; the next one does.
+        row = [3, 4, 5, 6] if seed == 43 else [3, 4, anchor, 6]
+        return find_eos_offset(torch.tensor([row]), anchor, cpu)
+
+    offset, seed = draw_until_complete(attempt, 43)
+    assert (int(offset[0]), seed) == (3, 44)
 
 
 def test_a_navsim_sequence_passes_the_vendors_checks(tmp_path: Path) -> None:

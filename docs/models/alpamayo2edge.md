@@ -165,10 +165,13 @@ make check-alpamayo2edge ALPAMAYO2_EDGE_PY=<model venv>/bin/python \
   ALPAMAYO2_EDGE_CHECKPOINT=<{weights}/Alpamayo2-Edge>
 ```
 
-It checks the restated constants against the vendor's. It also checks that a NAVSIM
-sequence passes the vendor's `validate_sample`, that the prompt labels its frames as
-above, that the processor read once gives the vendor's tensors (2,892 image tokens),
-and the speed fits in the table above.
+It checks the restated constants against the vendor's. Among them is the start of the
+message the vendor refuses an incomplete rationale with, which is how the adapter
+knows to draw again: the test has the vendor's own code refuse a draw and checks that
+the next seed is drawn. It also checks that a NAVSIM sequence passes the vendor's
+`validate_sample`, that the prompt labels its frames as above, that the processor
+read once gives the vendor's tensors (2,892 image tokens), and the speed fits in the
+table above.
 
 ## Cost
 
