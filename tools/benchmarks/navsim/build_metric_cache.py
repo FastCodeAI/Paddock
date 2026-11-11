@@ -1,5 +1,6 @@
 """Build a NAVSIM metric cache with the devkit a benchmark is configured to use.
 
+    python -m tools.benchmarks.navsim.build_metric_cache --bench navsim    [--logs a,b] [--workers 4]
     python -m tools.benchmarks.navsim.build_metric_cache --bench navsim_v1 [--logs a,b] [--workers 4]
 
 The devkit's own `run_metric_caching.py` does the work; this only runs it the
@@ -18,7 +19,7 @@ Resumable: the devkit skips scenarios whose cache file exists, and writes the
 interrupted build is finished by running this again, and preflight refuses a
 cache whose csv is missing or lists fewer scenarios than the split declares.
 Long: about 1.5 s per scenario per worker, ~80 min for navtest at four workers.
-Run it detached (see docs/benchmarks/navsim_v1.md).
+Run it detached (see docs/benchmarks/navsim.md for v2, navsim_v1.md for v1).
 """
 
 from __future__ import annotations
