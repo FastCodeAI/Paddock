@@ -51,6 +51,11 @@ ASSIGNED: dict[str, str] = {
     # the remaining hue: every other model and ground truth's blue stay at least
     # 11.8 apart from it under colour blindness (OKLab x100).
     "autoe2e": "#17becf",
+    # The hash gave alpamayo2edge the floor's #666666 too. A deep purple, kin to
+    # alpamayo15's #7570b3 because it is the same family, and the most separated
+    # of the candidates tried: under colour blindness it stays 20.0 from
+    # visionpilot's #e7298a, its nearest, and 25.1 from alpamayo15 (OKLab x100).
+    "alpamayo2edge": "#3f007d",
 }
 
 #: Drawn from for models with no assigned colour.
