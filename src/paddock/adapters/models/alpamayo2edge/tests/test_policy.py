@@ -284,3 +284,32 @@ def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
 def test_a_bad_setting_stops_the_node(name: str, value: str) -> None:
     with pytest.raises(ValueError):
         Settings.from_env({f"ALPAMAYO2_EDGE_{name}": value})
+
+
+# -- model.yaml agrees with the policy ------------------------------------------------
+
+
+def _spec():
+    from paddock.registry import Registry
+
+    return Registry.load().models["alpamayo2edge"]
+
+
+def test_model_yaml_declares_the_cameras_and_spacing_the_policy_uses() -> None:
+    spec = _spec()
+    assert tuple(spec.cameras) == POLICY.cameras
+    assert spec.waypoint_dt == POLICY.waypoint_dt == inputs.PLAN_DT_S
+    assert spec.horizon_s == pytest.approx(inputs.PLAN_STEPS * inputs.PLAN_DT_S)
+    assert spec.ego_history_steps == inputs.HISTORY_STEPS
+
+
+def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_through() -> None:
+    """A declared value that differed from the code's default would record one setting
+    in run.json and run another; a setting missing from env_passthrough never reaches
+    the node from the launching shell."""
+    spec = _spec()
+    declared = {k: v for k, v in spec.runtime.env.items() if k.startswith("ALPAMAYO2_EDGE_")}
+    assert Settings.from_env(declared) == Settings()
+    knobs = {f"ALPAMAYO2_EDGE_{name.upper()}" for name in Settings.__dataclass_fields__}
+    assert knobs == set(spec.runtime.env_passthrough)
+    assert set(spec.runtime.tuning_env) == {"ALPAMAYO2_EDGE_SAVE_REASONING"}

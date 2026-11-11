@@ -1,0 +1,99 @@
+name: alpamayo2edge
+description: NVIDIA Alpamayo 2 Edge (2.65B) - Cosmos3-Edge VLM that reasons only when needed, plus a flow-matching trajectory expert
+repo: alpamayo2-edge
+
+runtime:
+  kind: uv
+  python: "3.12"
+  venv: "{repo}/.venv"
+  # The vendor package is importable from src/; setup.sh's `uv sync` also installs it.
+  pythonpath: ["{repo}/src"]
+  cwd: "{repo}"
+  env:
+    # A link to the pinned snapshot (revision f8951d0) in the site's Hugging Face
+    # cache, made by setup.sh after checking every file's sha256.
+    ALPAMAYO2_EDGE_CHECKPOINT: "{weights}/Alpamayo2-Edge"
+    # Everything is local; a node never reaches the Hub.
+    HF_HUB_OFFLINE: "1"
+    # The adapter's choices, declared so run.json records them and a site that
+    # restates one is not read as changing it (policy.py says what each does).
+    # FRAMES and HISTORY decide how a source slower than 10 Hz becomes Edge's
+    # input; SAMPLES and SEED are the vendor's own defaults.
+    ALPAMAYO2_EDGE_FRAMES: "nearest"
+    ALPAMAYO2_EDGE_HISTORY: "hermite"
+    ALPAMAYO2_EDGE_SAMPLES: "1"
+    ALPAMAYO2_EDGE_SEED: "43"
+  # Read from the shell that launches `paddock run`, so `ALPAMAYO2_EDGE_HISTORY=linear
+  # paddock run ...` reaches the node. Any of these set to something other than
+  # the declared value stores the run valid: false, except SAVE_REASONING.
+  env_passthrough:
+    - ALPAMAYO2_EDGE_FRAMES
+    - ALPAMAYO2_EDGE_HISTORY
+    - ALPAMAYO2_EDGE_SAMPLES
+    - ALPAMAYO2_EDGE_SEED
+    - ALPAMAYO2_EDGE_NAV_DISTANCE_M
+    - ALPAMAYO2_EDGE_SAVE_REASONING
+  # Only adds the rationale to each plan's extras; the plan is the same.
+  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING]
+
+capabilities:
+  # CAM_FRONT first: NAVSIM's 10 Hz path keys its history on the first camera.
+  # The sixth slot, the telephoto, is a crop of CAM_FRONT (camera_views below).
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK_RIGHT]
+  # 6.9 GiB per node on an H200 with one plan, as nvidia-smi counts it (torch's
+  # peak is 5.8 GiB of that); ALPAMAYO2_EDGE_SAMPLES=6 needs 10.6 GiB.
+  vram_gb: 8
+  # A 5 GB checkpoint read from a network disk, then the processor.
+  startup_timeout_s: 900
+  # All 64 poses go back, 0.1 s apart; NAVSIM resamples them to its 0.5 s grid.
+  waypoint_dt: 0.1
+  # No floor. Every frame carries the time it was taken into the prompt, and the
+  # 0.1 s pose history is rebuilt from slower poses with their measured speeds
+  # (inputs.py), so a 2 Hz source is read as moving. It is still not what the
+  # model was trained on, which is why native_input_hz says 10.
+  min_input_hz: 0.0
+  # The vendor's loader: 0.1 s apart at the newest frames, 2 s of history. A
+  # benchmark holding 10 Hz frames (NAVSIM with [benchmarks.navsim] nuplan) feeds them.
+  native_input_hz: 10.0
+  history_s: 2.0
+
+  # -- model card (docs/models/alpamayo2edge.md) --
+  architecture: "Cosmos3-Edge 2B VLM (SigLIP2 vision) + 0.2B flow-matching trajectory expert reading its KV cache"
+  params_m: 2651
+  size_gb: 5.0
+  precision: bf16
+  # Front and telephoto frames after the vendor's resize; the other four are 416x224.
+  input_size: [576, 320]
+  # Six slots: Edge's training rig is 120 deg cross and front cameras, 70 deg rear
+  # side cameras and a 30 deg telephoto, which policy.py crops out of CAM_FRONT.
+  camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK_RIGHT, CAM_FRONT_TELE]
+  # Five frames for the front and telephoto cameras (-2, -1, -0.5, -0.1, 0 s) and
+  # three for the others (-1, -0.1, 0 s): no single rate, so camera_hz is left out.
+  history_frames: 5
+  ego_history_steps: 20
+  ego_history_hz: 10.0
+  output_kind: waypoints
+  horizon_s: 6.4
+  plan_points_hz: 10.0
+  # The seed is fixed, so the same input gives the same plan on the same card;
+  # but a plan is one draw of the rationale and of the expert's noise, and
+  # another seed gives another plan.
+  stochastic: true
+  needs_speed: true
+  trained_on:
+    # 1. The VLM base, Cosmos3-Edge (config.json `vlm_class`), pre-trained by
+    #    NVIDIA on its own corpora.
+    - dataset: cosmos3-edge
+    # 2. NVIDIA's own driving: about 115,000 h of multi-camera video with
+    #    egomotion, about 3.7 M chain-of-causation rationales written by
+    #    Alpamayo 2 Super, navigation instructions and VQA (the model card on the
+    #    Hub's main branch, "Training Dataset"; the card in the pinned snapshot
+    #    is a template that says TBD).
+    - dataset: nvidia-internal
+    # 3. Some public PhysicalAI-AV drives: NVIDIA's fine-tuning recipe lists the
+    #    chunks the model has not seen, which implies the others were seen. No
+    #    public driving set is named, and no NAVSIM or nuPlan data is claimed.
+    - dataset: nvidia-physical-ai
+
+# One key: two `benchmarks:` lines keep only the last.
+benchmarks: [navsim, navsim_v1]
