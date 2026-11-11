@@ -191,7 +191,7 @@ nuPlan data is claimed.
 - **NAVSIM is 2 Hz; the model was built for 10 Hz.** Three of its five front
   frames and the −0.1 s frame of every camera do not exist at 2 Hz, and 0.4 s of its
   history is continued, not recorded. With `[benchmarks.navsim] nuplan` set, the
-  harness feeds nuPlan's 10 Hz frames instead; this site has none.
+  harness feeds nuPlan's 10 Hz frames instead; nobody has run Edge on them yet.
 - **Field of view.** The front and cross slots get 62° where the model saw 120°.
 - **Lens.** The crop treats every camera as a pinhole; the training rig's lens model
   is not taken into account.
