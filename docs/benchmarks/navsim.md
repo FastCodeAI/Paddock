@@ -94,7 +94,7 @@ same shape.
 [benchmarks.navsim]
 python       = ".../envs/drive-jepa/bin/python"   # can import navsim and nuplan
 devkit       = ".../Drive-JEPA/navsim_v2"         # the directory holding navsim/
-metric_cache = ".../exp/metric_cache_v2"          # run_metric_caching.py builds one
+metric_cache = ".../exp/metric_cache_v2"          # tools/benchmarks/navsim/build_metric_cache.py builds one
 split        = "navtest"
 workers      = 4
 nuplan       = ".../nuplan-v1.1"                   # optional: 10 Hz frames, see "10 Hz from nuPlan"
