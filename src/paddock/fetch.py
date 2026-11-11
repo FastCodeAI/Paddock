@@ -400,6 +400,17 @@ class Item:
     def marker(self, dest: Path) -> Path:
         return dest / STATE_DIR / "done" / f"{self.remote.path}.done"
 
+    @property
+    def pin(self) -> str:
+        """What this file is pinned to: its sha256, else its ETag, else its size."""
+        return self.remote.sha256 or self.remote.etag or str(self.remote.size)
+
+    def done(self, dest: Path) -> bool:
+        """Verified and unpacked at this pin. A marker left at another pin does not count:
+        a recipe moved to a new revision where this file changed fetches it again."""
+        marker = self.marker(dest)
+        return marker.exists() and marker.read_text().strip() == self.pin
+
     def partial(self, dest: Path) -> Path:
         # At its source path, not its bare name: HUGSIM has 110 files called
         # gs.pth, and a partial one must never be continued as another's.
@@ -450,7 +461,7 @@ def _unpacked_out_of_order(rec: Recipe, todo: list[Item], dest: Path, hub: Sourc
         first = rec.parts[part].unpack_after
         if first is None or first in selected:
             continue
-        if any(not i.marker(dest).exists() for i in plan(rec, only=[first], hub=hub)):
+        if any(not i.done(dest) for i in plan(rec, only=[first], hub=hub)):
             problems.append(
                 f"{part} replaces some of {first}'s files, so {first} must be unpacked first: "
                 f"run without --only, or with --only {first} before --only {part}"
@@ -682,7 +693,7 @@ def fetch(
         echo(str(exc))
         return 1
 
-    todo = [i for i in items if not i.marker(dest).exists()]
+    todo = [i for i in items if not i.done(dest)]
     pending = sum((i.remote.size or 0) - _partial_bytes(i.partial(dest)) for i in todo)
     largest = max((i.remote.size or 0 for i in todo if i.archive), default=0)
 
@@ -695,7 +706,7 @@ def fetch(
     )
     if dry_run:
         for i in items:
-            state = "done" if i.marker(dest).exists() else "to do"
+            state = "done" if i.done(dest) else "to do"
             size = _gb(i.remote.size) if i.remote.size else "?"
             echo(f"  {state:<6} {i.part.name:<10} {size:>10}  {i.remote.path}")
     # Before anything is downloaded, and in a dry run too: a dry run that passed
@@ -734,7 +745,7 @@ def fetch(
     try:
         for n, item in enumerate(items, 1):
             label = f"[{n}/{len(items)}] {item.remote.path}"
-            if item.marker(dest).exists():
+            if item.done(dest):
                 echo(f"{label}: already done")
                 continue
             echo(f"{label} ({_gb(item.remote.size) if item.remote.size else 'size unknown'})")
@@ -756,7 +767,7 @@ def fetch(
                 outcome = f"saved to {target}"
             marker = item.marker(dest)
             marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.write_text(f"{item.remote.sha256 or item.remote.size}\n")
+            marker.write_text(f"{item.pin}\n")
             echo(f"    {outcome} in {time.time() - started:.0f}s")
     except FetchError as exc:
         echo(str(exc))

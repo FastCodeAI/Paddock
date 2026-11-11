@@ -390,6 +390,20 @@ def test_a_part_that_replaces_files_goes_on_after_them(site, hub, tmp_path) -> N
     assert (dest / "Content/shared.uasset").read_bytes() == b"new"
 
 
+def test_a_file_whose_pin_changed_is_fetched_again(site, hub, recipe, tmp_path) -> None:
+    """A recipe moved to a new revision where a file changed: the old copy must not count as done."""
+    dest = tmp_path / "data"
+    code, out = _run(site, hub, dest, recipe, only=["cars"])
+    assert code == 0, out
+    (hub.base() / "cars/car_1/gs.pth").write_bytes(b"g1, retrained")  # the new revision's file
+
+    code, out = _run(site, hub, dest, recipe, only=["cars"])
+
+    assert code == 0, out
+    assert "1 already done" in out, "the unchanged file is still skipped"
+    assert (dest / "cars/car_1/gs.pth").read_bytes() == b"g1, retrained"
+
+
 def _closed_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
