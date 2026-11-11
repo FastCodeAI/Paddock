@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +14,7 @@ from paddock.adapters.benchmarks.neuroncap.harness import (
     OFFICIAL_SET,
     SCENARIOS_DIR,
     WAYPOINT_DT,
+    NeuroNcapBenchmark,
 )
 from paddock.config import ConfigError, SiteConfig
 from paddock.registry import Registry
@@ -148,6 +150,18 @@ def test_scenarios_step_at_ten_hertz() -> None:
 def test_waypoint_grid_is_independent_of_the_sim_step() -> None:
     """Scoring and collision lookahead both assume 0.5 s waypoints."""
     assert WAYPOINT_DT == 0.5
+
+
+@pytest.mark.parametrize(
+    ("dt", "refused"), [(0.5, False), (0.1, False), (0.25, False), (0.2, True), (1.0, True)]
+)
+def test_a_plan_spacing_off_the_half_second_grid_is_refused_before_loading(dt, refused) -> None:
+    """0.5 s plans and Alpamayo 2 Edge's 0.1 s ones have points at every 0.5 s; 0.2 s has none."""
+    model = SimpleNamespace(name="m", waypoint_dt=dt)
+    problems = NeuroNcapBenchmark.model_problems(object.__new__(NeuroNcapBenchmark), model)
+    assert bool(problems) is refused
+    if refused:
+        assert "must divide 0.5 s" in problems[0]
 
 
 def test_episode_ids_are_stable_and_paired(tmp_path, monkeypatch) -> None:
