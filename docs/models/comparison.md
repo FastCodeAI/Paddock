@@ -41,10 +41,17 @@ indistinguishable.
 |---|---|---|---|---|---|---|---|
 | **Training code** | yes | yes (Apache-2.0) | **no** — comma trains offline and ships weights | yes | yes (Apache-2.0), + autolabel factory | yes | **no** — inference code only |
 | **Inference code** | yes | yes, + AlpaSim integration | yes (`modeld`, MIT) | yes (Python + C++, ONNX Runtime/TensorRT, ROS2/Zenoh) | yes (Python + C++ TensorRT runtimes; plain ONNX runs in onnxruntime) | yes | yes (Apache-2.0) |
-| **Checkpoints** | yes (HF) | yes — `nvidia/Alpamayo-R1-10B`, `nvidia/Alpamayo-1.5-10B`. **OpenMDW-1.1, non-commercial**; commercial on request | yes — git-LFS in repo, MIT | yes — `.pth` + ONNX fp32 + ONNX INT8, **Apache-2.0, commercial OK** | yes — `AutowareFoundation/meteor` (`.pt` + ONNX), **Apache-2.0** | yes — `AutowareFoundation/auto_e2e` v1.0 (`nuplan-epoch-5`, `kitscenes-epoch-5`); code Apache-2.0, checkpoint licence "other" (model card), BEVFormer initialisation NOASSERTION | yes — `Qwen/Qwen-Drive-1.0-4B` (VLM + planner-sft + planner-rl + perception), **Apache-2.0, commercial OK** |
+| **Checkpoints** | yes — `LinhanWang/Drive-JEPA`, a Hugging Face dataset repo tagged **CC0-1.0**, with no licence text | yes — `nvidia/Alpamayo-R1-10B`, `nvidia/Alpamayo-1.5-10B`. Licence **OpenMDW-1.1**, which is permissive, but the model card says "ready for **non-commercial** use", commercial on request | yes — git-LFS in repo, MIT | yes — `.pth` + ONNX fp32 + ONNX INT8, **Apache-2.0** | yes — `AutowareFoundation/meteor` (`.pt` + ONNX), **Apache-2.0** | yes — `AutowareFoundation/auto_e2e` v1.0 (`nuplan-epoch-5`, `kitscenes-epoch-5`); checkpoints **CC BY-NC-SA 4.0, non-commercial**, by the model card's licence section, which overrides the "other" in the v1.0 release files; BEVFormer initialisation NOASSERTION | yes — `Qwen/Qwen-Drive-1.0-4B` (VLM + planner-sft + planner-rl + perception), **Apache-2.0** |
 
-The licence row is the one to read before planning a product. Alpamayo's weights
-are non-commercial by default; VisionPilot's and OpenPilot's are not.
+The checkpoint row is the one to read before planning a product. AutoE2E's
+weights are licensed for non-commercial use only. Alpamayo's licence is
+permissive, but its model card calls the weights non-commercial; the two
+disagree, so check with NVIDIA before relying on either. Drive-JEPA's,
+VisionPilot's and Qwen-Drive's weights carry permissive licences but were trained
+partly on data licensed for non-commercial use (the next table), and Waymo's
+licence, behind VisionPilot's OpenLane and Qwen-Drive's WOD-E2E, also covers
+models trained on its data. OpenPilot's (MIT) and METEOR's (Apache-2.0) were
+trained on their publishers' own recordings.
 
 ## Training data — the important table
 
