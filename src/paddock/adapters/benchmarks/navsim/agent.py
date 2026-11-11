@@ -49,6 +49,18 @@ drivejepa node can rebuild them from its own previous plan --
 ``DRIVEJEPA_MOMENTUM`` -- but each scenario here arrives through
 ``/infer_sequence``, which resets the node, so on this benchmark it never has a
 previous plan to use.) See docs/benchmarks/navsim.md.
+
+**Streamed mode** is the one way a node gets that previous plan here, and it
+never comes from the scorer. Off by default: the request body is then exactly
+``{"observations": [...]}``, as always. navhard's proxy turns it on
+(``PADDOCK_NAVHARD_STREAMED``; adapters/benchmarks/navhard/agent.py): for a
+real frame it adds ``"stream"``, a `protocol.StreamFrame` naming the log, with
+the frame's own timestamp and global pose, so the node can keep its own plan
+per log across the per-sample reset; a synthetic frame is sent exactly as in a
+standard run. The node keeps that book (adapters/models/drivejepa/momentum.py),
+not this proxy, and ``metric_cache``/``past_ego_simulated_states`` stay
+ignored. The plan dump then also records each frame's ``stream``, whether it was
+``synthetic``, and ``momentum_fed`` (`momentum_fed`).
 """
 
 from __future__ import annotations
@@ -75,10 +87,25 @@ from paddock.adapters.benchmarks.navsim.convert import (
     to_navsim_poses,
 )
 from paddock.adapters.benchmarks.navsim.dense import DenseHistory, as_ego_status
-from paddock.policy.protocol import Command, Observation, constant_velocity
+from paddock.policy.protocol import Command, Observation, StreamFrame, constant_velocity
 
 #: Seconds between proxy retries, multiplied by the attempt number.
 RETRY_BACKOFF_S = 1.0
+
+
+def momentum_fed(body: dict) -> bool | None:
+    """Whether the node says its pick was made against a previous plan.
+
+    Read from the first model-native block of the answer's `extras` -- a dict,
+    as Drive-JEPA's `drivejepa_pick` is -- that carries `momentum_fed`. None
+    when none does: a model with no momentum stage, which is not the same as a
+    stage that had nothing to compare with.
+    """
+    extras = body.get("extras") or {}
+    for block in extras.values():
+        if isinstance(block, dict) and "momentum_fed" in block:
+            return bool(block["momentum_fed"])
+    return None
 
 
 def scene_label(scene: Any) -> dict:
@@ -417,8 +444,21 @@ class PaddockProxyAgent(_PaddockAgentBase):
             "time_s": getattr(getattr(metric_cache, "timepoint", None), "time_s", None),
         }
 
-    def _plan(self, agent_input: AgentInput, scenario: dict) -> Trajectory:
-        """Ask the node for a plan and record it under *scenario*'s label."""
+    def _plan(
+        self,
+        agent_input: AgentInput,
+        scenario: dict,
+        stream: StreamFrame | None = None,
+        streamed: dict | None = None,
+    ) -> Trajectory:
+        """Ask the node for a plan and record it under *scenario*'s label.
+
+        Outside streamed mode the last two are None, and the request and the
+        dump line are what they always were. In it, `stream` is the
+        `StreamFrame` sent beside the observations (None for a frame that must
+        stay plain, such as a synthetic one) and `streamed` what the dump line
+        adds about the frame; the node's `momentum_fed` joins it.
+        """
         if self._dense is not None:
             observations = self._dense_payloads(agent_input)
         else:
@@ -443,16 +483,16 @@ class PaddockProxyAgent(_PaddockAgentBase):
 
         import httpx
 
+        payload: dict[str, Any] = {"observations": observations}
+        if stream is not None:
+            payload["stream"] = stream.to_wire()
         body = None
         last_error = None
         for attempt in range(1 + self._retries):
             if attempt:
                 time.sleep(RETRY_BACKOFF_S * attempt)
             try:
-                response = self._http().post(
-                    f"{self._node_url}/infer_sequence",
-                    json={"observations": observations},
-                )
+                response = self._http().post(f"{self._node_url}/infer_sequence", json=payload)
             except httpx.TransportError as exc:
                 last_error = exc
                 continue
@@ -465,6 +505,8 @@ class PaddockProxyAgent(_PaddockAgentBase):
             raise last_error if last_error is not None else RuntimeError("policy node gave no answer")
 
         poses = to_navsim_poses(body["trajectory"], float(body.get("dt", NAVSIM_INTERVAL_S)))
+        if streamed is not None:
+            scenario = {**scenario, **streamed, "momentum_fed": momentum_fed(body)}
         self._record(agent_input, body, poses, scenario, len(observations))
         return Trajectory(poses.astype(np.float32), self._trajectory_sampling)
 

@@ -72,7 +72,9 @@ stays zero, as on every source. `diagnostics()` reports which as
 a node gets with the variable unset, for example one launched outside paddock.
 With it on, each replan is handed the plan this node chose about 0.5 s
 earlier, the way upstream's own evaluation loop hands it over, so the model's
-``calibrate_score`` runs before the argmax. See `momentum.py`.
+``calibrate_score`` runs before the argmax. See `momentum.py`. Open loop that
+never happens -- every sample resets the node -- except in navhard's streamed
+mode, where each real frame names its log (`infer_sequence_streamed`).
 
 *The pick, reported.* Every answer carries ``extras["drivejepa_pick"]``: which
 of the 32 proposals was driven, its score, and whether the momentum stage was
@@ -91,7 +93,7 @@ from typing import Any
 import numpy as np
 
 from paddock.adapters.models.drivejepa import momentum
-from paddock.policy.protocol import CANBUS_ACCEL, Observation, Policy, Trajectory
+from paddock.policy.protocol import CANBUS_ACCEL, Observation, Policy, StreamFrame, Trajectory
 
 # Drive-JEPA camera slot -> nuScenes camera. The perception branch reads these
 # four; the remaining slots stay empty and are skipped by the loader.
@@ -167,6 +169,9 @@ class DriveJepaPolicy(Policy):
         if switch not in momentum.SWITCHES:
             raise ValueError(f"{momentum.SWITCH_ENV}={switch!r}; expected one of {momentum.SWITCHES}")
         self.momentum = momentum.Momentum() if switch == "on" else None
+        #: The recorded drive the sample being planned belongs to, while
+        #: `infer_sequence_streamed` runs; None otherwise.
+        self._stream: StreamFrame | None = None
         self.agent = None
         self.feature_builder = None
         self.history: list[dict[str, Any]] = []
@@ -416,6 +421,8 @@ class DriveJepaPolicy(Policy):
         plan behind, and `infer_sequence` resets before it starts. A sequence
         therefore always selects on the plain score -- which is why the NAVSIM
         proxy, which scores through `infer_sequence`, is untouched by the switch.
+        (navhard's streamed mode is the one exception, and it goes through the
+        per-drive book `infer_sequence_streamed` keeps, not through this.)
 
         Not a pattern to copy into openpilot or visionpilot: both carry state
         that each forward pass advances, so for them every pass is load-bearing.
@@ -450,8 +457,7 @@ class DriveJepaPolicy(Policy):
             with torch.no_grad():
                 return self.agent.forward(features)
 
-        extra, ego_state = self.momentum.features(*self._ego_now(obs))
-        self.momentum_fed = extra["past_ego_simulated_states"] is not None
+        extra, ego_state, time_us = self._momentum_features(obs)
         features.update(extra)
         with torch.no_grad():
             output = self.agent.forward(features)
@@ -460,8 +466,25 @@ class DriveJepaPolicy(Policy):
             plain = torch.argmax(torch.sigmoid(output["pred_logit"])[:, :, -1], dim=1)
             changed = bool((plain != torch.argmax(output["pdm_score"], dim=1)).any())
         chosen = output["trajectory"][0].float().cpu().numpy()
-        self.momentum.remember(chosen, ego_state, obs.timestamp_us, changed=changed)
+        self._momentum_remember(chosen, ego_state, time_us, changed)
         return output
+
+    def _momentum_features(self, obs: Observation) -> tuple[dict[str, Any], Any, int]:
+        """The stage's three keys for *obs*, the ego state behind them, and the
+        time the plan will be kept under. Sets `momentum_fed`.
+
+        Apart from `forward` only so the bookkeeping can be tested without
+        torch; `forward` calls this and `_momentum_remember` around its pass.
+        """
+        pose, velocity, acceleration, time_us = self._ego_now(obs)
+        key = self._stream.key if self._stream is not None else None
+        extra, ego_state = self.momentum.features(pose, velocity, acceleration, time_us, stream=key)
+        self.momentum_fed = extra["past_ego_simulated_states"] is not None
+        return extra, ego_state, time_us
+
+    def _momentum_remember(self, chosen: np.ndarray, ego_state: Any, time_us: int, changed: bool) -> None:
+        key = self._stream.key if self._stream is not None else None
+        self.momentum.remember(chosen, ego_state, time_us, changed=changed, stream=key)
 
     def _ego_now(self, obs: Observation) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
         """Pose, velocity, acceleration and time the momentum stage is given.
@@ -472,11 +495,43 @@ class DriveJepaPolicy(Policy):
         acceleration is `_accel` of the record *obs* made, which `forward` has
         just appended. The pose is ego2world, which plays the part of upstream's
         global frame.
+
+        In a streamed sample (`infer_sequence_streamed`) pose and time are the
+        stream's instead: an open-loop harness places every sample's scored
+        frame at its own origin and time zero, which is right for the model's
+        input and useless for comparing two samples' plans, so the drive's own
+        frame and clock come with the stream -- upstream's `metric_cache.ego_state`
+        is that frame's recorded global pose too. Velocity and acceleration are
+        the observation's either way, as is everything the model itself is fed.
         """
-        pose = np.array([obs.ego2world[0, 3], obs.ego2world[1, 3], yaw_of(obs.ego2world)], dtype=np.float64)
         velocity = np.array([obs.speed, 0.0], dtype=np.float32)
         acceleration = np.array([self._accel(self.history[-1]), 0.0], dtype=np.float32)
+        if self._stream is not None:
+            return (
+                np.asarray(self._stream.pose, dtype=np.float64),
+                velocity,
+                acceleration,
+                int(self._stream.timestamp_us),
+            )
+        pose = np.array([obs.ego2world[0, 3], obs.ego2world[1, 3], yaw_of(obs.ego2world)], dtype=np.float64)
         return pose, velocity, acceleration, int(obs.timestamp_us)
+
+    def infer_sequence_streamed(self, observations: list[Observation], stream: StreamFrame) -> Trajectory:
+        """One open-loop sample that is a frame of a recorded drive (`protocol.StreamFrame`).
+
+        Exactly `infer_sequence` -- the same reset, history and forward pass --
+        except that the momentum stage keeps its book under the drive's name, on
+        the drive's own clock and frame, so the next frame of the same drive is
+        handed this frame's plan if it comes 0.45-0.55 s later (`momentum.py`).
+        With momentum off there is no book, and the stream changes nothing.
+        """
+        if self.momentum is None:
+            return self.infer_sequence(observations)
+        self._stream = stream
+        try:
+            return self.infer_sequence(observations)
+        finally:
+            self._stream = None
 
     def infer(self, obs: Observation) -> Trajectory:
         output = self.forward(obs)

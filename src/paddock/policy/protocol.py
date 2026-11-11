@@ -23,6 +23,10 @@ The wire contract, unchanged from NeuroNCAP:
 
     response  trajectory   ego frame, x forward and y LEFT, spaced by waypoint dt
 
+`/infer_sequence` takes `{"observations": [request, ...]}` and, from a harness
+in a streamed mode only, an optional `"stream"` (`StreamFrame`) naming the drive
+the last frame belongs to.
+
 Two details that look like rounding errors and are not:
 
 * `N_WAYPOINTS = 6` is exact, not a floor. NeuroNCAP's engine builds six
@@ -515,6 +519,58 @@ class Observation:
         return float(self.camera2ego[camera][2, 3])
 
 
+@dataclass(frozen=True)
+class StreamFrame:
+    """Where an open-loop sample's scored frame sits in the drive it was recorded in.
+
+    An open-loop sample is self-contained: `/infer_sequence` resets the node and
+    hands it the sample's own history, with times and poses relative to the
+    scored frame. That is right for every model and every default run. A
+    harness in a *streamed* mode (navhard's, `PADDOCK_NAVHARD_STREAMED`) also
+    sends this, beside the observations, for a sample that is a real frame of a
+    real drive, so a model that carries state from one replan to the next --
+    Drive-JEPA's momentum stage keeps its own previous plan -- can tell which
+    drive the frame belongs to and where on it the frame is. It is never
+    ground truth about the future and never the scorer's state: the drive's
+    name, the frame's own timestamp and the frame's own pose.
+
+    `key` names the drive (NAVSIM: the log name). `timestamp_us` is the frame's
+    time on that drive's clock. `pose` is the frame's (x, y, heading) in a frame
+    that stays fixed for the whole drive (NAVSIM: nuPlan's global frame). A
+    model that keeps no such state ignores all of it: the base
+    `Policy.infer_sequence_streamed` drops it.
+    """
+
+    key: str
+    timestamp_us: int
+    pose: tuple[float, float, float]
+
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "key": str(self.key),
+            "timestamp_us": int(self.timestamp_us),
+            "pose": [float(v) for v in self.pose],
+        }
+
+    @classmethod
+    def from_wire(cls, payload: dict[str, Any]) -> StreamFrame:
+        """Refuse a malformed frame rather than keep a book under a wrong key or clock."""
+        if not isinstance(payload, dict):
+            raise ValueError(f"stream must be an object, got {type(payload).__name__}")
+        key = payload.get("key")
+        if not isinstance(key, str) or not key:
+            raise ValueError(f"stream key must be a non-empty string, got {key!r}")
+        stamp = payload.get("timestamp_us")
+        if isinstance(stamp, bool) or not isinstance(stamp, int):
+            raise ValueError(f"stream timestamp_us must be an integer, got {stamp!r}")
+        pose = np.asarray(payload.get("pose"), dtype=np.float64)
+        if pose.shape != (3,) or not np.isfinite(pose).all():
+            raise ValueError(
+                f"stream pose must be three finite floats (x, y, heading), got {payload.get('pose')!r}"
+            )
+        return cls(key=key, timestamp_us=stamp, pose=(float(pose[0]), float(pose[1]), float(pose[2])))
+
+
 # --------------------------------------------------------------------------
 # Trajectory
 # --------------------------------------------------------------------------
@@ -832,6 +888,19 @@ class Policy(ABC):
             return self.infer(observations[-1])
         finally:
             self.self_prime = previous
+
+    def infer_sequence_streamed(self, observations: list[Observation], stream: StreamFrame) -> Trajectory:
+        """`infer_sequence`, for a sample a harness says is a frame of a recorded drive.
+
+        Called by the node's `/infer_sequence` only when the request carries a
+        `stream` (`StreamFrame`), which only a harness in a streamed mode sends;
+        every other request reaches `infer_sequence` exactly as before. The
+        default ignores the stream, so a model that keeps nothing between
+        samples answers the same as it would without it. A model that does keep
+        something per drive (Drive-JEPA's previous plan) overrides this, and
+        must still reset per sample what `infer_sequence` resets.
+        """
+        return self.infer_sequence(observations)
 
     def diagnostics(self) -> dict[str, Any]:
         """Whatever helps confirm the adapter is wired correctly.

@@ -55,6 +55,14 @@ moments: ``int(0.3 / 0.1)`` is 2, a 0.3 s-old plan read 0.1 s out of step. The
 first replans of an episode at 10 Hz, which have nothing older than 0.4 s to
 compare with, therefore select on the plain score rather than on a comparison
 the stage was never evaluated at.
+
+Open loop, each sample arrives through ``/infer_sequence``, which resets the
+node, so the episode's book is always empty there. navhard's streamed mode
+(``PADDOCK_NAVHARD_STREAMED``) is the exception: it plans a log's real frames in
+time order and names the log with each (``protocol.StreamFrame``, with the
+frame's own timestamp and global pose), and `Momentum` keeps one book per log
+across those resets. That is upstream's sequential loop again, one frame per
+request; see the class docstring for why the books are keyed.
 """
 
 from __future__ import annotations
@@ -153,28 +161,53 @@ class Upstream:
 
 
 class Momentum:
-    """The previous plan, kept per episode, and the three keys built from it."""
+    """The previous plan, kept per episode, and the three keys built from it.
+
+    Two kinds of book. The episode's own (`stream=None`): a closed-loop drive,
+    one call after another, emptied by `reset`. And one per *stream*: an
+    open-loop harness in a streamed mode (navhard's) scores each frame as its
+    own `/infer_sequence` sample, which resets the node, and names the recorded
+    drive the frame came from (`protocol.StreamFrame`). Those books are keyed by
+    that name and survive `reset`, so a frame is handed the plan this node chose
+    for the same drive's frame 0.5 s earlier -- upstream's sequential loop,
+    sample by sample. Keyed, not shared: two scorer workers on one node
+    interleave different logs, and logs recorded on the same day overlap in
+    absolute time, so another drive's plan can be exactly 0.5 s older. A sample
+    sent without a stream (a synthetic navhard scene) uses the episode's book,
+    which its own `/infer_sequence` has just emptied, and never reaches a
+    stream's.
+
+    No lock: the node's `/infer_sequence` handler runs each request to
+    completion before the next starts (`policy/server.py`), so a book is never
+    read and written by two requests at once.
+    """
 
     def __init__(self, upstream: Any = None) -> None:
         # Injected by the tests, which have no nuPlan; built from the agent in
         # `DriveJepaPolicy.load` otherwise, so an environment that cannot
         # import upstream's functions fails when the node starts.
         self.upstream = upstream
+        self._streams: dict[str, list[tuple[int, np.ndarray]]] = {}
         self.reset()
         self.counts = {"replans": 0, "fed": 0, "no_previous": 0, "out_of_window": 0, "picks_changed": 0}
 
     def reset(self) -> None:
-        """Forget the previous plan. Counts survive: they describe the run."""
+        """Forget the episode's previous plan. Counts survive: they describe the
+        run. So do the streams' books: each is its own drive, guarded by its own
+        clock (`_previous`), and outliving the per-sample reset is their purpose."""
         self._plans: list[tuple[int, np.ndarray]] = []
 
-    def _previous(self, time_us: int) -> tuple[np.ndarray | None, float | None]:
+    def _book(self, stream: str | None) -> list[tuple[int, np.ndarray]]:
+        return self._plans if stream is None else self._streams.get(stream, [])
+
+    def _previous(self, time_us: int, stream: str | None = None) -> tuple[np.ndarray | None, float | None]:
         """The plan nearest 0.5 s ago, or why there is none to feed.
 
         Age is also the guard against another episode's plan: a simulator that
         starts a new rollout without `/reset` restarts or jumps its clock, and
         a plan from before the jump is either in the future or too old.
         """
-        aged = [(time_us - at_us, states) for at_us, states in self._plans]
+        aged = [(time_us - at_us, states) for at_us, states in self._book(stream)]
         usable = [(age_us, states) for age_us, states in aged if MIN_AGE_US <= age_us <= MAX_AGE_US]
         if not usable:
             # `out_of_window`: plans are kept, but none is the right age -- too
@@ -190,17 +223,24 @@ class Momentum:
         return states, max(age_us / 1e6, TARGET_AGE_S)
 
     def features(
-        self, pose: np.ndarray, velocity: np.ndarray, acceleration: np.ndarray, time_us: int
+        self,
+        pose: np.ndarray,
+        velocity: np.ndarray,
+        acceleration: np.ndarray,
+        time_us: int,
+        stream: str | None = None,
     ) -> tuple[dict[str, Any], Any]:
         """The three keys `abstract_agent.py:85-87` adds, and the ego state used.
 
         Added to the feature dict after the tensors are built and left as they
         are -- a numpy array, an object, a float -- which is how upstream hands
-        them over and what `calibrate_score` expects.
+        them over and what `calibrate_score` expects. `stream` picks the book
+        (class docstring); *pose* and *time_us* are then that drive's own frame
+        and clock.
         """
         ego_state = self.upstream.ego_state(pose, velocity, acceleration, time_us)
         self.counts["replans"] += 1
-        states, age = self._previous(time_us)
+        states, age = self._previous(time_us, stream)
         if states is not None:
             self.counts["fed"] += 1
         extra = {
@@ -212,11 +252,27 @@ class Momentum:
         }
         return extra, ego_state
 
-    def remember(self, poses: np.ndarray, ego_state: Any, time_us: int, changed: bool = False) -> None:
+    def remember(
+        self,
+        poses: np.ndarray,
+        ego_state: Any,
+        time_us: int,
+        changed: bool = False,
+        stream: str | None = None,
+    ) -> None:
         """Simulate the chosen plan and keep it for the replans that follow."""
         self.counts["picks_changed"] += int(changed)
-        self._plans.append((int(time_us), self.upstream.simulate_chosen(poses, ego_state)))
-        # Nothing older than the cutoff can be fed again. A clock that went
-        # backwards (a new episode without a reset) makes every kept plan
-        # "newer" than now; those go too.
-        self._plans = [(at_us, s) for at_us, s in self._plans if 0 <= time_us - at_us <= MAX_AGE_US]
+        entry = (int(time_us), self.upstream.simulate_chosen(poses, ego_state))
+        if stream is None:
+            self._plans.append(entry)
+            # Nothing older than the cutoff can be fed again. A clock that went
+            # backwards (a new episode without a reset) makes every kept plan
+            # "newer" than now; those go too.
+            self._plans = [(at_us, s) for at_us, s in self._plans if 0 <= time_us - at_us <= MAX_AGE_US]
+            return
+        # The same pruning, and one thing more: a frame planned again -- the
+        # proxy retrying a request whose answer it never got -- replaces this
+        # node's first plan for it, so the plan handed on is the one the scorer
+        # was given.
+        kept = [(at_us, s) for at_us, s in self._streams.get(stream, []) if 0 < time_us - at_us <= MAX_AGE_US]
+        self._streams[stream] = [*kept, entry]
