@@ -39,12 +39,12 @@ Four things a reader should not have to infer, stated once:
   has no lane-keeping, traffic-light or two-frame-comfort terms, so the two are
   not interchangeable, and a v1 checkpoint scored here gets a v2 number.
 - **Not the v2 leaderboard protocol.** Published NAVSIM v2 figures are EPDMS
-  on `navhard` *two-stage*: a synthetic second stage (`synthetic_scenes/`)
-  branches off each real scene to test reactivity, and scores are far lower
-  there. This fork ships `navtest_two_stage` and `navsafe_two_stage` but no
-  `navhard`, and `synthetic_scenes/` is not on disk at this site, so nothing
-  two-stage can run here yet. EPDMS on navtest is the same metric on
-  different, easier data — do not compare it to published navhard numbers.
+  on `navhard` *two-stage*: a synthetic second stage branches off each real
+  scene to test reactivity, and scores are far lower there. This fork ships
+  `navtest_two_stage` and `navsafe_two_stage` but no `navhard`; paddock runs
+  navhard as its own benchmark, in NAVSIM v2.2's devkit
+  ([navhard.md](navhard.md)). EPDMS on navtest is the same metric on
+  different, easier data — do not compare it to navhard numbers.
 
 ## OpenScene is nuPlan, not nuScenes
 
@@ -771,8 +771,8 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 † Every NAVSIM figure is the full navtest split, 12,146 real recorded
 scenarios, scored through paddock's proxy agent. This is NAVSIM v2's **stage
 one** only: the leaderboard's stage two, the pseudo-simulation on synthetic
-scenes (navhard / navsafe two-stage), is not run -- it needs the
-`synthetic_scenes/` download and a second metric cache. Alpamayo's 0.691 is
+scenes, is the separate `navhard` benchmark ([navhard.md](navhard.md)), which
+has no matrix column yet. Alpamayo's 0.691 is
 with the 10 Hz history from nuPlan (see ‡); at OpenScene's 2 Hz the same model
 scores 0.608 on the same split. Its earlier 242-scenario estimate was 0.653
 against that 0.608, which is why subsets are stored `valid: false`. On the subset Drive-JEPA scored 0.880

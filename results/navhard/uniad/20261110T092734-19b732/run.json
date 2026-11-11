@@ -1,0 +1,67 @@
+{
+  "run_id": "20261110T092734-19b732",
+  "site": "uvother-fastcode-shakaal",
+  "benchmark": "navhard",
+  "model": "uniad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-10T09:27:34+00:00",
+  "duration_s": 34075.6,
+  "repo_sha": "532fc330151758c5e345aef74d2a1bf1042e50ab",
+  "dataset": {
+    "name": "navhard",
+    "split": "navhard_two_stage",
+    "n_samples": 450,
+    "sequences_sha256": "3af39efa412cc8df",
+    "n_failed": 0,
+    "n_unscored": 0
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_RIGHT",
+      "CAM_FRONT_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "navhard_two_stage",
+    "agent": "paddock_navhard_proxy",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "declared_env": {
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1",
+      "UNIAD_CHECKPOINT": "{weights}uniad_base_e2e.pth",
+      "UNIAD_CONFIG": "{repo}base_e2e.py",
+      "UNIAD_MOTION_ANCHORS": "{weights}motion_anchor_infos_mode6.pkl"
+    },
+    "model_env": {
+      "UNIAD_HORIZON_S": "4.0"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "UniAD",
+      "sha": "532fc330151758c5e345aef74d2a1bf1042e50ab",
+      "pinned_sha": "532fc33",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "9565e19061ffa7614c8cf323d537cfeb864b75bf",
+      "dirty": false
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "superseded_by": "",
+  "notes": "site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env)",
+  "ingested_from": ""
+}

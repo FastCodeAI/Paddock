@@ -9,7 +9,7 @@
 | Environment | conda, Python 3.9 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_FRONT_LEFT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 3 s ahead |
-| Paddock can run it on | [hugsim](../benchmarks/hugsim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuplan](../benchmarks/nuplan.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [alpasim](../benchmarks/alpasim.md) |
+| Paddock can run it on | [hugsim](../benchmarks/hugsim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuplan](../benchmarks/nuplan.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [alpasim](../benchmarks/alpasim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -69,7 +69,7 @@ own normalisation, in eval mode, with the CAN bus on.
 
 As [UniAD's](uniad.md#benchmarks): nuscenes, hugsim, bench2drive, kitscenes, nuplan, neuroncap and alpasim run
 (on neuroncap the plan is held between 0.5 s steps; on alpasim, UniAD's profile, flag for flag);
-navsim and navsim_v1 need `VAD_HORIZON_S = "4.0"`, which model.yaml lists in `score_notes` and
+navsim, navsim_v1 and navhard need `VAD_HORIZON_S = "4.0"`, which model.yaml lists in `score_notes` and
 `ranked_with_note` as UniAD's horizon is (the first stored NAVSIM runs predate those lines and stay stored
 `valid: false`); comma2k19 (one camera) does not.
 

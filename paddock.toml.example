@@ -56,6 +56,12 @@ weights = "/path/to/weights"
 # path = "/path/to/navsim_workspace/dataset"   # navsim_logs/, sensor_blobs/, maps/
 # exp  = "/path/to/navsim_workspace/exp"       # checkpoints + metric cache
 
+# [datasets.navhard]
+# The navsim layout (navsim_logs/, sensor_blobs/, maps/) plus navhard_two_stage/ from
+# NAVSIM v2.2; `paddock data fetch navhard` downloads all of it.
+# path = "/path/to/navhard_root"
+# exp  = "/path/to/navhard_exp"                # the scorer's NAVSIM_EXP_ROOT; preflight requires it
+
 # [datasets.comma2k19]
 # raw_data/, holding Chunk_1..Chunk_10 -- NOT the sibling data/ (a HuggingFace
 # demo parquet) or compression_challenge/, which are different artefacts.
@@ -256,6 +262,17 @@ serialize = true
 # chunk_logs   = 4
 # run_retries  = 2
 # nodes        = 4
+
+# [benchmarks.navhard]
+# NAVSIM v2.2 two-stage EPDMS on navhard_two_stage (docs/benchmarks/navhard.md). Every
+# key [benchmarks.navsim] reads is read the same way, except chunk_logs, which is
+# always 0: a frame, its pair and its follow-ups must be scored in one invocation.
+# python       = "/path/to/envs/drive-jepa/bin/python"   # imports the v2.2 devkit
+# devkit       = "/path/to/navsim"                        # autonomousvision/navsim at v2.2
+# metric_cache = "/path/to/exp/metric_cache_navhard_v22"  # v2.2 run_metric_caching.py, train_test_split=navhard_two_stage
+# split        = "navhard_two_stage"
+# workers      = 4
+# gpu_nodes    = 1
 
 # [benchmarks.nuplan]
 # Which nuPlan split to score. Default "mini"; the scored set is otherwise

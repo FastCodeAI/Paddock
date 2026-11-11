@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-102 runs across 9 benchmarks.
-61 run(s) excluded as invalid — shown at the end, never averaged in.
+107 runs across 10 benchmarks.
+64 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -121,6 +121,18 @@
 - [3] openpilot: view tilted -1.7 degrees to fit this dataset's rig
 - [4] openpilot: frame cut to a 55 degree field of view to fit this dataset's rig
 
+## navhard
+
+| model | run | n | epdms ↑ | epdms_stage_one ↑ | no_at_fault_collisions_stage_one ↑ | drivable_area_compliance_stage_one ↑ | driving_direction_compliance_stage_one ↑ | traffic_light_compliance_stage_one ↑ | ego_progress_stage_one ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| qwendrive | 20261111T060112-5231af | 450 | 0.312 | 0.763 | 0.969 | 0.880 | 0.996 | 0.998 | 0.826 |
+| visionpilot | 20261110T165413-30c0d8 | 450 | 0.192 | 0.453 | 0.921 | 0.618 | 0.871 | 0.993 | 0.786 |
+| constant_velocity | 20261110T085953-e122fd | 450 | 0.115 | 0.290 | 0.889 | 0.429 | 0.707 | 0.993 | 0.775 |
+| meteor [1] | 20261110T181854-9b4014 | 450 | 0.088 | 0.315 | 0.868 | 0.507 | 0.752 | 0.996 | 0.802 |
+| autoe2e | 20261110T192825-24d0b3 | 450 | 0.082 | 0.330 | 0.858 | 0.520 | 0.649 | 0.993 | 0.829 |
+
+- [1] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+
 ## navsim
 
 | model | run | n | epdms ↑ | no_at_fault_collisions ↑ | drivable_area_compliance ↑ | driving_direction_compliance ↑ | traffic_light_compliance ↑ | ego_progress ↑ | time_to_collision_within_bound ↑ |
@@ -204,9 +216,12 @@
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
+- **navhard/vad/20261110T185531-0cecc0** — site env override may change what was measured: VAD_HORIZON_S (values in config.model_env)
+- **navhard/drivejepa/20261110T165434-167fd4** — site env override may change what was measured: DRIVEJEPA_CHECKPOINT (values in config.model_env); streamed (PADDOCK_NAVHARD_STREAMED): stage-one frames planned in time order per log, each naming its log so the node could keep its own previous plan; synthetic stage-two scenes planned as in a standard run. Upstream's navhard protocol hands no agent a previous plan. Counts in by_group.streamed
 - **navsim_v1/vad/20261110T160343-25e0e5** — replayed from navsim/vad/20261110T095855-0ebf09, which is stored valid=false: site env override may change what was measured: VAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277, stored valid=false); the same plans, this benchmark's scorer
 - **navsim_v1/uniad/20261110T154404-e02e88** — replayed from navsim/uniad/20261109T082522-c24426, which is stored valid=false: site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/uniad/20261109T082522-c24426 (that run: epdms 0.4781, stored valid=false); the same plans, this benchmark's scorer
 - **navsim/vad/20261110T095855-0ebf09** — site env override may change what was measured: VAD_HORIZON_S (values in config.model_env)
+- **navhard/uniad/20261110T092734-19b732** — site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env)
 - **navsim/uniad/20261109T082522-c24426** — site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env)
 - **comma2k19/drivejepa_free/20261106T053407-587a3e** — Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026.
 - **comma2k19/meteor/20261030T001935-0b8d0b** — Superseded by 20261106T064120-226c00: Re-run on 6 Nov 2026 with the clone at its pinned dc193a81 and scored against the ground truth in the car's frame; this row came from a clone at 8567eb0 and was scored against a ground truth in the camera's frame. The plans are the same in both runs.

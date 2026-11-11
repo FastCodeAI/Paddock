@@ -48,8 +48,11 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   They cannot be compared with published 220-route scores.
 - **AlpaSim's matrix cells cover 30 of 913 scenes, one rollout each.** A gap under
   about 0.16 is within two standard errors.
-- **NAVSIM v2 has not been run two-stage on `navhard`,** the set its public
-  leaderboard uses. Paddock's column is `navtest`, stage one only.
+- **NAVSIM v2's `navhard` two-stage set has no matrix column yet.** Paddock's
+  NAVSIM v2 column is `navtest`, stage one only. navhard runs as its own
+  benchmark in NAVSIM v2.2's devkit (`docs/benchmarks/navhard.md`): seven models
+  and the floor are stored, Alpamayo 1.5 is not yet, and the devkit it scores
+  with is a site setting that `repos.yaml` does not pin.
 
 ## Next
 

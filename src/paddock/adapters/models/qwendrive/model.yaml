@@ -134,4 +134,5 @@ score_notes:
 # Of those, what a site may set and stay ranked, with the note: `replicate` and `crop`, kept for comparison.
 ranked_with_note: [QWENDRIVE_VIEWS]
 
-benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19, alpasim]
+# navhard's synthetic scenes exist only at 2 Hz, so there its ego history is 2 Hz, not nuPlan's 10 Hz.
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, navhard, neuroncap, comma2k19, alpasim]
