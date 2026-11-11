@@ -33,8 +33,9 @@ datasets:
             v1.0-trainval_meta.tgz: {size: 461678030, etag: fd4ea76d8701fb567a67a65025d0b022-56}
         # samples/: every sensor's keyframes for all 850 trainval scenes. The ten
         # archives are not divided by split, so the 150 val scenes need all ten.
-        # Sweeps (sweeps/, 300 GB more) are left out: only openpilot's optional
-        # camera history reads them.
+        # Sweeps (sweeps/, 300 GB more) are left out, so openpilot cannot run on
+        # this copy: it needs 10 Hz input, and the harness refuses it without
+        # camera_history = "CAM_FRONT" and sweeps/CAM_FRONT. Every other model runs.
         keyframes:
           files:
             v1.0-trainval01_keyframes.tgz: {size: 4529954279, etag: 965b6f44bef7169320f2ed85b1b7f3ae-541}

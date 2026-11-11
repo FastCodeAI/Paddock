@@ -152,8 +152,10 @@ finishes.
 
 Not covered: AlpaSim needs no download, because its own scene provider fetches
 each scene on first use.
-nuScenes' sweeps (`sweeps/`, read only by openpilot's optional camera history) are
-left out of the nuScenes recipe.
+nuScenes' sweeps (`sweeps/`, the frames between keyframes) are left out of the
+nuScenes recipe, so OpenPilot cannot run on a copy it fetches: OpenPilot needs
+10 Hz input, and the nuScenes harness refuses it without `camera_history =
+"CAM_FRONT"` and `sweeps/CAM_FRONT`. Every other model runs on it.
 
 ## Fetching data you do not have
 
@@ -246,7 +248,8 @@ version = "v1.0-trainval"
 ```
 
 `--bench nuscenes` reads the `v1.0-trainval` JSON tables and the keyframe images
-under `samples/` (2 Hz); it does not need `sweeps/`. The 150-scene val index is
+under `samples/` (2 Hz); only OpenPilot, which needs 10 Hz input, also needs
+`sweeps/CAM_FRONT`. The 150-scene val index is
 built once and cached (see `docs/benchmarks/nuscenes.md`); point
 `[benchmarks.nuscenes] index_cache` at a writable path if the checkout is
 read-only.
