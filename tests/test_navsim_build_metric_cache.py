@@ -4,7 +4,8 @@ navsim_v1 takes the cache directory as `cache.cache_path`, navsim_v2 as a
 top-level `metric_cache_path`, and hydra refuses an override of a key the
 config does not have -- so a command in v1's spelling cannot build a v2 cache
 at all. v2 also recomputes cached scenarios unless told not to, which would
-make an interrupted build start over.
+make an interrupted build start over -- so preflight, refusing a missing or
+unfinished cache, names this tool and not the devkit's script.
 
 The stand-in sites are the NAVSIM harness tests'. The last test composes the
 command against the real devkits, where the site has them.
@@ -12,6 +13,7 @@ command against the real devkits, where the site has them.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -51,6 +53,39 @@ def test_each_generation_gets_the_cache_settings_in_its_own_spelling(
     assert f"{recompute_key}=false" in command
     other = next(keys for name, keys in SPELLINGS.items() if name != bench)
     assert not any(arg.split("=")[0] in other for arg in command)
+
+
+@pytest.mark.parametrize("state", ["missing", "unfinished", "smaller"])
+@pytest.mark.parametrize("bench", sorted(SPELLINGS))
+def test_preflight_sends_a_missing_or_unfinished_cache_to_this_tool(
+    bench: str, state: str, tmp_path: Path, monkeypatch
+) -> None:
+    """Preflight refuses a cache that is not there, that has no metadata csv (an
+    interrupted build), or whose csv lists fewer scenarios than the split (a
+    smaller build), and names this tool for the benchmark refused. The devkit's
+    own script, re-run as it ships, recomputes every v2 scenario already cached."""
+    scorer = {"scorer": V1_SCORER} if bench == "navsim_v1" else {}
+    cfg = _navsim_site(
+        tmp_path,
+        monkeypatch,
+        bench=bench,
+        tokens_per_log=3,
+        declare_tokens=True,
+        metadata_csv=state != "unfinished",
+        **scorer,
+    )
+    cache = tmp_path / "cache"
+    if state == "missing":
+        shutil.rmtree(cache)
+    elif state == "smaller":
+        csv_path = cache / "metadata" / "metric_cache_metadata_node_0.csv"
+        csv_path.write_text("\n".join(csv_path.read_text().splitlines()[:3]) + "\n")  # 2 of 6
+
+    problems = load_benchmark(Registry.load().benchmarks[bench], cfg).preflight()
+
+    assert len(problems) == 1, problems
+    assert f"`python -m {tool.__name__} --bench {bench}`" in problems[0]
+    assert "run_metric_caching" not in problems[0]
 
 
 # -- the real devkits, when the site has them ---------------------------------------
