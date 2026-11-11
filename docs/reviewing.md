@@ -51,6 +51,14 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   too. Its input tests, including the pinned inputs of every other benchmark,
   need torch and `alpamayo1_5`, so `make check` skips them; they run on the CPU
   without weights. If your site has no Alpamayo environment, say so in the review.
+- A PR that touches the Alpamayo 2 Edge adapter (`src/paddock/adapters/models/alpamayo2edge/`)
+  needs `make check-alpamayo2edge ALPAMAYO2_EDGE_PY=<repos>/alpamayo2-edge/.venv/bin/python
+  ALPAMAYO2_EDGE_CHECKPOINT=<weights>/Alpamayo2-Edge` too. Its vendor tests put the
+  adapter's input through NVIDIA's own code, including a check that `prepare_inputs`
+  gives the vendor's tensors; they need torch, `alpamayo2_edge` and the checkpoint's
+  config, tokenizer and processor, so `make check` skips them. They run on the CPU
+  and load no weights. If your site has no Alpamayo 2 Edge environment, say so in
+  the review.
 - If the site has a checkout of the upstream tool the PR shells out to (CARLA,
   neuro-ncap, NAVSIM's devkit), open it and verify the flags, file layouts and
   output schema the PR assumes. "Matches the 0.0.4 checkout" is a verified
@@ -217,6 +225,7 @@ And the structure:
 - [ ] `make check-alpasim-driver` run if the AlpaSim scaffold or the bridge changed, or marked not run
 - [ ] `make check-openpilot` run if the openpilot adapter changed, or marked not run
 - [ ] `make check-alpamayo` run if the Alpamayo 1.5 adapter changed, or marked not run
+- [ ] `make check-alpamayo2edge` run if the Alpamayo 2 Edge adapter changed, or marked not run
 - [ ] upstream flags / schemas verified against a real checkout, or marked argued
 - [ ] every external import and path is preflighted and documented
 - [ ] scorer failure statuses raise `RuntimeError`; poor outcomes still score

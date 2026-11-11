@@ -8,7 +8,7 @@
 | Dataset | `navsim` |
 | Primary metric | `epdms` |
 | Adapter | [`adapters/benchmarks/navsim/`](../../src/paddock/adapters/benchmarks/navsim/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -94,12 +94,26 @@ same shape.
 [benchmarks.navsim]
 python       = ".../envs/drive-jepa/bin/python"   # can import navsim and nuplan
 devkit       = ".../Drive-JEPA/navsim_v2"         # the directory holding navsim/
-metric_cache = ".../exp/metric_cache_v2"          # run_metric_caching.py builds one
+metric_cache = ".../exp/metric_cache_v2"          # tools/benchmarks/navsim/build_metric_cache.py builds one
 split        = "navtest"
 workers      = 4
 nuplan       = ".../nuplan-v1.1"                   # optional: 10 Hz frames, see "10 Hz from nuPlan"
 keyframe_cameras = false                          # optional: rear views from OpenScene's keyframes, same section
 gpu_nodes    = 1                                  # policy nodes per GPU model
+```
+
+Build the `metric_cache` from the navtest logs and maps (no sensor blobs
+needed) with paddock's tool, which runs the devkit's own `run_metric_caching.py`
+the way the scorer is run. The tool skips scenarios already cached, so a killed
+build is finished by running the same command again. Run by hand, the devkit's
+v2 script recomputes every one of them, because its `force_feature_computation`
+is on by default. Name the benchmark: without `--bench navsim` the tool builds
+navsim_v1's cache. Timing, and what preflight checks before a run uses the
+cache, are in [navsim_v1.md](navsim_v1.md#the-metric-cache-is-per-devkit-generation).
+
+```bash
+python -m tools.benchmarks.navsim.build_metric_cache --bench navsim --logs 2021.06.03.12.02.06_veh-35_01100_01227   # timing smoke
+python -m tools.benchmarks.navsim.build_metric_cache --bench navsim                                                 # the split
 ```
 
 Four environment switches, all deliberate and all narrow. Every one is
@@ -215,6 +229,7 @@ NAVSIM scores 8 poses at 0.5 s as `(x, y, heading)`. What each model gives:
 | alpamayo15 | 8 × 0.5 s of a 64 × 0.1 s raw output | derived | `GRID_INDICES` widened to 8 |
 | openpilot | 8 × 0.5 s | derived | grid already matched — **blocked on input rate** |
 | meteor | 6 × 0.5 s, extended to 8 | derived | 3 s planner; `METEOR_HORIZON_S=4.0` opt-in, recorded as `model_env` |
+| alpamayo2edge | 8 × 0.5 s of a 64 × 0.1 s raw output | native | ready: every pose goes back with the model's heading, and `to_navsim_poses` resamples them |
 
 Both grid changes are additive at the tail, so no recorded score moves:
 `Trajectory.to_wire` hands neuroNCAP the first six poses, and KITScenes'
@@ -495,6 +510,7 @@ so nothing below the full split can be averaged or ranked against a real one.
 | openpilot, 10 Hz nuPlan history | **0.7468** | 0.970 | 0.913 | 0.712 | `20260911T161513-3a4c90` |
 | alpamayo15, 10 Hz nuPlan history | **0.6910** | 0.957 | 0.856 | 0.681 | `20260912T040211-a9562c` |
 | alpamayo15, 2 Hz OpenScene | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
+| alpamayo2edge, 2 Hz OpenScene | **0.6257** | 0.924 | 0.801 | 0.654 | `20261111T052918-f9f90a` |
 | visionpilot | **0.4312** | 0.727 | 0.819 | 0.404 | `20260902T175642-df5291` |
 | constant_velocity | **0.2385** | 0.681 | 0.578 | 0.209 | `20260902T175923-feba73` |
 
@@ -714,6 +730,11 @@ split OpenPilot scores 0.747 at 10 Hz, its plans tracking ego speed (median
 0.82 of constant-velocity travel over 4 s while moving; 2 of 12,146 plans look
 parked), and Alpamayo 0.691 against 0.608 at 2 Hz, every sub-metric up but
 traffic light. See "10 Hz from nuPlan" in `docs/benchmarks/navsim.md`.
+Alpamayo 2 Edge, also built for 0.1 s frames, has run only on OpenScene's 2 Hz: the
+site that ran it holds no nuPlan 10 Hz data. Its 0.626 compares with Alpamayo 1.5's
+2 Hz 0.608, not its 10 Hz 0.691. Edge is told each frame's real time and rebuilds its
+0.1 s pose history from the measured speeds, so the slower rate reaches it in a
+different way than it reaches Alpamayo 1.5 ([docs/models/alpamayo2edge.md](../models/alpamayo2edge.md)).
 
 ☉ AutoE2E v1.0, the `kitscenes-epoch-5` checkpoint: the release's nuPlan model
 fine-tuned on KITScenes. NAVSIM is fed from nuPlan at 10 Hz with the rear views
@@ -740,6 +761,7 @@ was first run on, for reference only.
 | OpenPilot, 10 Hz nuPlan history ‡ | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 | 0.947 | 0.983 | 0.653 | — |
 | Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 | 0.963 | 0.962 | 0.576 | — |
 | Alpamayo 1.5, 2 Hz OpenScene | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
+| Alpamayo 2 Edge, 2 Hz OpenScene ‡ | 0.626 | 0.924 | 0.801 | 0.879 | 0.996 | 0.654 | 0.908 | 0.859 | 0.964 | 0.513 | — |
 | Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | METEOR ◊ | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 | 0.795 | 0.973 | 0.451 | — |

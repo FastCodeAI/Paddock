@@ -1,0 +1,65 @@
+{
+  "run_id": "20261111T052918-f9f90a",
+  "site": "hpcai-skodate",
+  "benchmark": "navsim",
+  "model": "alpamayo2edge",
+  "mode": "open_loop",
+  "started_utc": "2026-11-11T05:29:18+00:00",
+  "duration_s": 5648.1,
+  "repo_sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "82e33c6837552a03",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "navtest",
+    "agent": "paddock_proxy",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "declared_env": {
+      "ALPAMAYO2_EDGE_CHECKPOINT": "{weights}/Alpamayo2-Edge",
+      "ALPAMAYO2_EDGE_FRAMES": "nearest",
+      "ALPAMAYO2_EDGE_HISTORY": "hermite",
+      "ALPAMAYO2_EDGE_SAMPLES": "1",
+      "ALPAMAYO2_EDGE_SEED": "43",
+      "HF_HUB_OFFLINE": "1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo2-edge",
+      "sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+      "pinned_sha": "02f55a7",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "cc2466b02d95f77df0afaf8d87298e735b91221b",
+      "dirty": false
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}
