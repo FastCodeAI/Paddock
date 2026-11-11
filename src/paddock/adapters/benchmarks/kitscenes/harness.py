@@ -631,7 +631,9 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         # The two PDM terms a plan and its recorded future can fill; the gate
         # reads them in the same rows as NAVSIM's (`pdm:` in benchmark.yaml).
         # Comfort reads the whole plan at its own spacing, as nuScenes' does.
-        metrics.update(pdm.plan_terms(grid[:horizon], ground_truth[:horizon, :2], prediction.xy, prediction.dt))
+        metrics.update(
+            pdm.plan_terms(grid[:horizon], ground_truth[:horizon, :2], prediction.xy, prediction.dt)
+        )
         return metrics
 
 

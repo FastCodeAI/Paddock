@@ -599,7 +599,9 @@ def _curving_plan(dt: float, horizon_s: float = 6.4) -> np.ndarray:
     return np.column_stack([8.0 * t + 0.4 * t**2, 0.15 * t**2])
 
 
-def test_a_plan_a_tenth_of_a_second_apart_is_scored_on_its_own_half_second_points(tmp_path, monkeypatch) -> None:
+def test_a_plan_a_tenth_of_a_second_apart_is_scored_on_its_own_half_second_points(
+    tmp_path, monkeypatch
+) -> None:
     """alpamayo2edge returns 64 points 0.1 s apart. Read as if they were 0.5 s apart,
     its 3 s score would pair 0.6 s of plan with 3 s of recorded future."""
     archive = tmp_path / "archive"
@@ -623,7 +625,9 @@ def test_a_plan_already_half_a_second_apart_is_scored_point_for_point() -> None:
     assert np.array_equal(H.plan_on_grid(H.Trajectory(plan, dt=0.5)), plan)
 
 
-@pytest.mark.parametrize(("dt", "stride"), [(0.5, 1), (0.25, 2), (0.1, 5), (0.05, 10), (0.3, None), (1.0, None)])
+@pytest.mark.parametrize(
+    ("dt", "stride"), [(0.5, 1), (0.25, 2), (0.1, 5), (0.05, 10), (0.3, None), (1.0, None)]
+)
 def test_only_a_spacing_that_divides_half_a_second_has_points_on_the_grid(dt, stride) -> None:
     assert H.grid_stride(dt) == stride
 
