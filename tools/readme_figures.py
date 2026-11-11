@@ -72,6 +72,7 @@ TEXT_DARK = ["#0b0b0b", "#0b0b0b", "#0b0b0b", "#ffffff", "#ffffff", "#ffffff"]
 MODELS = {
     "openpilot": "OpenPilot",
     "alpamayo15": "Alpamayo 1.5",
+    "alpamayo2edge": "Alpamayo 2 Edge",
     "drivejepa": "Drive-JEPA",
     "visionpilot": "VisionPilot",
     "meteor": "METEOR",
@@ -113,6 +114,7 @@ DATASET_LABEL = {
     "drivingdojo": "DrivingDojo",
     "qwen3-vl": "Qwen3-VL corpus",
     "cosmos-reason2": "Cosmos-Reason2 data",
+    "cosmos3-edge": "Cosmos3-Edge data",
     "public-driving-qa": "public driving QA sets",
     "qwen3.5": "Qwen3.5 corpus",
     "in-house-china": "in-house (China)",

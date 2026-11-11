@@ -66,4 +66,6 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2 and sunnypilot.
+- Alpamayo 2 Edge on NAVSIM with nuPlan's 10 Hz frames, which it is built for. Its
+  NAVSIM cells are 2 Hz: the site that ran it holds no nuPlan 10 Hz data.
 - Failure-mode analysis, the same for every model and dataset.
