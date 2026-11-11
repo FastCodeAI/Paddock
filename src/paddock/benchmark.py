@@ -18,6 +18,7 @@ classes instead of two frameworks.
 
 from __future__ import annotations
 
+import math
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Container, Iterator
@@ -25,8 +26,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from paddock.config import SiteConfig
-from paddock.policy.protocol import Observation, Trajectory
+from paddock.policy.protocol import Observation, StreamFrame, Trajectory
 from paddock.registry import BenchmarkSpec
 
 #: How many batches of `Benchmark.node_count` samples an open-loop run may be
@@ -87,6 +90,118 @@ def input_rate_problems(
     ]
 
 
+# --------------------------------------------------------------------------
+# Streamed open loop
+# --------------------------------------------------------------------------
+#
+# An open-loop sample is self-contained: `/infer_sequence` resets the node, so
+# a model that hands its own previous plan to the next replan -- Drive-JEPA's
+# momentum stage -- never has one there. A harness in a *streamed* mode (off
+# by default, one environment switch per benchmark) adds two things to a
+# sample, and the runner does the rest:
+#
+# * `Sample.stream`, a `protocol.StreamFrame` sent beside the observations:
+#   which recorded drive the scored frame belongs to, its own time on that
+#   drive's clock and its own pose in a frame fixed for the drive. A model that
+#   keeps nothing between samples ignores it.
+# * `Sample.warmup`, optionally: a request the runner sends to the *same* node
+#   just before the scored one, for the sample's own frame `WARMUP_LEAD_S`
+#   earlier, with the history before that frame. Its plan is discarded and
+#   never scored; it exists so the scored request has a previous plan to be
+#   handed. That is a Paddock choice, not upstream protocol: Drive-JEPA's own
+#   sequential loop feeds only the plans of frames it scores.
+#
+# Which mode a run used is in `run_config()["streamed"]`, so it moves the run
+# id and `--resume` refuses to cross modes; whether the node fed a previous
+# plan is recorded per sample (`extra.momentum_fed`) and counted in
+# metrics.json's `by_group.streamed`.
+
+#: Values a streamed-mode switch accepts. Anything else is refused by preflight
+#: rather than read as off (`streamed_switch_problems`).
+STREAMED_ON = ("1", "true", "on", "yes")
+STREAMED_OFF = ("", "0", "false", "off", "no")
+
+#: How far before a sample's scored frame its warm-up frame is: the interval
+#: Drive-JEPA replans at and upstream NAVSIM's sequential loop steps at.
+WARMUP_LEAD_S = 0.5
+#: `run_config()["streamed"]` of a mode that keys a stream by sample and plans
+#: a warm-up `WARMUP_LEAD_S` before each scored frame (KITScenes, comma2k19).
+STREAMED_WARMUP = "warmup_0.5s"
+#: How far from `WARMUP_LEAD_S` the frame chosen for a warm-up may be. The
+#: frame nearest 0.5 s back is taken; one more than this from it is not used,
+#: and the sample goes without a warm-up. 0.05 s puts the window at 0.45-0.55 s,
+#: the ages Drive-JEPA feeds a previous plan at (drivejepa/momentum.py), so no
+#: warm-up is planned that could never be fed.
+WARMUP_TOLERANCE_S = 0.05
+
+
+def streamed_switch(env: str) -> bool:
+    """Whether the streamed-mode switch *env* is on. A misspelt value reads as
+    off here and is refused by `streamed_switch_problems` in preflight."""
+    return os.environ.get(env, "").strip().lower() in STREAMED_ON
+
+
+def streamed_switch_problems(env: str) -> list[str]:
+    value = os.environ.get(env, "").strip().lower()
+    if value in STREAMED_ON + STREAMED_OFF:
+        return []
+    return [f"{env}={value!r}: expected one of {', '.join(STREAMED_ON + STREAMED_OFF[1:])}"]
+
+
+def stream_frame(key: str, obs: Observation) -> StreamFrame:
+    """*obs* as a frame of the drive *key*: its own timestamp, and its (x, y,
+    heading) read from `ego2world`.
+
+    Only as good as the harness's frame: `ego2world` must be in one frame for
+    every observation that names *key* -- the scene's global frame on nuScenes,
+    the scene's own on KITScenes, the window's first frame on comma2k19 -- or
+    two plans of one stream are compared in two different frames.
+    """
+    pose = np.asarray(obs.ego2world, dtype=np.float64)
+    heading = math.atan2(float(pose[1, 0]), float(pose[0, 0]))
+    return StreamFrame(
+        key=key, timestamp_us=int(obs.timestamp_us), pose=(float(pose[0, 3]), float(pose[1, 3]), heading)
+    )
+
+
+@dataclass
+class Warmup:
+    """A request planned on the same node just before a sample's scored one.
+
+    `observations` is a prefix of the sample's own: the history up to and
+    including the frame `WARMUP_LEAD_S` before the scored one, which is the
+    frame planned. `stream` is that frame's, under the sample's own stream
+    key, so the scored request that follows -- same key, 0.5 s later on the
+    same clock and in the same frame -- is handed the plan this one chose. The
+    runner sends it, reads only whether the node fed it a previous plan, and
+    discards its plan: it is never scored and never recorded as a prediction.
+    """
+
+    observations: list[Observation]
+    stream: StreamFrame
+
+
+def warmup_before(observations: list[Observation], key: str) -> Warmup | None:
+    """The `Warmup` for a sample whose history is *observations*, or None.
+
+    The frame nearest `WARMUP_LEAD_S` before the last one, by timestamp -- not
+    by position, so a dropped frame or another input rate does not move it --
+    and the later of two equally near (a history clamped at the start of a
+    scene repeats its first frame). None when no frame other than the scored
+    one is within `WARMUP_TOLERANCE_S` of it.
+    """
+    if len(observations) < 2:
+        return None
+    target = int(observations[-1].timestamp_us) - round(WARMUP_LEAD_S * 1e6)
+    best = min(
+        range(len(observations) - 1),
+        key=lambda i: (abs(int(observations[i].timestamp_us) - target), -i),
+    )
+    if abs(int(observations[best].timestamp_us) - target) > round(WARMUP_TOLERANCE_S * 1e6):
+        return None
+    return Warmup(observations=list(observations[: best + 1]), stream=stream_frame(key, observations[best]))
+
+
 @dataclass
 class Sample:
     """One scoreable unit of an open-loop benchmark.
@@ -115,6 +230,20 @@ class Sample:
     group: str = ""
     #: Identity as the source dataset expressed it, preserved for traceability.
     native_id: dict[str, Any] = field(default_factory=dict)
+    #: Where the scored frame sits on its recorded drive, sent beside the
+    #: observations in a streamed mode (section above). None -- every default
+    #: run -- and the request is exactly `{"observations": [...]}`.
+    stream: StreamFrame | None = None
+    #: Planned first on the same node and discarded (`Warmup`). Only with a
+    #: `stream`, and under the same key.
+    warmup: Warmup | None = None
+
+    def __post_init__(self) -> None:
+        if self.warmup is not None and (self.stream is None or self.warmup.stream.key != self.stream.key):
+            raise ValueError(
+                f"{self.sample_id}: a warm-up must share the sample's stream key, or its plan is never "
+                f"handed to the scored request"
+            )
 
 
 @dataclass
@@ -298,6 +427,30 @@ class OpenLoopBenchmark(Benchmark):
         Default: none.
         """
         return []
+
+    def stream_mode(self) -> str | None:
+        """The streamed mode this run's samples were built in, or None (the default).
+
+        The label the harness records as `run_config()["streamed"]` -- nuScenes'
+        `per_scene`, KITScenes' and comma2k19's `warmup_0.5s`. Not None tells the
+        runner to count, per sample, whether the node fed a previous plan, and to
+        store the counts as metrics.json's `by_group.streamed` (section above).
+        """
+        return None
+
+    def serial_streams(self) -> bool:
+        """Whether one stream runs across several samples, so their order matters.
+
+        True for nuScenes' streamed mode: consecutive keyframes of a scene share
+        the scene's stream, and a keyframe can be handed its predecessor's plan
+        only if the same node planned that predecessor first and has finished.
+        The runner then scores on one node, one sample at a time, in the order
+        `samples()` yields them, whatever `node_count` says. A stream that
+        lives inside one sample (a warm-up and its scored request, which the
+        runner sends back to back to one node) needs none of that. Default:
+        False.
+        """
+        return False
 
     @abstractmethod
     def samples(

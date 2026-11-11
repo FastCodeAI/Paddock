@@ -81,6 +81,47 @@ for the 5119), Alpamayo 2.5 s/sample (~3.5 h). Results:
 `results/nuscenes/<model>/<run>/metrics.json`; per-sample plans and ground truth
 in the run's `samples.jsonl` under the runs root.
 
+## Streamed mode: Drive-JEPA's momentum
+
+Off by default. Every sample goes to the node through `/infer_sequence`, which
+resets it, so Drive-JEPA's momentum-aware selection -- declared on in its
+`model.yaml` for every benchmark -- never has a previous plan here and every
+pick is on the plain score. **No Drive-JEPA nuScenes number made before this
+mode had momentum act**: the 05 Sep 2026 row predates the stage, and a run
+since declares it on and records `fed: 0` in `provenance.policy.momentum_counts`.
+
+`PADDOCK_NUSCENES_STREAMED=1` makes momentum act, the way upstream's own
+sequential evaluation loop does: each keyframe is handed the plan the node chose
+for the scene's previous keyframe.
+
+* Each request also carries a `stream` (`protocol.StreamFrame`): the scene's
+  name, the scored keyframe's own timestamp and its global pose (`ego2world`,
+  x, y, heading). The observations are byte-for-byte those of a standard run.
+* The runner plans on **one node, one sample at a time, in index order**
+  (scene by scene, keyframe by keyframe), whatever the node count, so a
+  keyframe's predecessor has been planned, on the same node, before it is sent.
+* The node keeps its own previous plan per scene and feeds it only when it is
+  0.45-0.55 s old -- Drive-JEPA's rule, unchanged. nuScenes keyframes are not
+  exactly 0.5 s apart, so not every keyframe is fed. Of the 5,119 samples, 150
+  open their scene (no predecessor) and 4,969 have their predecessor scored;
+  4,485 of those are 0.45-0.55 s after it, 243 are 0.4 s and 241 0.6-0.7 s
+  after it, and those are not fed. **Expected: 4,485 fed of 5,119.**
+* No warm-up is planned (contrast KITScenes and comma2k19, whose keyframes
+  are seconds apart).
+
+What the run records: `config.streamed = "per_scene"` (absent from a standard
+run, so a standard run's id and `--resume` check are unchanged, and a run cannot
+be resumed across modes); a note naming the mode; per sample in
+`samples.jsonl`, `extra.stream` and `extra.momentum_fed` (the node's own word,
+from its `drivejepa_pick`); and in `metrics.json`, `by_group.streamed` with the
+counts (`samples`, `streamed`, `momentum_fed`, `momentum_reported`), beside the
+per-scene rows. A resumed run restarts the node, so the first keyframe after
+each restart finds no plan and is recorded not fed; the counts are over what was
+recorded, not over what was expected.
+
+Every other model ignores the stream (the base `Policy.infer_sequence_streamed`
+drops it) and plans exactly as in a standard run, one node at a time.
+
 ## Openpilot camera history and GPU inference
 
 Openpilot uses real approximately 12 Hz CAM_FRONT exposures between keyframes.

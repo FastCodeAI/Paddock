@@ -540,6 +540,11 @@ class StreamFrame:
     that stays fixed for the whole drive (NAVSIM: nuPlan's global frame). A
     model that keeps no such state ignores all of it: the base
     `Policy.infer_sequence_streamed` drops it.
+
+    The runner's open-loop path sends one too, for a harness in a streamed mode
+    (`benchmark.Sample.stream`): nuScenes keys it by scene, so consecutive
+    keyframes of a scene share a stream; KITScenes and comma2k19 key it by
+    sample and plan a warm-up frame 0.5 s earlier first (`benchmark.Warmup`).
     """
 
     key: str
@@ -570,6 +575,22 @@ class StreamFrame:
                 f"stream pose must be three finite floats (x, y, heading), got {payload.get('pose')!r}"
             )
         return cls(key=key, timestamp_us=stamp, pose=(float(pose[0]), float(pose[1]), float(pose[2])))
+
+
+def momentum_fed(extras: dict[str, Any] | None) -> bool | None:
+    """Whether a node says its pick was made against a previous plan.
+
+    Read from the first model-native block of a plan's `extras` -- a dict, as
+    Drive-JEPA's `drivejepa_pick` is -- that carries `momentum_fed`. None when
+    none does: a model with no momentum stage, which is not the same as a
+    stage that had nothing to compare with. The NAVSIM proxy reads the same
+    key the same way (adapters/benchmarks/navsim/agent.py); it keeps its own
+    copy because that module runs in the devkit's interpreter.
+    """
+    for block in (extras or {}).values():
+        if isinstance(block, dict) and "momentum_fed" in block:
+            return bool(block["momentum_fed"])
+    return None
 
 
 # --------------------------------------------------------------------------

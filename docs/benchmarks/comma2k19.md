@@ -439,6 +439,30 @@ gap can be **measured** rather than merely refused. A run made with it set is
 stored `valid: false` and excluded from `paddock report`, which is the point: a
 measurement of the gap is worth keeping and must never enter an average.
 
+## Streamed mode: Drive-JEPA's momentum, with a warm-up
+
+Off by default. Every sample goes to the node through `/infer_sequence`, which
+resets it, so Drive-JEPA's momentum-aware selection -- declared on in its
+`model.yaml` -- never has a previous plan here (the recorded Drive-JEPA run's
+diagnostics say `fed: 0` of 1,271 replans on its node), and no order of the
+samples could change that: a segment's keyframes are 210 frames (10.5 s) apart.
+
+`PADDOCK_COMMA2K19_STREAMED=1` gives each sample a **warm-up**, as on KITScenes
+(see [KITScenes](kitscenes.md#streamed-mode-drive-jepas-momentum-with-a-warm-up)):
+just before the scored request, on the same node, the runner plans the window's
+frame 0.5 s before the keyframe (index -10 at 20 Hz; picked by timestamp, so
+another `input_hz` or a dropped frame does not move it) from the window up to
+it, under a stream keyed by the sample, at that frame's time and its pose in
+the window's frame -- the frame every `ego2world` of the sample is in -- and
+discards the plan. The scored request follows under the same key and is handed
+that plan. Both go to one node back to back inside one runner job, so several
+nodes are safe. **Expected: every scored sample fed.**
+
+**This is a Paddock choice, not upstream protocol**, for the reason given on
+the KITScenes page. Recorded as `config.streamed = "warmup_0.5s"`, per sample
+as `extra.warmup` and `extra.momentum_fed`, and counted in metrics.json's
+`by_group.streamed`; the scored request is a standard run's plus the `stream`.
+
 ## Making a sweep finish
 
 10,165 samples of 160 frames each is the largest thing paddock runs, and the

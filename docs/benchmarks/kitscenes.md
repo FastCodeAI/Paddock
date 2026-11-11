@@ -173,6 +173,52 @@ measure a model working from a history it invented.
 self-priming for its duration. A model that primes *and* receives real history
 sees a manufactured past followed by a real one.
 
+## Streamed mode: Drive-JEPA's momentum, with a warm-up
+
+Off by default. Every sample goes to the node through `/infer_sequence`, which
+resets it, so Drive-JEPA's momentum-aware selection -- declared on in its
+`model.yaml` -- never has a previous plan here and every pick is on the plain
+score. No order of the samples could change that: the 223 keyframes are 9 s
+apart, none 0.5 s after another.
+
+`PADDOCK_KITSCENES_STREAMED=1` gives each sample a **warm-up**:
+
+1. Just before the scored request, on the same node, the runner sends a
+   request for the sample's own frame 0.5 s earlier (source frame
+   `keyframe - 5`, already in the sample's 48-frame history), with the history
+   up to it (`observations[:-5]`), under a `stream` keyed by the sample id, at
+   that frame's own time and its pose in the scene's frame (`poses.txt`).
+2. The node plans it and keeps the plan in that key's book. The runner reads
+   only whether that request was fed (it never is: it is the first plan under
+   its key) and discards the plan. It is never scored and never recorded as a
+   prediction.
+3. The scored request follows with the same key, 0.5 s later on the same clock
+   and in the same frame. The node hands its pick the warm-up's plan.
+   **Expected: 223 fed of 223.**
+
+The scored request is byte-for-byte a standard run's plus the `stream`. The
+warm-up frame is planned with the scored keyframe's route command (STRAIGHT
+under the default `command_source`; under `gt`, the list's command), the route
+the car was following 0.5 s earlier; inside the scored request that same frame
+stays STRAIGHT, as every history frame does.
+
+**This is a Paddock choice, not upstream protocol.** Upstream Drive-JEPA's
+sequential loop hands each frame the plan of the *scored* frame before it and
+never plans a frame only to feed the next one; on a benchmark whose keyframes
+are 9 s apart it would feed nothing. A warm-up measures the model with the
+stage the paper describes acting, from the model's own plan on the real history
+0.5 s back; it is not a reproduction of an upstream number.
+
+What the run records: `config.streamed = "warmup_0.5s"` (absent from a standard
+run, so its id and `--resume` check are unchanged, and a run cannot be resumed
+across modes); a note naming the mode and saying it is a Paddock choice; per
+sample in `samples.jsonl`, `extra.stream`, `extra.momentum_fed`, `extra.warmup`,
+`extra.warmup_stream`, `extra.warmup_frames` and `extra.warmup_momentum_fed`;
+and in `metrics.json`, `by_group.streamed` with the counts (`momentum_fed`,
+`warmups`, `warmups_fed`, which should be 0). Every other model ignores the
+stream and scores the same plan it would without the mode; the warm-up costs
+it one discarded forward pass per sample.
+
 ## The route hint
 
 KITScenes has no route annotation, so by default every frame carries

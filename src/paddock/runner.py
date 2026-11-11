@@ -37,7 +37,7 @@ from paddock.benchmark import (
     OpenLoopBenchmark,
 )
 from paddock.config import SiteConfig
-from paddock.policy.protocol import Trajectory
+from paddock.policy.protocol import Trajectory, momentum_fed
 from paddock.registry import BenchmarkSpec, ModelSpec, Registry
 from paddock.results import store
 from paddock.runtime import ports, proc
@@ -276,6 +276,7 @@ def _store_run(
     invalid_reasons: list[str],
     remarks: list[str] | None = None,
     by_group: dict | None = None,
+    extra_groups: dict | None = None,
     hardware: dict | None = None,
     split: str | None = None,
     extra_dataset: dict | None = None,
@@ -289,6 +290,10 @@ def _store_run(
     opening samples.jsonl. `model_ran=False` is for a run no model node took
     part in (NAVSIM's node-less baseline, human anchor and replays): a site
     env block reaches nothing there, so it cannot invalidate the run.
+
+    `by_group` replaces the per-group aggregates (an external scorer's own
+    rows); `extra_groups` is added beside them (an open-loop streamed run's
+    counts, beside nuScenes' per-scene rows).
     """
     # Here, not at each caller: every path stores through this function, and a
     # rule applied in two of three places is how the checkpoint gap happened.
@@ -331,6 +336,8 @@ def _store_run(
     metrics_record = store.MetricsRecord.from_samples(run_id, samples, primary_metric=spec.primary_metric)
     if by_group:
         metrics_record.by_group = dict(by_group)
+    if extra_groups:
+        metrics_record.by_group = {**metrics_record.by_group, **extra_groups}
     written = store.write_run(run, metrics_record, samples, artifacts_root=cfg.runs)
     return written, metrics_record
 
@@ -620,6 +627,9 @@ def _run_harness(
         elif isinstance(harness, OpenLoopBenchmark):
             found, missing = harness.coverage() if hasattr(harness, "coverage") else ([], [])
             echo(f"  {len(found)} sample(s) available" + (f", {len(missing)} missing" if missing else ""))
+            if harness.stream_mode():
+                serial = " -- one node, one sample at a time, in dataset order"
+                echo(f"  streamed: {harness.stream_mode()}" + (serial if harness.serial_streams() else ""))
             if missing:
                 echo(f"    missing scenes: {', '.join(missing[:5])}" + (" ..." if len(missing) > 5 else ""))
             for m in models:
@@ -1036,6 +1046,49 @@ def _carry_forward_provenance(benchmark: str, model: str, run_id: str, prov: dic
     return prov
 
 
+def _streamed_extra(sample, body: dict, warm: dict | None) -> dict:
+    """What a streamed sample's record says about its stream (`benchmark.Sample.stream`).
+
+    `momentum_fed` is the node's own word for the scored request (None from a
+    model with no momentum stage); `warmup` whether a warm-up was planned first,
+    and then what the node said about that one too. The warm-up's plan itself
+    is not kept: it was never a prediction.
+    """
+    extra: dict = {
+        "stream": sample.stream.to_wire(),
+        "momentum_fed": momentum_fed(body.get("extras")),
+        "warmup": sample.warmup is not None,
+    }
+    if sample.warmup is not None:
+        extra["warmup_stream"] = sample.warmup.stream.to_wire()
+        extra["warmup_frames"] = len(sample.warmup.observations)
+        extra["warmup_momentum_fed"] = momentum_fed((warm or {}).get("extras"))
+    return extra
+
+
+def streamed_summary(samples: list[dict], mode: str) -> dict:
+    """A streamed open-loop run's counts, for metrics.json's `by_group.streamed`.
+
+    `streamed` is how many stored samples carried a stream, `momentum_fed` how
+    many the node said it fed a previous plan, and `momentum_reported` how many
+    it said anything about (zero for a model with no momentum stage). Warm-ups
+    are counted apart: `warmups_fed` should be zero, since each warm-up is the
+    first plan under its sample's own key.
+    """
+    extras = [s.get("extra") for s in samples]
+    streamed = [e for e in extras if isinstance(e, dict) and "stream" in e]
+    warm = [e for e in streamed if e.get("warmup")]
+    return {
+        "mode": mode,
+        "samples": len(samples),
+        "streamed": len(streamed),
+        "momentum_fed": sum(1 for e in streamed if e.get("momentum_fed") is True),
+        "momentum_reported": sum(1 for e in streamed if e.get("momentum_fed") is not None),
+        "warmups": len(warm),
+        "warmups_fed": sum(1 for e in warm if e.get("warmup_momentum_fed") is True),
+    }
+
+
 def _batches(source: Iterator, size: int, prefetch: bool) -> Iterator[list]:
     """Group an iterator into lists of `size`, optionally one batch ahead.
 
@@ -1111,6 +1164,14 @@ def _run_open_loop(
     is image decoding rather than the forward pass, which is most of them, this
     is the difference between a sweep that takes a day and one that takes an
     hour.
+
+    A harness in a streamed mode (`benchmark.Sample.stream`) is the exception
+    to "self-contained": the request also carries the sample's `stream`, a
+    sample's `warmup` goes to the same node just before it and its plan is
+    discarded, and a mode whose streams run across samples
+    (`serial_streams`) is scored on one node, one sample at a time, in order.
+    Off -- every default run -- the request body is `{"observations": [...]}`
+    and the record is what it always was.
     """
     import httpx
 
@@ -1166,16 +1227,39 @@ def _run_open_loop(
         nothing_left = bool(expected) and reused >= expected
 
     failures = 0
-    nodes = max(1, harness.node_count(model_spec))
+    stream_mode = harness.stream_mode()
+    if harness.serial_streams():
+        # A stream that runs across samples (nuScenes' per-scene one): a
+        # keyframe is handed its predecessor's plan only if the same node
+        # planned the predecessor first. One node, a pool of one and no
+        # prefetch thread below make that one request at a time, in the order
+        # `samples()` yields them.
+        nodes = 1
+        echo(f"  streamed ({stream_mode}): one node, one sample at a time, in dataset order")
+    else:
+        nodes = max(1, harness.node_count(model_spec))
+
+    def plan(policy_url: str, observations: list, stream) -> dict:
+        """One `/infer_sequence` request; `stream` (a `StreamFrame`) only in a streamed mode."""
+        payload: dict = {"observations": [o.to_wire() for o in observations]}
+        if stream is not None:
+            payload["stream"] = stream.to_wire()
+        response = httpx.post(f"{policy_url}/infer_sequence", json=payload, timeout=600.0)
+        response.raise_for_status()
+        return response.json()
 
     def score_one(job: tuple[str, object]) -> dict | None:
         """One sample through one node. Runs on a worker thread."""
         policy_url, sample = job
         try:
-            payload = {"observations": [o.to_wire() for o in sample.observations]}
-            response = httpx.post(f"{policy_url}/infer_sequence", json=payload, timeout=600.0)
-            response.raise_for_status()
-            body = response.json()
+            warm = None
+            if sample.warmup is not None:
+                # The same node, immediately before the scored request: its
+                # plan is the previous plan the scored request is handed. It
+                # is read for `momentum_fed` and otherwise discarded -- never
+                # scored, never recorded as a prediction (`benchmark.Warmup`).
+                warm = plan(policy_url, sample.warmup.observations, sample.warmup.stream)
+            body = plan(policy_url, sample.observations, sample.stream)
             prediction = Trajectory(
                 body["trajectory"],
                 dt=model_spec.waypoint_dt,
@@ -1189,7 +1273,7 @@ def _run_open_loop(
         except Exception as exc:  # noqa: BLE001 - one bad sample must not end the run
             echo(f"  {sample.sample_id}: FAILED - {exc}")
             return None
-        return {
+        record = {
             "sample_id": sample.sample_id,
             "native_id": sample.native_id,
             "split": sample.split,
@@ -1208,6 +1292,9 @@ def _run_open_loop(
             # hours, and disk is cheap out here.
             **({"extras": prediction.extras} if prediction.extras else {}),
         }
+        if sample.stream is not None:
+            record["extra"] = _streamed_extra(sample, body, warm)
+        return record
 
     prov: dict = {
         "repo": prov_info.repo_provenance(cfg, model_spec),
@@ -1305,6 +1392,9 @@ def _run_open_loop(
     if resume:
         prov = _carry_forward_provenance(spec.name, model_spec.name, run_id, prov)
 
+    # Over every stored sample, reused ones included: each carries what its own
+    # node said when it was planned.
+    streamed = streamed_summary(samples, stream_mode) if stream_mode else None
     _, metrics_record = _store_run(
         cfg,
         spec,
@@ -1314,6 +1404,7 @@ def _run_open_loop(
         began,
         samples,
         config,
+        extra_groups={"streamed": streamed} if streamed else None,
         failure_note="; ".join(
             n for n in (f"{failures} sample(s) failed" if failures else None, aborted) if n
         )
@@ -1349,4 +1440,10 @@ def _run_open_loop(
         f"  n={metrics_record.n}  {spec.primary_metric} mean={headline.get('mean')}"
         f" median={headline.get('median')}"
     )
+    if streamed:
+        echo(
+            f"  streamed ({stream_mode}): momentum fed on {streamed['momentum_fed']} of "
+            f"{streamed['samples']} scored sample(s) ({streamed['momentum_reported']} reported); "
+            f"{streamed['warmups']} warm-up(s), {streamed['warmups_fed']} of them fed"
+        )
     return failures

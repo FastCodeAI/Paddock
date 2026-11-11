@@ -63,7 +63,11 @@ exception -- navtest's (``PADDOCK_NAVSIM_STREAMED``) and navhard's
 and names the log with each (``protocol.StreamFrame``, with the frame's own
 timestamp and global pose), and `Momentum` keeps one book per log across
 those resets. That is upstream's sequential loop again, one frame per
-request; see the class docstring for why the books are keyed.
+request; see the class docstring for why the books are keyed. The runner's
+open-loop streamed modes use the same books: nuScenes keys one per scene and
+plans its keyframes in order on one node; KITScenes and comma2k19 key one per
+sample and send a warm-up for the frame 0.5 s earlier first (`benchmark.Warmup`,
+a Paddock choice -- upstream never plans a frame only to feed the next).
 """
 
 from __future__ import annotations

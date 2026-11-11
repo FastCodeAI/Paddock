@@ -26,10 +26,13 @@ runtime:
     # has its own plan from 0.5 s earlier: closed loop (neuroNCAP, Bench2Drive,
     # and AlpaSim through paddock's bridge).
     # Open-loop samples arrive through /infer_sequence, which resets the node,
-    # so they always select on the plain score -- except under a streamed mode
-    # (navtest's PADDOCK_NAVSIM_STREAMED, navhard's PADDOCK_NAVHARD_STREAMED),
-    # where each real frame names its log and the node keeps one previous plan
-    # per log. See momentum.py.
+    # so they always select on the plain score -- except in a streamed mode,
+    # where each sample names its recorded drive and the node keeps one
+    # previous plan per drive: navtest's (PADDOCK_NAVSIM_STREAMED, per log),
+    # navhard's (PADDOCK_NAVHARD_STREAMED, per log), nuScenes'
+    # (PADDOCK_NUSCENES_STREAMED, per scene), and KITScenes' and comma2k19's
+    # (PADDOCK_KITSCENES_STREAMED / PADDOCK_COMMA2K19_STREAMED, per sample, after
+    # a discarded warm-up plan 0.5 s earlier). See momentum.py.
     DRIVEJEPA_MOMENTUM: "on"
     # Crop and rescale every camera onto the OpenScene camera the checkpoint was
     # trained on (64 degrees), the way the devkit's own KITScenes loader does.

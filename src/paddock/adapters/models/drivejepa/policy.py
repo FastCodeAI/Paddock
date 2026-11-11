@@ -73,9 +73,10 @@ a node gets with the variable unset, for example one launched outside paddock.
 With it on, each replan is handed the plan this node chose about 0.5 s
 earlier, the way upstream's own evaluation loop hands it over, so the model's
 ``calibrate_score`` runs before the argmax. See `momentum.py`. Open loop that
-never happens -- every sample resets the node -- except in a streamed mode
-(navtest's, navhard's), where each real frame names its log
-(`infer_sequence_streamed`).
+never happens -- every sample resets the node -- except in a streamed mode,
+where each sample names its recorded drive (`infer_sequence_streamed`):
+navtest's and navhard's per log, and the runner's for nuScenes, KITScenes and
+comma2k19.
 
 *The pick, reported.* Every answer carries ``extras["drivejepa_pick"]``: which
 of the 32 proposals was driven, its score, and whether the momentum stage was
