@@ -129,6 +129,13 @@ The seed is set before every plan. A plan therefore depends on its input alone, 
 on the node, the order, a retry or a resumed run. It is still one draw: on one
 KITScenes frame, plans drawn with different seeds ended metres apart at 6.4 s.
 
+The vendor's code refuses a plan whose rationale has not reached the trajectory within
+256 generated tokens. With the seed fixed, asking again repeats the same draw, so the
+adapter draws again with the next seed, up to four draws, and the scenario fails only
+if all four are refused. On navtest this happened in 2 of the 12,146 scenarios at
+seed 43, and seed 44 planned both. The node logs each such plan, and `/diagnostics`
+counts them (`drawn_again`).
+
 ## Environment and weights
 
 `setup.sh` builds the vendor's own lock (`uv sync --locked`: Python 3.12, torch

@@ -34,7 +34,7 @@ import logging
 import os
 import time
 from collections import OrderedDict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -65,6 +65,14 @@ MAX_WARPED = 128
 #: Characters of the rationale kept in extras and diagnostics.
 REASONING_CHARS = 400
 NOMINAL = "<NOMINAL>"
+#: The vendor refuses a plan whose rationale has not reached the trajectory token
+#: within `max_generation_length` ("rejecting incomplete CoTs", models/expert_utils.py).
+#: At seed 43 that happened in 2 of navtest's 12,146 scenarios, every time: the seed
+#: is fixed, so NAVSIM's retry asked for the same draw again. Such a plan is drawn again
+#: with the next seed, the redraw the NAVSIM proxy's retry already is for an unseeded
+#: model, and the scenario fails only if every draw is refused.
+INCOMPLETE_RATIONALE = "No <traj_future_start> token found"
+MAX_DRAWS = 4
 
 
 @dataclass(frozen=True)
@@ -175,6 +183,22 @@ def prepare_inputs(data: dict[str, Any], config: Any, processor: Any) -> dict[st
     }
 
 
+def draw_until_complete(attempt: Callable[[int], Any], seed: int, draws: int = MAX_DRAWS) -> tuple[Any, int]:
+    """`attempt(seed)`, then `attempt(seed + 1)` and so on while the vendor refuses the
+    draw for an incomplete rationale: (the first complete result, the seed it used).
+
+    Any other error, and the last refusal, are raised as they are.
+    """
+    for offset in range(draws):
+        try:
+            return attempt(seed + offset), seed + offset
+        except ValueError as exc:
+            if not str(exc).startswith(INCOMPLETE_RATIONALE) or offset == draws - 1:
+                raise
+            _log.warning("seed %d: %s; drawing again with seed %d", seed + offset, exc, seed + offset + 1)
+    raise AssertionError("unreachable")
+
+
 def _has(obs: Observation, camera: str) -> bool:
     return camera in obs.images or camera in obs.image_paths
 
@@ -194,6 +218,8 @@ class Alpamayo2EdgePolicy(Policy):
         self._geometry: dict[int, dict[str, float]] = {}
         self._plans = 0
         self._nominal = 0
+        self._redrawn = 0
+        self._last_seed: int | None = None
         self._ms = np.zeros(3)
         self._last: dict[str, Any] = {}
         self.reset()
@@ -332,8 +358,12 @@ class Alpamayo2EdgePolicy(Policy):
         from alpamayo2_edge.inference import predict, validate_predictions
 
         prepared = to_device(prepare_inputs(vendor_sample(sample), self.model.config, self.processor), "cuda")
-        settings = {**SAMPLING, "seed": self.settings.seed, "num_traj_samples": self.settings.samples}
-        xyz, rot, extra = predict(self.model, prepared, settings, "cuda")
+        settings = {**SAMPLING, "num_traj_samples": self.settings.samples}
+
+        def attempt(seed: int):
+            return predict(self.model, prepared, {**settings, "seed": seed}, "cuda")
+
+        (xyz, rot, extra), self._last_seed = draw_until_complete(attempt, self.settings.seed)
         validate_predictions(xyz, rot, settings["num_traj_sets"], settings["num_traj_samples"])
         rationales = [str(text) for text in np.asarray(extra.get("cot", [])).reshape(-1)]
         return xyz.float().cpu().numpy()[0, 0], rot.float().cpu().numpy()[0, 0], rationales
@@ -347,6 +377,7 @@ class Alpamayo2EdgePolicy(Policy):
         self._record(obs)
         sample = self.build_sample()
         built = time.perf_counter()
+        self._last_seed = self.settings.seed
         xyz, rot, rationales = self._run_model(sample)
         ran = time.perf_counter()
         chosen = inputs.medoid_index(xyz[:, :, :2])
@@ -363,6 +394,8 @@ class Alpamayo2EdgePolicy(Policy):
         self._plans += 1
         nominal = reasoning.strip() == NOMINAL
         self._nominal += int(nominal)
+        redrawn = self._last_seed != self.settings.seed
+        self._redrawn += int(redrawn)
         self._ms += ms
         reach = float(np.linalg.norm(plan[-1, :2]))
         self._last = {
@@ -371,14 +404,16 @@ class Alpamayo2EdgePolicy(Policy):
             "history_extrapolated_s": sample.extrapolated_s,
             "reasoning": reasoning[:REASONING_CHARS],
             "plan_reach_m": round(reach, 2),
+            "seed": self._last_seed,
         }
         _log.info(
-            "plan #%d: inputs %.0f ms, model %.0f ms, rest %.0f ms; nav %r; %s; reaches %.1f m in 6.4 s",
+            "plan #%d: inputs %.0f ms, model %.0f ms, rest %.0f ms; nav %r; %s; reaches %.1f m in 6.4 s%s",
             self._plans,
             *ms,
             sample.nav_text,
             NOMINAL if nominal else f"rationale {reasoning[:160]!r}",
             reach,
+            f"; drawn again, seed {self._last_seed}" if redrawn else "",
         )
 
     def diagnostics(self) -> dict[str, Any]:
@@ -395,6 +430,8 @@ class Alpamayo2EdgePolicy(Policy):
             "slot_geometry": dict(self._geometry),
             "plans": self._plans,
             "nominal_rationales": self._nominal,
+            # Plans whose first draw the vendor refused for an incomplete rationale.
+            "drawn_again": self._redrawn,
             "mean_ms": (
                 dict(
                     zip(
