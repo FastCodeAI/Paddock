@@ -10,8 +10,8 @@ First public release.
 
 - One `Policy` interface for open-loop scoring and closed-loop simulation, with each
   model in its own environment behind a local HTTP server.
-- Adapters for Alpamayo 1.5, AutoE2E, Drive-JEPA, METEOR, OpenPilot, Qwen-Drive 1.0,
-  VisionPilot and WA-JEPA, and a constant-velocity floor.
+- Adapters for Alpamayo 1.5, Alpamayo 2 Edge, AutoE2E, Drive-JEPA, METEOR, OpenPilot,
+  Qwen-Drive 1.0, VisionPilot and WA-JEPA, and a constant-velocity floor.
 - Benchmarks: nuScenes, KITScenes, comma2k19, nuPlan, NAVSIM v1 and v2, Bench2Drive,
   neuroNCAP, AlpaSim and HUGSIM.
 - A command line: `paddock doctor`, `setup`, `new`, `verify`, `run`, `render` and `report`.

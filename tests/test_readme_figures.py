@@ -296,6 +296,15 @@ def test_history_shows_camera_and_ego_at_their_own_rates() -> None:
     assert readme_figures.history_note(models["qwendrive"]) == ""
 
 
+def test_uneven_camera_frames_are_drawn_at_their_own_times() -> None:
+    """Alpamayo 2 Edge reads its front cameras at -2, -1, -0.5, -0.1 and 0 s. Drawn at
+    one rate, five frames over 2 s would read as 2 Hz video, which the README says the
+    model is not: its -0.1 s frame is why it needs 10 Hz."""
+    frames, _, caption = readme_figures.history(load_models()["alpamayo2edge"])
+    assert frames == pytest.approx([0.0, 0.1, 0.5, 1.0, 2.0])
+    assert caption == "cam 5 at −2, −1, −0.5, −0.1, 0 s · ego 20 @ 10 Hz"
+
+
 def test_only_paddocks_own_datasets_are_marked_as_benchmark_data() -> None:
     model = replace(
         load_models()["qwendrive"],

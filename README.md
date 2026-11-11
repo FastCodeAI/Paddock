@@ -91,6 +91,11 @@ it differs.
   three views are black, and the model reads only its front camera. METEOR there
   sees that one camera in two of its eight slots, the other six left black as its
   training drops a camera.
+- **Ranked, though fed less than the model is built for.** Alpamayo 2 Edge's NAVSIM
+  cells, marked 2 Hz, are a model built for 0.1 s frames run on OpenScene's 2 Hz; it
+  has not been run on nuPlan's 10 Hz frames. Compare them with Alpamayo 1.5's 2 Hz run
+  (0.676 PDMS, 0.608 EPDMS), not with the 10 Hz cells above them
+  ([navsim.md](docs/benchmarks/navsim.md#notes-on-the-matrix-cells)).
 
 Before comparing numbers:
 
@@ -223,6 +228,7 @@ benchmark is one new directory under `adapters/`. What crosses the wire:
 | Model | What it is | Code | Paper |
 |---|---|---|---|
 | [Alpamayo 1.5](docs/models/alpamayo15.md) | NVIDIA's 10B vision-language model with a diffusion trajectory decoder | [NVlabs/alpamayo1.5](https://github.com/NVlabs/alpamayo1.5) · Apache-2.0 | [Alpamayo-R1](https://arxiv.org/abs/2511.00088) |
+| [Alpamayo 2 Edge](docs/models/alpamayo2edge.md) | NVIDIA's 2.65B vision-language model that reasons only when it needs to, with a flow-matching trajectory expert | [NVlabs/alpamayo2-edge](https://github.com/NVlabs/alpamayo2-edge) · Apache-2.0 | |
 | [AutoE2E](docs/models/autoe2e.md) | The Autoware Foundation's end-to-end model | [autowarefoundation/auto_e2e](https://github.com/autowarefoundation/auto_e2e) · Apache-2.0 | |
 | [Drive-JEPA](docs/models/drivejepa.md) | Video JEPA encoder with a proposal-based planner | [linhanwang/Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) · Apache-2.0 | [Drive-JEPA](https://arxiv.org/abs/2601.22032) |
 | [METEOR](docs/models/meteor.md) | TIER IV's 8-camera multi-task network | [tier4/METEOR](https://github.com/tier4/METEOR) · Apache-2.0 | |

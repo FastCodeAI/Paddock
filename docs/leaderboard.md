@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-96 runs across 9 benchmarks.
-57 run(s) excluded as invalid — shown at the end, never averaged in.
+98 runs across 9 benchmarks.
+58 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -125,6 +125,7 @@
 | qwendrive | 20260914T221802-80457c | 12146 | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 |
 | openpilot | 20260911T161513-3a4c90 | 12146 | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 |
 | alpamayo15 | 20260912T040211-a9562c | 12146 | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 |
+| alpamayo2edge | 20261111T052918-f9f90a | 12146 | 0.626 | 0.924 | 0.801 | 0.879 | 0.996 | 0.654 | 0.908 |
 | alpamayo15 | 20260903T183818-5879c1 | 12146 | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 |
 | autoe2e | 20261009T055926-3ceb18 | 12146 | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 |
 | visionpilot | 20260902T175642-df5291 | 12146 | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 |
@@ -141,6 +142,7 @@
 | qwendrive | 20261104T205054-df25d5 | 12146 | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | openpilot | 20260914T181009-dbcef4 | 12146 | 0.807 | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 |
 | alpamayo15 | 20260914T175447-89a9ca | 12146 | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
+| alpamayo2edge | 20261111T070439-f19e8f | 12146 | 0.699 | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 |
 | alpamayo15 | 20260911T044805-0aea35 | 12146 | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | autoe2e | 20261104T210206-3022fb | 12146 | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
 | visionpilot | 20260911T083323-c07583 | 12146 | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
@@ -198,6 +200,7 @@
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
+- **navsim/alpamayo2edge/20261111T031938-f9f90a** — 2 scenario(s) failed in the scorer and are excluded
 - **comma2k19/drivejepa_free/20261106T053407-587a3e** — Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026.
 - **comma2k19/meteor/20261030T001935-0b8d0b** — Superseded by 20261106T064120-226c00: Re-run on 6 Nov 2026 with the clone at its pinned dc193a81 and scored against the ground truth in the car's frame; this row came from a clone at 8567eb0 and was scored against a ground truth in the camera's frame. The plans are the same in both runs.
 - **navsim_v1/autoe2e/20261027T185517-5c7949** — no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer Superseded by 20261104T210206-3022fb: this replay recorded 2 Hz OpenScene history and 1.5 s, but its plans were made at 10 Hz from nuPlan with 6.5 s; re-made with the right record, every score identical
