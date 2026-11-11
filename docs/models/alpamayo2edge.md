@@ -10,6 +10,7 @@
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
 | Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) |
+| Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
 
@@ -142,7 +143,7 @@ counts them (`drawn_again`).
 2.8.0 with CUDA 12.8, transformers 5.17.0) into `PADDOCK_VENV`, with SDPA attention;
 flash-attn is not installed. It adds fastapi and uvicorn for the node.
 
-The checkpoint is 5.0 GB and not gated. `setup.sh` fetches it into the Hugging Face
+The checkpoint is 5.3 GB and not gated. `setup.sh` fetches it into the Hugging Face
 cache at `HF_HOME` (default `{weights}/hf_cache`) and checks the sha256 of every file
 the model reads. It then links `{weights}/Alpamayo2-Edge` to the pinned snapshot, by a
 relative path. A later download of another revision cannot change what a run is
