@@ -22,7 +22,10 @@ that: `paddock run` always starts a node and stores under a registered model.
   was: they are that model's own plans, and whatever kept the source from
   being ranked -- a subset, a rate override -- keeps the replay from it too.
   For the same reason `config` carries the source's input rate and history,
-  never this benchmark's defaults.
+  never this benchmark's defaults, and its `streamed` when the source was a
+  streamed navtest run (harness.py, "Streamed mode"): the notes then say so and
+  `by_group.streamed` counts, over the frames this scorer scored, how many of
+  the replayed plans the node had fed a previous plan. Nothing is re-planned.
   Only a run in the results store is accepted as a source, never a loose file.
 
 Everything else is the runner's: the same measurement config, run id, resume
@@ -47,10 +50,13 @@ from paddock.adapters.benchmarks.navsim.convert import load_plans
 from paddock.adapters.benchmarks.navsim.harness import (
     CONSTANT_VELOCITY_AGENT,
     ENV_AGENT,
+    ENV_STREAMED,
     HUMAN_AGENT,
     PLAN_SETTINGS,
     REPLAY_AGENT,
     NavsimBenchmark,
+    join_streamed,
+    plan_lines,
 )
 from paddock.config import SiteConfig
 from paddock.registry import ModelSpec, Registry, Runtime
@@ -301,6 +307,16 @@ def run(
                 f"(that run: {told}{'' if source['source_valid'] else ', stored valid=false'}); "
                 f"the same plans, this benchmark's scorer"
             ]
+            if source["plan_settings"].get("streamed"):
+                # How the plans were made is the source's (config.streamed, from
+                # PLAN_SETTINGS); which of them were fed a previous plan is in
+                # its dump, counted here over the frames this scorer scored.
+                join_streamed(evaluation, plan_lines(*map(Path, plans_dir.split(":"))), echo)
+                remarks.append(
+                    f"the replayed plans were made in streamed mode ({ENV_STREAMED}, config.streamed "
+                    f"{source['plan_settings']['streamed']!r}): the node kept its own previous plan per log. "
+                    f"Counts over this run's scored frames in by_group.streamed"
+                )
         elif group == CONSTANT_VELOCITY_AGENT:
             remarks = [
                 "reference baseline: straight ahead at the current speed, no model. Paddock's own "

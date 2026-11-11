@@ -117,6 +117,10 @@ made with one can never share a config hash with a run made without it:
   OpenScene's 2 Hz anyway. Stored `valid: false`: it measures the rate gap.
 - `PADDOCK_NAVSIM_OVERRIDES="k=v ..."` — extra hydra overrides for the scorer,
   recorded verbatim.
+- `PADDOCK_NAVSIM_STREAMED=1` — streamed mode: each frame names its log so a
+  node can keep its own previous plan (Drive-JEPA's momentum stage); see
+  "navtest's streamed mode" below. Recorded as `config.streamed = "per_log"`,
+  absent from a standard run; the run stays valid and its notes say so.
 - `PADDOCK_NAVSIM_MERGE_FROM=<run dir>` — take another run's completed chunk
   CSVs as this run's rows and leave their logs out of the chunks. For
   continuing a run whose chunking changed: `--resume` reuses chunks by
@@ -179,12 +183,60 @@ observation and knows its own previous plan, so it can build all three itself:
 (`adapters/models/drivejepa/momentum.py`), for closed-loop benchmarks where
 consecutive calls belong to one drive.
 
-That switch does not change this benchmark. The proxy scores each scenario
-through `/infer_sequence`, which resets the node first, so no previous plan
-survives from one scenario to the next and the stage never runs: proxy rows are
-the raw argmax with the switch on or off. Feeding the proxy's plans back across
-scenarios — which is what would close the 0.02705 below — is a separate
-decision about this benchmark's comparability and is not made here.
+That switch does not change a standard run of this benchmark. The proxy scores
+each scenario through `/infer_sequence`, which resets the node first, so no
+previous plan survives from one scenario to the next and the stage never runs:
+standard proxy rows are the raw argmax with the switch on or off. Every
+Drive-JEPA navtest row made before streamed mode existed (below) is such a row.
+
+### navtest's streamed mode (opt in)
+
+`PADDOCK_NAVSIM_STREAMED=1 paddock run --bench navsim --model drivejepa` lets
+the node keep its own previous plan per log, so the momentum stage acts on
+navtest the way upstream's `run_pdm_score_sequential.py` (:120-168) makes it
+act: each frame is handed the plan chosen for the same log's frame 0.5 s
+earlier, if there is one. Off, nothing changes for any model. On:
+
+- Each frame's `/infer_sequence` request adds a `stream`
+  (`protocol.StreamFrame`): the log's name, the frame's own timestamp and its
+  recorded global rear-axle pose, read from the metric cache the v2 scorer
+  passes the proxy (`log_name`, `timepoint.time_us`, `ego_state.rear_axle`;
+  `agent.cache_stream_frame`). That is the state upstream's loop hands
+  Drive-JEPA as `metric_cache.ego_state`. Nothing else of the cache is read,
+  `past_ego_simulated_states` (the scorer's own simulation) stays ignored, and
+  the observations are byte-identical to a standard run's.
+- The order is upstream's own: the scorer gives each worker whole logs and plans
+  a log's frames sorted by metric-cache time (:106-118); the proxy pins each
+  worker to one node; the node keeps one book per log (`momentum.py`) and feeds
+  a plan 0.45-0.55 s old. A log's first frame, and a frame after a gap or after
+  a frame that failed, gets none -- upstream drops a plan older than 0.55 s.
+- Expected on full navtest: 10,040 of the 12,146 frames have a frame of the same
+  log 0.5 s before them (the other 2,106 are the 136 logs' first frames and
+  frames after a gap; counted from a standard run's dump, every in-window gap
+  498-501 ms). `by_group.streamed` in `metrics.json` records `momentum_fed`
+  (the node's say, per scored frame) beside `previous_planned` (scored frames
+  whose log has a frame planned 0.45-0.55 s before them, from the dump), so a
+  shortfall is visible there.
+- A retry pass re-plans failed frames with a neighbour so the scorer can
+  aggregate. The neighbour's row is discarded already; in streamed mode its
+  re-plan is also moved out of the dump (`trajectories.retry-neighbours.jsonl`),
+  so the dump holds exactly the plans that were scored.
+- The run records it: `config.streamed = "per_log"` changes the run id, a
+  standard run cannot be resumed as a streamed one or back, the notes say so,
+  and each sample carries `extra.momentum_fed`. `PADDOCK_NAVSIM_RESUME_FROM` and
+  `PADDOCK_NAVSIM_MERGE_FROM` are refused with it: another run's chunks are not
+  known to have been streamed.
+
+NAVSIM v1 has no streamed mode: its scorer plans in set order, and the switch
+is refused there. A streamed run's v1 PDMS is its own plans replayed,
+`python -m paddock.adapters.benchmarks.navsim.nodeless --bench navsim_v1 --replay navsim/drivejepa/<run_id>`;
+the replay copies `streamed` into its config (it is in `PLAN_SETTINGS`), says
+so in its notes, and counts the fed plans over its own scored frames. Nothing
+is re-planned.
+
+A streamed row is a different protocol from a standard paddock navtest row and
+from the vendor's native-agent row (which is also handed the scorer's own
+simulation of the previous plan). Report it beside them, not as one number.
 
 ### navhard's streamed mode (opt in)
 
@@ -214,6 +266,9 @@ Off, nothing changes for any model. On:
   standard run cannot be resumed as a streamed one or the other way round. Each
   sample's `extra.momentum_fed` and `by_group.streamed` (real and synthetic
   frames, how many were fed) come from the plan dump, and the notes say so.
+
+`PADDOCK_NAVSIM_STREAMED` is refused on navhard, and navhard's switch does
+nothing on navtest: the two never stack.
 
 Upstream's navhard protocol gives no agent a previous plan. So a streamed
 navhard row is a different protocol from published navhard numbers and from

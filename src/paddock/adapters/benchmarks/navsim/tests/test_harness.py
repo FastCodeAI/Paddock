@@ -19,6 +19,7 @@ from paddock.adapters.benchmarks.navsim.harness import (
     ENV_ALLOW_PARTIAL,
     ENV_ALLOW_SLOW,
     ENV_OVERRIDES,
+    ENV_STREAMED,
     PROXY_AGENT,
     SCORER,
     SPLITS_DIR,
@@ -289,7 +290,7 @@ def _navsim_site(
         + "".join(f'{key} = "{value}"\n' for key, value in settings.items())
     )
     monkeypatch.setenv("PADDOCK_CONFIG", str(tmp_path / "site.toml"))
-    for name in (ENV_AGENT, ENV_ALLOW_PARTIAL, ENV_ALLOW_SLOW, ENV_OVERRIDES):
+    for name in (ENV_AGENT, ENV_ALLOW_PARTIAL, ENV_ALLOW_SLOW, ENV_OVERRIDES, ENV_STREAMED):
         monkeypatch.delenv(name, raising=False)
     return SiteConfig.load()
 

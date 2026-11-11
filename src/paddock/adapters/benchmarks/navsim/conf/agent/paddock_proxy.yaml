@@ -22,6 +22,11 @@ history_s: 0.0
 # OpenScene's own blobs at its 2 Hz keyframes; the 10 Hz frames in between carry no
 # image for them. Set by the harness when [benchmarks.navsim] keyframe_cameras is on.
 keyframe_cameras: false
+# Streamed mode: each frame's request also names its log, with the frame's own time and
+# global pose read from the metric cache (agent.py, cache_stream_frame), so a node that
+# keeps a previous plan per drive -- Drive-JEPA's momentum -- has one. The harness sets it
+# under PADDOCK_NAVSIM_STREAMED; off, the request is what it always was.
+stream: false
 
 trajectory_sampling:
   _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
