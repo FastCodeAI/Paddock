@@ -13,7 +13,9 @@
 <!-- /summary -->
 
 Open-loop trajectory accuracy: ADE and FDE against the recorded future, over a
-fixed set of 223 keyframes.
+fixed set of 223 keyframes. They come from all 140 sequences of two whole splits:
+186 keyframes from the 117 sequences of `val`, and 37 from the 23 of
+`overlap_train_val`. No `test` or `test-e2e` sequence is scored.
 
 ```bash
 paddock run --bench kitscenes --model openpilot --limit 5   # smoke

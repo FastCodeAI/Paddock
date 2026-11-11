@@ -25,7 +25,7 @@ datasets:
       sequences the configured tiers can actually serve.
 
   navsim:
-    description: NAVSIM on OpenScene (a 2 Hz redistribution of nuPlan, not nuScenes) -- closed-loop-proxy scoring as v1.1 PDMS (navsim_v1) or v2 EPDMS (navsim)
+    description: NAVSIM on OpenScene (a 2 Hz redistribution of nuPlan, not nuScenes) -- open-loop scoring as v1.1 PDMS (navsim_v1) or v2 EPDMS (navsim)
     requires: [navsim_logs, sensor_blobs, maps]
     notes: >
       Single-stage evaluation (navtest: 136 logs, 12,146 real scenes) needs only

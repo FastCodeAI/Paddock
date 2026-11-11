@@ -55,7 +55,7 @@ RESULTS = ROOT / "results"
 MATRIX_SVG = ROOT / "docs" / "assets" / "support-matrix.svg"
 MODELS_SVG = ROOT / "docs" / "assets" / "models.svg"
 
-LOOP = {"open": "open loop", "pseudo": "pseudo-closed loop", "closed": "closed loop"}
+LOOP = {"open": "open loop", "closed": "closed loop"}
 MISSING = ("—", "not run")
 UNRANKED_MARKS = {"R", "V"}
 CELL_KEYS = {"run", "value", "source", "marks", "note", "model"}
@@ -356,14 +356,12 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     light = [".miss{fill:#f0efec}", ".floor{fill:#fcfcfb;stroke:#a9a8a3;stroke-dasharray:3 3}"]
     light += [".floorline{fill:none;stroke:#52514e;stroke-width:1.5;stroke-dasharray:4 3}"]
     light += [".hbg{fill:#f0efec}", ".hln{stroke:#c9c8c3}", ".worse{fill:#d03b3b;stroke:#fcfcfb}"]
-    light += [".open{fill:#15803d;stroke:#15803d}", ".pseudo{fill:#b45309;stroke:#b45309}"]
-    light += [".closed{fill:#b91c1c;stroke:#b91c1c}"]
+    light += [".open{fill:#15803d;stroke:#15803d}", ".closed{fill:#b91c1c;stroke:#b91c1c}"]
     light += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_LIGHT)]
     light += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_LIGHT)]
     dark = [".miss{fill:#2a2a28}", ".floor{fill:#1a1a19;stroke:#6b6a66}", ".floorline{stroke:#c3c2b7}"]
     dark += [".hbg{fill:#2a2a28}", ".hln{stroke:#45453f}", ".worse{fill:#e66767;stroke:#1a1a19}"]
-    dark += [".open{fill:#4ade80;stroke:#4ade80}", ".pseudo{fill:#fbbf24;stroke:#fbbf24}"]
-    dark += [".closed{fill:#f87171;stroke:#f87171}"]
+    dark += [".open{fill:#4ade80;stroke:#4ade80}", ".closed{fill:#f87171;stroke:#f87171}"]
     dark += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_DARK)]
     dark += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_DARK)]
     defs = (
@@ -386,9 +384,11 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     sx += 26 * len(RAMP_LIGHT) + 4
     out.append(_text(sx, y, "rank 6+", "sec", 12))
     sx += 70
-    out.append(f'<rect fill="url(#hatch)" x="{sx}" y="{y - 11}" width="24" height="14" rx="3"/>')
-    out.append(_text(sx + 30, y, "not ranked", "sec", 12))
-    sx += 120
+    # Only when a cell uses it: a key for nothing on the page sends a reader looking.
+    if any(c.value is not None and c.rank is None for r in rows if not r.is_floor for c in r.cells):
+        out.append(f'<rect fill="url(#hatch)" x="{sx}" y="{y - 11}" width="24" height="14" rx="3"/>')
+        out.append(_text(sx + 30, y, "not ranked", "sec", 12))
+        sx += 120
     out.append(f'<path class="worse" d="M{sx} {y - 10}h11l-5.5 9z" stroke-width="1.5"/>')
     out.append(_text(sx + 16, y, "worse than constant velocity", "sec", 12))
     sx += 200
