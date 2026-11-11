@@ -220,9 +220,9 @@
 <rect class="track" x="496" y="301.0" width="120" height="1"/>
 <rect class="now" x="616" y="281.5" width="1" height="24"/>
 <rect x="614.5" y="284.5" width="3" height="10" fill="#3f007d"/>
+<rect x="613.0" y="284.5" width="3" height="10" fill="#3f007d"/>
 <rect x="607.0" y="284.5" width="3" height="10" fill="#3f007d"/>
 <rect x="599.5" y="284.5" width="3" height="10" fill="#3f007d"/>
-<rect x="592.0" y="284.5" width="3" height="10" fill="#3f007d"/>
 <rect x="584.5" y="284.5" width="3" height="10" fill="#3f007d"/>
 <rect x="615.2" y="298" width="1.5" height="7" fill="#3f007d"/>
 <rect x="613.8" y="298" width="1.5" height="7" fill="#3f007d"/>
@@ -244,7 +244,7 @@
 <rect x="589.8" y="298" width="1.5" height="7" fill="#3f007d"/>
 <rect x="588.2" y="298" width="1.5" height="7" fill="#3f007d"/>
 <rect x="586.8" y="298" width="1.5" height="7" fill="#3f007d"/>
-<text x="496" y="319.5" class="sec" font-size="10" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start">cam 5 @ 2 Hz · ego 20 @ 10 Hz</text>
+<text x="496" y="319.5" class="sec" font-size="10" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start">cam 5 at −2, −1, −0.5, −0.1, 0 s · ego 20 @ 10 Hz</text>
 <rect class="now" x="650" y="281.5" width="1" height="24"/>
 <rect class="track" x="651" y="290.5" width="109" height="10"/>
 <rect x="651" y="290.5" width="70.4" height="10" fill="#3f007d" opacity="0.35"/>

@@ -512,12 +512,24 @@ def views(model: ModelSpec) -> list[tuple[str, int, int]]:
     return list(out.values())
 
 
+def _seconds(t: float) -> str:
+    # 0.0 + t turns -0.0 into 0.0; the minus sign is the one the axis labels use.
+    return f"{0.0 + t:g}".replace("-", "−")
+
+
 def history(model: ModelSpec) -> tuple[list[float], list[float], str]:
     """(camera frame ages, ego state ages, in seconds before now) and their caption."""
     n = model.history_frames or 1
     hz = model.camera_hz
-    frames = [k / hz for k in range(n)] if hz else [0.0]
-    cam = f"cam {n} @ {hz:g} Hz" if hz and n > 1 else "cam 1" if n == 1 else f"cam {n}, back to back"
+    if model.camera_frame_times_s:
+        # No one rate spaces these frames (Alpamayo 2 Edge's -2, -1, -0.5, -0.1 and 0 s):
+        # each is drawn at its own time, and the caption names the times.
+        times = model.camera_frame_times_s
+        frames = sorted(0.0 - t for t in times)
+        cam = f"cam {len(times)} at {', '.join(_seconds(t) for t in times)} s"
+    else:
+        frames = [k / hz for k in range(n)] if hz else [0.0]
+        cam = f"cam {n} @ {hz:g} Hz" if hz and n > 1 else "cam 1" if n == 1 else f"cam {n}, back to back"
     if hz and n > 1 and model.camera_frames_by_request:
         cam += " in training"
     if model.ego_history_steps and model.ego_history_hz:

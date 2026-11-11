@@ -308,6 +308,9 @@ def test_model_yaml_declares_the_cameras_and_spacing_the_policy_uses() -> None:
     assert spec.waypoint_dt == POLICY.waypoint_dt == inputs.PLAN_DT_S
     assert spec.horizon_s == pytest.approx(inputs.PLAN_STEPS * inputs.PLAN_DT_S)
     assert spec.ego_history_steps == inputs.HISTORY_STEPS
+    # The README's models picture draws the camera frames at the card's times.
+    assert spec.camera_frame_times_s == inputs.FRONT_OFFSETS_S
+    assert spec.history_frames == len(inputs.FRONT_OFFSETS_S)
 
 
 def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_through() -> None:
