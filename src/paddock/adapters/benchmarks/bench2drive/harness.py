@@ -381,9 +381,18 @@ def parse_results(results_json: Path) -> dict[str, float]:
     Pure, so the golden test asserts it reproduces the score CARLA recorded.
     """
     checkpoint = json.loads(Path(results_json).read_text()).get("_checkpoint", {})
+    return parse_checkpoint(checkpoint, str(results_json))
+
+
+def parse_checkpoint(checkpoint: dict[str, Any], where: str) -> dict[str, float]:
+    """:func:`parse_results` on a ``_checkpoint`` already read; ``where`` names it in a refusal.
+
+    The ingest measures a route taken from a tracked record's ``upstream_scores.json`` row
+    through this too, so the two are one derivation, not two kept in step.
+    """
     all_records = checkpoint.get("records") or []
     if not all_records:
-        raise NotScored(f"{results_json}: no records in _checkpoint (the route did not score)")
+        raise NotScored(f"{where}: no records in _checkpoint (the route did not score)")
 
     records, crashed = [], []
     for record in all_records:
@@ -394,8 +403,7 @@ def parse_results(results_json: Path) -> dict[str, float]:
             records.append(record)
     if not records:
         raise NotScored(
-            f"{results_json}: {'; '.join(crashed)} -- "
-            f"the route did not run, so its scores are not a measurement"
+            f"{where}: {'; '.join(crashed)} -- the route did not run, so its scores are not a measurement"
         )
 
     def count(infractions: dict, key: str) -> int:
@@ -442,6 +450,11 @@ def ended_early(route_dir: Path) -> dict[str, float]:
         record = json.loads((Path(route_dir) / early_stop.RECORD).read_text())
     except (OSError, ValueError):
         return {}
+    return stop_shares(record)
+
+
+def stop_shares(record: Any) -> dict[str, float]:
+    """:func:`ended_early` on an ``early_stop.json`` already read; empty for anything but a record."""
     if not isinstance(record, dict):
         return {}
     reps = [r for r in (record.get("repetitions") or [record]) if isinstance(r, dict)] or [record]
