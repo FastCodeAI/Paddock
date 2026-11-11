@@ -8,7 +8,7 @@
 | Dataset | `nuscenes` |
 | Primary metric | `ncap_score` |
 | Adapter | [`adapters/benchmarks/neuroncap/`](../../src/paddock/adapters/benchmarks/neuroncap/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md), [wajepa](../models/wajepa.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md), [wajepa](../models/wajepa.md) |
 
 <!-- /summary -->
 
