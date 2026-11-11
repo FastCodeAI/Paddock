@@ -3,6 +3,13 @@
 # Locations go in paddock.toml, which is gitignored, because they differ at
 # every site. `requires` lists subdirectories that must be present under the
 # resolved root; `paddock doctor` checks them and reports what a gap blocks.
+#
+# `fetch`, where present, is where the dataset comes from, for
+# `paddock data fetch` (src/paddock/fetch.py says how each key is read). It names
+# the owner's own host at a pinned revision, never a copy of ours, and only the
+# files a benchmark scores: the evaluation split, cameras only. `terms` makes
+# the command refuse until the user passes --accept-terms. `carla` is a
+# simulator, not data; it is here so the same command downloads it.
 
 datasets:
   nuscenes:
@@ -14,6 +21,42 @@ datasets:
       Anything using lidar or radar additionally needs sweeps/ and populated
       RADAR_* directories, which keyframe-only copies do not have. Generating
       nuscenes_infos*.pkl against a keyframe-only copy will degrade silently.
+    fetch:
+      license: CC BY-NC-SA 4.0, non-commercial use only; nuScenes also asks every user to register at nuscenes.org
+      terms: https://www.nuscenes.org/terms-of-use
+      # The addresses nuscenes.org hands out after sign-in. Each file is pinned by
+      # its CloudFront ETag, the md5 of its 8 MiB upload parts.
+      base: https://d36yt3mvayqw5m.cloudfront.net/public/v1.0/
+      parts:
+        metadata:  # v1.0-trainval/*.json and maps/*.png
+          files:
+            v1.0-trainval_meta.tgz: {size: 461678030, etag: fd4ea76d8701fb567a67a65025d0b022-56}
+        # samples/: every sensor's keyframes for all 850 trainval scenes. The ten
+        # archives are not divided by split, so the 150 val scenes need all ten.
+        # Sweeps (sweeps/, 300 GB more) are left out, so openpilot cannot run on
+        # this copy: it needs 10 Hz input, and the harness refuses it without
+        # camera_history = "CAM_FRONT" and sweeps/CAM_FRONT. Every other model runs.
+        keyframes:
+          files:
+            v1.0-trainval01_keyframes.tgz: {size: 4529954279, etag: 965b6f44bef7169320f2ed85b1b7f3ae-541}
+            v1.0-trainval02_keyframes.tgz: {size: 4272745444, etag: 8972b54a8da93c0c96b981fea362f74d-510}
+            v1.0-trainval03_keyframes.tgz: {size: 4249901872, etag: 87e3993f9e2bfec2c8a5ee90939517af-507}
+            v1.0-trainval04_keyframes.tgz: {size: 4562843980, etag: e17b78cf069d759526d5b468d4c2e35e-544}
+            v1.0-trainval05_keyframes.tgz: {size: 3957488692, etag: 000e9d84159b01b86ade6f4a1f4b9093-472}
+            v1.0-trainval06_keyframes.tgz: {size: 3856821591, etag: 85ac1d7e9c58a9ef6ca589e2ffb8b0d0-460}
+            v1.0-trainval07_keyframes.tgz: {size: 4177675764, etag: 9c3a8f5460768ce0cb14d7e3b6c84b92-499}
+            v1.0-trainval08_keyframes.tgz: {size: 4282633755, etag: 272ba6e37b421ea8c98e829fcd841003-511}
+            v1.0-trainval09_keyframes.tgz: {size: 4814177310, etag: fc9cf39a828dd65d4c108a688b1cf0ec-574}
+            v1.0-trainval10_keyframes.tgz: {size: 6198448085, etag: 95c7e9f3343227e69841054c0fc29553-739}
+        can_bus:  # can_bus/: the ego speed and acceleration the open-loop harness reads
+          files:
+            can_bus.zip: {size: 780974697, etag: 8a808d4b0cccf4d8141af63281809508-94}
+        # maps/expansion/*.json: neuroNCAP's drivable-area raster is built from it
+        # (docs/benchmarks/neuroncap.md), and nuScenes says to unpack it into maps/.
+        map_expansion:
+          files:
+            nuScenes-map-expansion-v1.3.zip: {size: 398535531, etag: c72b29ae15c81569e393c6d9dd54e841-48}
+          into: maps
 
   kitscenes:
     description: KITScenes multimodal driving dataset -- open-loop ADE/FDE
@@ -23,6 +66,27 @@ datasets:
       front a full archive. Note the full release is ~4.2 TB across 1006
       sequences, so most sites hold a subset -- `paddock doctor` reports which
       sequences the configured tiers can actually serve.
+    fetch:
+      # The data's licence; KITScenes' code is Apache-2.0. The repo is gated:
+      # downloads need the user's own Hugging Face login, after accepting its
+      # terms on the dataset's page.
+      license: CC BY-NC 4.0, non-commercial use only
+      terms: https://huggingface.co/datasets/KIT-MRT/KITScenes-Multimodal
+      huggingface: {repo: KIT-MRT/KITScenes-Multimodal, revision: d6e8ee0fccd016d4e7815a52be00d26c0f1785ce, gated: true}
+      # The benchmark's 223 keyframes come from these two splits: 117 + 23
+      # sequences, one tar each, unpacked to <dest>/<split>/<sequence>/, the
+      # layout the harness searches under each tier.
+      parts:
+        val:
+          files: ["data/val/*.tar"]
+          into: val
+        overlap_train_val:
+          files: ["data/overlap_train_val/*.tar"]
+          into: overlap_train_val
+      after: >
+        The data alone cannot be scored yet: the benchmark reads its list of 223
+        keyframes from [benchmarks.kitscenes] sample_list, and that list is not
+        public (issue #178; docs/benchmarks/kitscenes.md).
 
   navsim:
     description: NAVSIM on OpenScene (a 2 Hz redistribution of nuPlan, not nuScenes) -- open-loop scoring as v1.1 PDMS (navsim_v1) or v2 EPDMS (navsim)
@@ -38,6 +102,38 @@ datasets:
       synthetic_scenes/, a separate download; EPDMS on navtest is the same metric
       on different, easier data and is not comparable to those figures. Training
       needs navtrain / trainval_sensor, another separate and much larger download.
+    fetch:
+      license: CC BY-NC-SA 4.0, non-commercial use only (OpenScene, and nuPlan's maps)
+      terms: https://www.nuscenes.org/terms-of-use
+      huggingface: {repo: OpenDriveLab/OpenScene, revision: a76f840b65e972bc45e56c2adced897498e9a026}
+      parts:
+        # One .pkl per log. NAVSIM builds its scene list from these, not from the
+        # images, so without them the cameras below score nothing.
+        metadata:
+          files: [openscene-v1.1/openscene_metadata_test.tgz]
+          into: navsim_logs/test
+          strip: 3  # openscene-v1.1/meta_datas/test/<log>.pkl
+        # The test split's 147 logs; navtest scores 136 of them. The lidar shards
+        # beside these are as large again, and no model here reads lidar.
+        cameras:
+          files: [openscene-v1.1/openscene_sensor_test_camera/openscene_sensor_test_camera_*.tgz]
+          into: sensor_blobs/test
+          strip: 3  # openscene-v1.1/sensor_blobs/test/<log>/<CAM>/*.jpg
+        # NAVSIM's own download_maps.sh fetches this same zip and renames its
+        # nuplan-maps-v1.0/ to maps/.
+        maps:
+          base: https://motional-nuplan.s3-ap-northeast-1.amazonaws.com/public/nuplan-v1.1/
+          files:
+            nuplan-maps-v1.1.zip:
+              size: 970997691
+              sha256: 444860429f9a3bcf89a6459d683fa82eb9219aa259d8d9b8cdefdb37f0b56b05
+              etag: 0efaac6b7c603ae6f341021b35059bcc-116
+          into: maps
+          strip: 1
+      after: >
+        NAVSIM also scores in its own devkit, from a metric cache built from these
+        logs: see docs/benchmarks/navsim.md and docs/benchmarks/navsim_v1.md for the
+        devkit and `python -m tools.benchmarks.navsim.build_metric_cache`.
 
   nuplan:
     description: nuPlan v1.1 -- the original 10 Hz camera logs behind NAVSIM's OpenScene; open-loop ADE/FDE
@@ -54,12 +150,71 @@ datasets:
       2 Hz OpenScene redistribution under [datasets.navsim], these logs keep the
       native 10 Hz cameras and 100 Hz ego poses, so models that infer ego motion
       from frame-to-frame change can be scored here.
+    fetch:
+      license: CC BY-NC-SA 4.0, non-commercial use only
+      terms: https://www.nuscenes.org/terms-of-use
+      # nuPlan's public bucket, which NAVSIM's own download scripts also read.
+      # Each file is pinned by its S3 ETag, the md5 of its 8 MiB upload parts.
+      # The bucket serves one connection at a few MB/s, so the cameras take
+      # more than a day.
+      base: https://motional-nuplan.s3-ap-northeast-1.amazonaws.com/public/nuplan-v1.1/
+      parts:
+        logs:  # the mini split's .db logs, from data/cache/mini/ to nuplan-v1.1/splits/mini/
+          files:
+            nuplan-v1.1_mini.zip: {size: 8550100030, etag: 08abc074db9227e758cc41c6b1ee223c-1020}
+          into: nuplan-v1.1/splits
+          strip: 2
+        # All eight cameras for mini, flattened from nuplan-v1.1_mini_camera_N/<log>/
+        # to nuplan-v1.1/sensor_blobs/<log>/<CAM>/*.jpg. The lidar shards beside
+        # them are larger still, and no model here reads lidar.
+        cameras:
+          files:
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_0.zip: {size: 52219710368, etag: e211f3b90eabb608fce75f7d70df0b19-6226}
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_1.zip: {size: 54207817441, etag: 1f4c056aacafc579ba8f4924b9b0058f-6463}
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_2.zip: {size: 49961035181, etag: 4392ffb4a188f82583f55dba65007bfc-5956}
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_3.zip: {size: 49943866247, etag: be4ab17df439284232bcf4027eeab8a7-5954}
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_4.zip: {size: 49154151608, etag: 51e649247b7efec12b65d26f73eeb355-5860}
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_5.zip: {size: 50786913086, etag: 9977a296b339fbbbc305cf5e7556ce98-6055}
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_6.zip: {size: 49896639214, etag: 8af9c3f259a165e4b6a64870136a14c6-5949}
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_7.zip: {size: 49334635327, etag: cd08faa06120a194d123da8cebccd242-5882}
+            sensor_blobs/mini_set/nuplan-v1.1_mini_camera_8.zip: {size: 45163195054, etag: bc0bca67cc565894a0bff99d5cc04640-5384}
+          into: nuplan-v1.1/sensor_blobs
+          strip: 1
+        maps:  # the same zip as NAVSIM's maps
+          files:
+            nuplan-maps-v1.1.zip:
+              size: 970997691
+              sha256: 444860429f9a3bcf89a6459d683fa82eb9219aa259d8d9b8cdefdb37f0b56b05
+              etag: 0efaac6b7c603ae6f341021b35059bcc-116
+          into: maps
+          strip: 1
 
   neurad_checkpoints:
     description: per-scene NeuRAD renderer checkpoints, required by neuroNCAP
     notes: >
       One checkpoint per nuScenes sequence. A scenario whose scene has no
       checkpoint cannot be rendered and will fail at run time, not at setup.
+    fetch:
+      license: >-
+        neuroNCAP's own release; the renderers are trained on nuScenes, so nuScenes'
+        terms apply: CC BY-NC-SA 4.0, non-commercial use only
+      terms: https://www.nuscenes.org/terms-of-use
+      parts:
+        # The link neuroNCAP's own scripts/download/download_neurad_weights.sh
+        # fetches, at the neuro-ncap commit repos.yaml pins (ecdcf28). Dropbox's
+        # ETag is not a checksum, so the file is pinned by its sha256, taken from
+        # one download on 2026-11-10. It unpacks to <dest>/<scene>/{config.yml,
+        # dataparser_transforms.json, step-000150000.ckpt} for neuroNCAP's 14 scenes.
+        renderers:
+          base: https://www.dropbox.com/scl/fi/s5wu0jwhhmtafmnl8icao/
+          files:
+            ncap-weights.tar.gz?rlkey=xrf7b99q4z1a09g2mbfl921kk&st=dil5h0m6&dl=1:
+              size: 13489194240
+              sha256: c049b6371b442cf0c6fd17ae7c40d695545ca3496bbef09f76b64a51a003a0f1
+      after: >
+        neuroNCAP reads its renderers from [benchmarks.neuroncap] checkpoints, not from
+        this dataset's path, so set checkpoints = "{dest}" there as well
+        (docs/benchmarks/neuroncap.md).
 
   hugsim:
     description: HUGSIM release -- Gaussian-splatting scenes, vehicle assets and 436 closed-loop scenarios over KITTI-360, nuScenes, PandaSet and Waymo
@@ -76,9 +231,22 @@ datasets:
       that; paddock's launcher repairs a copy per run and never edits the data.
       The 16 nuScenes scenarios with load_HD_map: true also need the release's
       nusc_map_cache, which HUGSIM reads from ~/.unified_data_cache only.
-
-  openlane_sample:
-    description: short OpenLane clips (video + speed trace) used to smoke-test VisionPilot
+    fetch:
+      license: MIT
+      huggingface: {repo: XDimLab/HUGSIM, revision: 38433e301bef99dca09f7bbd10f3145449fb66a2}
+      parts:
+        scenarios:
+          files: [scenarios.zip]
+          into: scenarios  # the zip holds kitti360/ nuscenes/ pandaset/ waymo/
+        scenes:
+          files: ["scenes/*/*.zip"]  # each unpacks beside itself: scenes/<dataset>/<scene>/
+        vehicles:
+          files: ["3DRealCar/*/*"]  # 3DRealCar/<car_id>/{gs.pth,wlh.json}
+        map_cache:
+          files: [nusc_map_cache.zip]
+      after: >
+        HUGSIM reads the nuScenes map cache only from ~/.unified_data_cache, so link
+        it there: ln -s {dest}/nusc_map_cache ~/.unified_data_cache
 
   comma2k19:
     description: comma.ai comma2k19 -- 33 hours of 20 Hz highway driving -- open-loop ADE/FDE
@@ -112,3 +280,47 @@ datasets:
       There is no published model-evaluation protocol either -- comma2k19's own benchmark
       scores GNSS positioning, not driving models -- so this benchmark defines its metrics;
       see docs/benchmarks/comma2k19.md.
+    fetch:
+      license: MIT
+      huggingface: {repo: commaai/comma2k19, revision: 4bff77c7254c654c28d4c2726186b4e825adccee}
+      parts:
+        # All ten chunks are the benchmark's 10,165 samples; --match Chunk_1.zip
+        # takes one (8.7 GB) for a first score. Each unpacks to <dest>/Chunk_N/,
+        # so <dest> is what [datasets.comma2k19] path points at.
+        raw_data:
+          files: ["raw_data/Chunk_*.zip"]
+          into: .
+      after: >
+        comma2k19 also needs comma's toolkit, at its pinned commit: paddock setup --repo comma2k19
+
+  carla:
+    description: CARLA 0.9.15, the simulator Bench2Drive drives in, with the additional maps that hold its Towns 12, 13 and 15
+    requires: [CarlaUE4, PythonAPI]
+    notes: >
+      Bench2Drive's 220 routes are all in Towns 12, 13 and 15, which ship in
+      AdditionalMaps_0.9.15.tar.gz, not in the simulator archive. Without them
+      every route fails when CARLA loads its town.
+    fetch:
+      license: >-
+        MIT for CARLA's code and CC BY for its assets, the maps among them; the
+        Unreal Engine runtime inside follows Epic's own licence
+      # CARLA's own release host, at the addresses Bench2Drive's README gives at
+      # the pinned 7ec25d1. Pinned by size and S3 ETag (the md5 of the upload
+      # parts: 100 MB for the simulator, 8 MiB for the maps).
+      base: https://carla-releases.s3.us-east-005.backblazeb2.com/Linux/
+      parts:
+        simulator:  # CarlaUE4.sh, CarlaUE4/, PythonAPI/ (with the 0.9.15 egg the harness imports)
+          files:
+            CARLA_0.9.15.tar.gz: {size: 8386636048, etag: e7e759a251bbd7c62bcd38b789ad8499-84}
+        # CARLA's ImportAssets.sh only untars Import/*.tar.gz in the CARLA folder,
+        # so unpacking the maps there is the same install. 11,447 files are in
+        # both archives and 3,221 of them differ; a CARLA installed with
+        # ImportAssets.sh holds the maps' copy of all 3,221, so the maps go on second.
+        maps:
+          unpack_after: simulator
+          files:
+            AdditionalMaps_0.9.15.tar.gz: {size: 7375946087, etag: 25fb0bda594ad2fef5431a056c9ee990-880}
+      after: >
+        Bench2Drive reads CARLA from [benchmarks.bench2drive] carla_root, not from this
+        path, so set carla_root = "{dest}" there; paddock setup --bench bench2drive
+        builds the Python it drives CARLA with (docs/benchmarks/bench2drive.md).

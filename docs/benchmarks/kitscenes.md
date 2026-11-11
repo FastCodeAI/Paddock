@@ -45,6 +45,10 @@ predictions sitting beside them; `paddock ingest` reads the same file for the
 predictions, which is how Drive-JEPA has a row on this benchmark without a
 paddock run.
 
+The list is not in this repository yet, so a site that downloads KITScenes
+with `paddock data fetch kitscenes` still cannot score a model on it; issue
+[#178](https://github.com/FastCodeAI/Paddock/issues/178) tracks publishing it.
+
 ### The seven rows, and where each came from
 
 | model | run | n | ADE | source |

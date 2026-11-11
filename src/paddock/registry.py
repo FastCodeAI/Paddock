@@ -49,6 +49,9 @@ class DatasetSpec:
     splits: tuple[str, ...] = ()
     #: Free-form notes surfaced by `paddock doctor` when the dataset is partial.
     notes: str = ""
+    #: Where to download it from, for `paddock data fetch`; parsed and checked
+    #: by `paddock.fetch.recipe`. Empty for a dataset paddock cannot fetch.
+    fetch: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -258,6 +261,8 @@ class BenchmarkSpec:
     pdm: tuple[tuple[str, str], ...] = ()
     description: str = ""
     directory: Path = REPO_ROOT
+    #: The repos.yaml entry the harness drives, for `paddock setup --bench`.
+    repo: str = ""
 
 
 def _load_yaml(path: Path) -> dict:
@@ -290,6 +295,7 @@ def load_datasets(root: Path = REPO_ROOT) -> dict[str, DatasetSpec]:
             requires=tuple(body.get("requires", ())),
             splits=tuple(body.get("splits", ())),
             notes=body.get("notes", ""),
+            fetch=body.get("fetch") or {},
         )
         for name, body in (raw.get("datasets") or {}).items()
     }
@@ -433,6 +439,7 @@ def load_benchmarks(directory: Path = BENCHMARKS_DIR) -> dict[str, BenchmarkSpec
             pdm=_pdm(body.get("pdm"), metrics, path),
             description=body.get("description", ""),
             directory=path.parent,
+            repo=body.get("repo", ""),
         )
     return benchmarks
 

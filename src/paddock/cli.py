@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -205,6 +206,9 @@ def setup(
     model: str = typer.Option(
         None, "--model", "-m", help="This model's repo (if it has one), then its setup.sh."
     ),
+    bench: str = typer.Option(
+        None, "--bench", "-b", help="This benchmark's repo, then its setup.sh (bench2drive has one)."
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Say what would be done; change nothing."),
 ) -> None:
     """Clone or adopt the vendor repos at their pinned shas, and apply their patches.
@@ -216,15 +220,69 @@ def setup(
 
     With --model, the model's own setup.sh then builds its environment, with
     PADDOCK_REPO, PADDOCK_VENV and PADDOCK_WEIGHTS set from paddock.toml.
+    --bench does the same for a benchmark whose harness runs its own
+    interpreter: bench2drive's builds the Python that drives CARLA, at
+    [benchmarks.bench2drive] python, or in the clone's .venv.
     """
     from paddock import vendor
 
     try:
         cfg = SiteConfig.load()
-        code = vendor.setup(cfg, repo=repo, model=model, dry_run=dry_run, echo=typer.echo)
+        code = vendor.setup(cfg, repo=repo, model=model, bench=bench, dry_run=dry_run, echo=typer.echo)
     except ConfigError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
+    raise typer.Exit(code=code)
+
+
+data_app = typer.Typer(no_args_is_help=True, help="Download datasets from their official sources.")
+app.add_typer(data_app, name="data")
+
+
+@data_app.command("fetch")
+def data_fetch(
+    name: str = typer.Argument(..., help="A datasets.yaml entry with a fetch recipe, e.g. comma2k19."),
+    only: Annotated[
+        list[str] | None, typer.Option("--only", help="Only this part of the dataset; repeatable.")
+    ] = None,
+    match: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--match", help="Only files whose name or path matches this glob, e.g. Chunk_1.zip; repeatable."
+        ),
+    ] = None,
+    dest: Annotated[
+        Path | None, typer.Option("--dest", help="Where it goes. Default: its path in paddock.toml.")
+    ] = None,
+    dry_run: bool = typer.Option(False, "--dry-run", help="List the files and sizes; download nothing."),
+    accept_terms: bool = typer.Option(
+        False, "--accept-terms", help="You have read the dataset's terms of use and agree to them."
+    ),
+) -> None:
+    """Download a dataset's evaluation files from where its owners publish them.
+
+    Every file is checked against the size and sha256 its pinned source gives,
+    then unpacked into the layout paddock reads. Interrupted runs continue where
+    they stopped. When paddock.toml has no entry for the dataset yet, one is
+    added pointing at --dest.
+    """
+    from paddock import fetch
+
+    try:
+        cfg = SiteConfig.load()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    code = fetch.fetch(
+        cfg,
+        name,
+        only=only or None,
+        match=match or None,
+        dest=dest,
+        dry_run=dry_run,
+        accept_terms=accept_terms,
+        echo=typer.echo,
+    )
     raise typer.Exit(code=code)
 
 
