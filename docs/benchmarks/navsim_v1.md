@@ -292,7 +292,16 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | METEOR ◊ | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | AutoE2E v1.0, 10 Hz nuPlan history ‡ | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
+| UniAD ⊟ | 0.532 | 0.826 | 0.729 | 0.525 | 0.692 | 0.963 | 0.914 |
+| VAD ⊟ | 0.473 | 0.813 | 0.722 | 0.451 | 0.682 | 0.958 | 0.843 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
+
+⊟ UniAD's and VAD's rows replay the plans of their NAVSIM v2 runs
+(`20261110T154404-e02e88` from `navsim/uniad/20261109T082522-c24426`,
+`20261110T160343-25e0e5` from `navsim/vad/20261110T095855-0ebf09`), no model process
+running. Those plans are 3 s held to 4 s by paddock (`UNIAD_HORIZON_S` /
+`VAD_HORIZON_S`), and both replays inherit their source's `valid: false`, so neither
+is ranked; see ⊟ in [navsim.md](navsim.md#notes-on-the-matrix-cells).
 
 **Qwen-Drive reproduces its own published row here, term by term.** Its
 technical report gives the `planner-sft`-without-reasoning navtest row — the

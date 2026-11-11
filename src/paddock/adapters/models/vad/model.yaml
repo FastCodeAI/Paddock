@@ -59,12 +59,14 @@ capabilities:
     - dataset: nuscenes
       split: train
     - dataset: imagenet
-# VAD_HORIZON_S changes what a NAVSIM score means. tests/test_report.py accepts a score note only once a
-# stored run sets its key, so these two lines go in with the first stored NAVSIM run; until then such a
-# run is stored valid: false:
-#   score_notes:
-#     VAD_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
-#   ranked_with_note: [VAD_HORIZON_S]
+# VAD_HORIZON_S changes what a NAVSIM score means. The leaderboard prints the line under any ranked run that set it
+# to something other than the declared default (unset). Of those settings, this is one a site may set and
+# stay ranked: NAVSIM cannot score a 3 s plan. The first stored NAVSIM runs (navtest, navsim_v1's replays
+# of them, navhard; 9-10 Nov 2026) were made before these lines went in, so they are stored valid: false;
+# a run made from here on is stored valid: true with this note.
+score_notes:
+  VAD_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+ranked_with_note: [VAD_HORIZON_S]
 
 # Where it runs (docs/models/vad.md, "Benchmarks"): every benchmark that sends the six surround cameras.
 # navsim and navsim_v1 need VAD_HORIZON_S = "4.0" (above). neuroncap asks every 0.1 s whatever

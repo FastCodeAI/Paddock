@@ -49,7 +49,7 @@ The list is not in this repository yet, so a site that downloads KITScenes
 with `paddock data fetch kitscenes` still cannot score a model on it; issue
 [#178](https://github.com/FastCodeAI/Paddock/issues/178) tracks publishing it.
 
-### The seven rows, and where each came from
+### The rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
@@ -60,8 +60,10 @@ with `paddock data fetch kitscenes` still cannot score a model on it; issue
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
 | autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
+| uniad | `20261109T082536-b881a6` | 223 | 2.073 | a paddock run; the six ring cameras, UniAD 1.0 base nuScenes checkpoint |
+| vad | `20261109T082536-a393ec` | 223 | 2.374 | a paddock run; the six ring cameras, VAD-Base nuScenes checkpoint |
 
-All seven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All nine carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
 
 openpilot's row is its configured run. Its other ranked runs on the same 223
@@ -553,7 +555,8 @@ dataset. It, Alpamayo 1.5 and OpenPilot's configured run beat the
 constant-velocity baseline; OpenPilot's configuration was chosen by inspecting
 one scene of this split (see ⊜). AutoE2E is
 adapted, and is the one row given the scene's map and an oracle route (see
-⊞): 0.848 on the val samples, 0.842 on the overlap ones.
+⊞): 0.848 on the val samples, 0.842 on the overlap ones. UniAD and VAD are their
+nuScenes checkpoints, zero-shot here, given all six ring cameras.
 
 | Model | ADE@3s ↓ (m) | FDE@3s ↓ (m) |
 |---|---:|---:|
@@ -564,4 +567,6 @@ adapted, and is the one row given the scene's map and an oracle route (see
 | METEOR | 1.879 ◇ | 4.034 ◇ |
 | Qwen-Drive 1.0 | **0.806** | **1.777** |
 | AutoE2E | 0.847 ⊞ | 1.903 ⊞ |
+| UniAD | 2.073 | 3.845 |
+| VAD | 2.374 | 4.562 |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |

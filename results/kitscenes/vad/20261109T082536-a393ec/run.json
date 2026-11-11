@@ -1,0 +1,121 @@
+{
+  "run_id": "20261109T082536-a393ec",
+  "site": "uvother-fastcode-shakaal",
+  "benchmark": "kitscenes",
+  "model": "vad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-09T08:25:36+00:00",
+  "duration_s": 8558.4,
+  "repo_sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+  "dataset": {
+    "name": "kitscenes",
+    "n_samples": 223,
+    "sequences_sha256": "80665529bea7f500",
+    "n_expected": 223
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_RIGHT",
+      "CAM_FRONT_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "ground_offset_m": 2.2,
+    "cameras_supplied": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "declared_env": {
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1",
+      "VAD_CHECKPOINT": "{weights}VAD_base.pth",
+      "VAD_CONFIG": "{repo}VAD_base_stage_2.py"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "VAD",
+      "sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+      "pinned_sha": "1688c4b",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "ea97b04fbf5ab26982c53d8fdf8a59562cee3616",
+      "dirty": false
+    },
+    "policy": {
+      "episode": 224,
+      "source_size": {
+        "CAM_FRONT": [
+          3504,
+          2272
+        ],
+        "CAM_FRONT_RIGHT": [
+          3504,
+          2272
+        ],
+        "CAM_FRONT_LEFT": [
+          3504,
+          2272
+        ],
+        "CAM_BACK": [
+          3504,
+          2272
+        ],
+        "CAM_BACK_LEFT": [
+          3504,
+          2272
+        ],
+        "CAM_BACK_RIGHT": [
+          3504,
+          2272
+        ]
+      },
+      "quaternion_source": "ego2world",
+      "command": 2,
+      "gravity_added": true,
+      "lidar_source": "nominal",
+      "plan_lidar": [
+        [
+          -0.044,
+          3.709
+        ],
+        [
+          -0.169,
+          7.495
+        ],
+        [
+          -0.397,
+          11.225
+        ],
+        [
+          -0.684,
+          14.892
+        ],
+        [
+          -0.978,
+          18.531
+        ],
+        [
+          -1.311,
+          22.005
+        ]
+      ],
+      "steps": 9,
+      "frames_fed": 9
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

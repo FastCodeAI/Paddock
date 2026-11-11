@@ -22,7 +22,7 @@ and every score it produces traces back to a run you can inspect.
 </p>
 
 **A** adapted to the benchmark · **P** a pipeline around the model is graded ·
-**S** stale.
+**S** stale · **V** stored `valid: false`, so not ranked.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
 names for it. The matrix holds released checkpoints only.
@@ -58,12 +58,18 @@ it differs.
   run scores 1.599.
 - **P — grades a pipeline built around the model.** VisionPilot has no
   trajectory output, so paddock builds one from its lane and speed outputs.
-  METEOR plans 3 s and NAVSIM scores 4 s, so the last second is extrapolated.
+  METEOR, UniAD and VAD plan 3 s and NAVSIM scores 4 s, so the last second is
+  extrapolated.
   OpenPilot on Bench2Drive drives through openpilot's own longitudinal planner
   and its driver-resume nudge, which stands in for a driver pressing resume
   once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** Every VisionPilot figure but
   comma2k19's and KITScenes' predates the `CURV_SCALE` fix.
+- **V — stored `valid: false`, so not ranked.** UniAD's and VAD's NAVSIM cells. Their
+  3 s plan is held to NAVSIM's 4 s by a site setting (`UNIAD_HORIZON_S`, `VAD_HORIZON_S`),
+  which their `model.yaml` now lists as ranked with a note, as METEOR's is. These runs
+  were made before that line went in, so the runner stored them `valid: false`, and a
+  stored flag is never edited by hand. A run made from now on ranks, with the note.
 - **What never leaves a cell unranked.** How many cameras a model is given,
   whether it drives through paddock's bridge or its own simulator driver, and
   whether its Bench2Drive routes end early as failed drives are never reasons to
@@ -124,10 +130,11 @@ Before comparing numbers:
   Bench2Drive, and scores 0 on neuroNCAP by construction: every scenario is
   staged so that holding speed collides.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
-  and were imported into `results/`; Alpamayo's, AutoE2E's and Qwen-Drive's are the
-  exceptions, run through paddock's bridge. The 30-scene rows are ranked together; models
+  and were imported into `results/`; Alpamayo's, AutoE2E's, Qwen-Drive's, UniAD's and
+  VAD's are the exceptions, run through paddock's bridge (UniAD's and VAD's six cameras
+  re-rendered as nuScenes' rig). The 30-scene rows are ranked together; models
   are given different numbers of cameras (OpenPilot, VisionPilot, Drive-JEPA
-  and the floor 1, Qwen-Drive 3, Alpamayo 4, METEOR and AutoE2E 6).
+  and the floor 1, Qwen-Drive 3, Alpamayo 4, METEOR, AutoE2E, UniAD and VAD 6).
 
 </details>
 

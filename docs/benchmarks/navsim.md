@@ -803,6 +803,15 @@ split OpenPilot scores 0.747 at 10 Hz, its plans tracking ego speed (median
 parked), and Alpamayo 0.691 against 0.608 at 2 Hz, every sub-metric up but
 traffic light. See "10 Hz from nuPlan" in `docs/benchmarks/navsim.md`.
 
+⊟ **UniAD's and VAD's figures are stored `valid: false`, so they are not ranked**
+(`20261109T082522-c24426`, `20261110T095855-0ebf09`). Both nuScenes checkpoints plan
+3 s; NAVSIM scores 4 s and refuses a shorter plan, so the site set `UNIAD_HORIZON_S` /
+`VAD_HORIZON_S` to 4.0 and paddock continued each plan by holding its last 0.5 s step,
+a second the model never planned. Their `model.yaml` now lists that setting under
+`ranked_with_note`, as METEOR's does, but these runs were made before it did, so the
+runner stored them `valid: false`; a run made from now on is ranked, with the note.
+Both are given the six surround cameras.
+
 ☉ AutoE2E v1.0, the `kitscenes-epoch-5` checkpoint: the release's nuPlan model
 fine-tuned on KITScenes. NAVSIM is fed from nuPlan at 10 Hz with the rear views
 taken from OpenScene's keyframes (`keyframe_cameras`), which are exactly the
@@ -833,4 +842,6 @@ was first run on, for reference only.
 | METEOR ◊ | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 | 0.795 | 0.973 | 0.451 | — |
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 | 0.975 | 0.982 | **0.867** | — |
 | AutoE2E, 10 Hz nuPlan history ☉ | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 | 0.830 | 0.984 | 0.812 | — |
+| UniAD ⊟ | 0.478 | 0.826 | 0.729 | 0.919 | 0.984 | 0.517 | 0.792 | 0.842 | 0.877 | 0.389 | — |
+| VAD ⊟ | 0.428 | 0.814 | 0.722 | 0.848 | 0.981 | 0.443 | 0.787 | 0.833 | 0.895 | 0.456 | — |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |

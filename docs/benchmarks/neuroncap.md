@@ -734,6 +734,11 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 ⊙ Re-measured with the camera-frame fix of 13 Oct 2026: 4.13, against 3.57 camera-blind.
 See the neuroNCAP table.
 
+⊡ UniAD (`20261109T092826-5919f1`) and VAD (`20261110T033544-7f435b`): the
+nuScenes checkpoints, given the six surround cameras. neuroNCAP asks every 0.1 s;
+the adapter steps the model every 0.5 s, the 2 Hz it was trained at, and answers
+the calls in between from the plan it holds.
+
 § Not run — zero by construction. Every neuroNCAP scenario is staged so that an
 ego holding its current velocity collides at full speed. A run that avoids the
 collision scores a flat **5**; a run that collides scores
@@ -758,7 +763,9 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
 | AutoE2E | 3.46 ±2.16 | 3.71 ±1.82 | 2.01 ±2.30 | **3.16** | 42.0% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
+| VAD ⊡ | 2.83 ±2.23 | 1.15 ±1.75 | 3.23 ±2.22 | **2.51** | 57.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
+| UniAD ⊡ | 3.23 ±2.29 | 0.77 ±1.52 | 1.62 ±2.34 | **2.21** | 59.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
 | Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
 

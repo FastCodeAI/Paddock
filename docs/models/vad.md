@@ -68,8 +68,10 @@ own normalisation, in eval mode, with the CAN bus on.
 ## Benchmarks
 
 As [UniAD's](uniad.md#benchmarks): nuscenes, hugsim, bench2drive, kitscenes, nuplan, neuroncap and alpasim run
-(on neuroncap the plan is held between 0.5 s steps; on alpasim, UniAD's profile, flag for flag, not yet run);
-navsim and navsim_v1 need `VAD_HORIZON_S = "4.0"`; comma2k19 (one camera) does not.
+(on neuroncap the plan is held between 0.5 s steps; on alpasim, UniAD's profile, flag for flag);
+navsim and navsim_v1 need `VAD_HORIZON_S = "4.0"`, which model.yaml lists in `score_notes` and
+`ranked_with_note` as UniAD's horizon is (the first stored NAVSIM runs predate those lines and stay stored
+`valid: false`); comma2k19 (one camera) does not.
 
 ## Verification
 

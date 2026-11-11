@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-96 runs across 9 benchmarks.
-57 run(s) excluded as invalid — shown at the end, never averaged in.
+102 runs across 9 benchmarks.
+61 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -16,6 +16,8 @@
 | constant_velocity | cv_023_20hz_30scenes | 30 | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
 | meteor | meteor_011_published_30scenes | 30 | 0.423 | 0.430 | 0.333 | 0.033 | 0.167 | 0.469 | 1.694 |
 | drivejepa | drivejepa_014_20hz_30scenes | 30 | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
+| uniad | 20261110T120651-8ea842 | 30 | 0.284 | 0.415 | 0.267 | 0.100 | 0.433 | 0.337 | 2.351 |
+| vad | 20261110T153825-72448c | 30 | 0.252 | 0.305 | 0.467 | 0.100 | 0.200 | 0.298 | 1.281 |
 | autoe2e | 20261022T045847-86b955 | 30 | 0.169 | 0.287 | 0.333 | 0.300 | 0.233 | 0.121 | 2.855 |
 
 ### n = 10, scene set f4241f1e
@@ -109,7 +111,9 @@
 | openpilot | 20260901T175755-cc27fb | 223 | 1.599 | 0.836 | 1.808 | 2.894 | - | - | - |
 | openpilot [1] | 20260930T014333-d329a6 | 223 | 1.649 | 0.826 | 1.848 | 3.070 | - | - | - |
 | meteor | 20260914T215457-ab0586 | 223 | 1.879 | 0.695 | 2.040 | 4.034 | - | - | - |
+| uniad | 20261109T082536-b881a6 | 223 | 2.073 | 1.122 | 2.253 | 3.845 | - | - | - |
 | drivejepa | kitscenes_e2e_final | 223 | 2.364 | 1.306 | 2.668 | 4.199 | 0.187 | - | - |
+| vad | 20261109T082536-a393ec | 223 | 2.374 | 1.158 | 2.614 | 4.562 | - | - | - |
 | meteor | 20260914T185351-5e5223 | 223 | 4.784 | 2.334 | 5.542 | 9.011 | - | - | - |
 
 - [1] openpilot: desire input mode set to turn; the default, off, sends none
@@ -153,22 +157,24 @@
 
 ### n = 200, scene set ef927e96
 
-| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ |
-|---|---|---:|---:|---:|---:|---:|
-| drivejepa | 20261012T224707-f11ac0 | 200 | 4.130 | 2.199 | 8.604 | 0.245 |
-| alpamayo15 | 20260906T034647-bc409f | 200 | 3.727 | 2.346 | 8.604 | 0.325 |
-| openpilot | 20260905T055713-11ac59 | 200 | 3.604 | 2.698 | 8.604 | 0.380 |
-| drivejepa | 20260905T220225-f11ac0 | 200 | 3.568 | 2.229 | 8.604 | 0.455 |
-| autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 |
-| meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 |
-| qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 |
-| visionpilot | 20260905T121810-155d36 | 200 | 1.576 | 6.218 | 8.604 | 0.855 |
+| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ | pdm_nc ↑ | pdm_dac ↑ | pdm_ttc ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| drivejepa | 20261012T224707-f11ac0 | 200 | 4.130 | 2.199 | 8.604 | 0.245 | - | - | - |
+| alpamayo15 | 20260906T034647-bc409f | 200 | 3.727 | 2.346 | 8.604 | 0.325 | - | - | - |
+| openpilot | 20260905T055713-11ac59 | 200 | 3.604 | 2.698 | 8.604 | 0.380 | - | - | - |
+| drivejepa | 20260905T220225-f11ac0 | 200 | 3.568 | 2.229 | 8.604 | 0.455 | - | - | - |
+| autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 | - | - | - |
+| meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 | - | - | - |
+| vad | 20261110T033544-7f435b | 200 | 2.513 | 5.694 | 8.604 | 0.570 | 0.535 | 0.947 | 0.471 |
+| qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 | - | - | - |
+| uniad | 20261109T092826-5919f1 | 200 | 2.213 | 6.548 | 8.604 | 0.590 | 0.483 | 0.908 | 0.392 |
+| visionpilot | 20260905T121810-155d36 | 200 | 1.576 | 6.218 | 8.604 | 0.855 | - | - | - |
 
 ### n = 15, scene set 5312d788
 
-| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ |
-|---|---|---:|---:|---:|---:|---:|
-| alpamayo | runs5 | 15 | 2.458 | 4.731 | 11.226 | 0.667 |
+| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ | pdm_nc ↑ | pdm_dac ↑ | pdm_ttc ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo | runs5 | 15 | 2.458 | 4.731 | 11.226 | 0.667 | - | - | - |
 
 ## nuscenes
 
@@ -198,6 +204,10 @@
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
+- **navsim_v1/vad/20261110T160343-25e0e5** — replayed from navsim/vad/20261110T095855-0ebf09, which is stored valid=false: site env override may change what was measured: VAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277, stored valid=false); the same plans, this benchmark's scorer
+- **navsim_v1/uniad/20261110T154404-e02e88** — replayed from navsim/uniad/20261109T082522-c24426, which is stored valid=false: site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/uniad/20261109T082522-c24426 (that run: epdms 0.4781, stored valid=false); the same plans, this benchmark's scorer
+- **navsim/vad/20261110T095855-0ebf09** — site env override may change what was measured: VAD_HORIZON_S (values in config.model_env)
+- **navsim/uniad/20261109T082522-c24426** — site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env)
 - **comma2k19/drivejepa_free/20261106T053407-587a3e** — Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026.
 - **comma2k19/meteor/20261030T001935-0b8d0b** — Superseded by 20261106T064120-226c00: Re-run on 6 Nov 2026 with the clone at its pinned dc193a81 and scored against the ground truth in the car's frame; this row came from a clone at 8567eb0 and was scored against a ground truth in the camera's frame. The plans are the same in both runs.
 - **navsim_v1/autoe2e/20261027T185517-5c7949** — no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer Superseded by 20261104T210206-3022fb: this replay recorded 2 Hz OpenScene history and 1.5 s, but its plans were made at 10 Hz from nuPlan with 6.5 s; re-made with the right record, every score identical

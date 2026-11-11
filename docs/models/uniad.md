@@ -101,9 +101,11 @@ last plan held fixed in the world and re-sampled at its time and in its ego fram
 HUGSIM and Bench2Drive clients hold a plan between replans; the model steps again once 0.5 s have passed.
 
 **Horizon.** The plan is 3 s. `UNIAD_HORIZON_S` (unset by default) continues it by holding the last 0.5 s step,
-for NAVSIM, which scores 4 s. It is an extrapolation the model never made, so a run that sets it is stored
-`valid: false` until model.yaml declares the score note its comment spells out, which goes in with the first
-stored NAVSIM run.
+for NAVSIM, which scores 4 s. It is an extrapolation the model never made, so model.yaml lists it in
+`score_notes` and `ranked_with_note`, as METEOR's horizon is: a run that sets it is ranked, with the note
+"plan continued to 4.0 s by paddock; the model itself plans 3 s". Those two lines went in with the first
+stored NAVSIM runs (navtest `20261109T082522-c24426` and its navsim_v1 replay), which were made before
+them and so stay stored `valid: false`.
 
 ## The plan
 
@@ -146,9 +148,9 @@ The model needs all six surround cameras (one learned embedding per camera slot)
 | [kitscenes](../benchmarks/kitscenes.md) | yes | the ring maps onto the six names; the 10 Hz history is fed every 0.5 s; canbus carries speed only |
 | [nuplan](../benchmarks/nuplan.md) | yes | six of its eight cameras (F0, L0, R0, B0, L2, R2; the side views L1 and R1 have no nuScenes slot); command always STRAIGHT; 10 Hz history fed every 0.5 s |
 | [neuroncap](../benchmarks/neuroncap.md) | yes | NeuRAD renders the six cameras and sends the real LIDAR_TOP. It asks every 0.1 s whatever `planning_hz` says, so the model steps every 0.5 s and the plan is held in between (below) |
-| [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) | with `UNIAD_HORIZON_S = "4.0"` | NAVSIM scores 4 s and refuses a 3 s plan; the setting continues the last 0.5 s step (METEOR's rule), set in a `[models.uniad.benchmarks.navsim.env]` pairing. Its cameras map as nuPlan's; history is four frames at 2 Hz. Until model.yaml declares the setting's score note (its comment says how), such a run is stored `valid: false` |
+| [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) | with `UNIAD_HORIZON_S = "4.0"` | NAVSIM scores 4 s and refuses a 3 s plan; the setting continues the last 0.5 s step (METEOR's rule), set in a `[models.uniad.benchmarks.navsim.env]` pairing. Its cameras map as nuPlan's; history is four frames at 2 Hz. A run that sets it is ranked with a note (above); the first stored runs predate that and are stored `valid: false` |
 | comma2k19 | no | one camera; the other five slots would have to be invented |
-| [alpasim](../benchmarks/alpasim.md) | yes (not yet run) | its six cameras re-rendered as nuScenes' rig: 1600×900 undistorted pinholes at scene-0103's calibrated intrinsics and poses, CAM_BACK on the telephoto's id (`paddock_bridge_nuscenes_rig.yaml`), rendered every 0.5 s on the replan grid. Asked every 0.5 s, the 3.0 s warm-up sent to `/observe`; canbus carries ego-frame speed and the simulator's acceleration. The command comes from AlpaSim's route by the datasets' own rule (`route_command`; table above) |
+| [alpasim](../benchmarks/alpasim.md) | yes | its six cameras re-rendered as nuScenes' rig: 1600×900 undistorted pinholes at scene-0103's calibrated intrinsics and poses, CAM_BACK on the telephoto's id (`paddock_bridge_nuscenes_rig.yaml`), rendered every 0.5 s on the replan grid. Asked every 0.5 s, the 3.0 s warm-up sent to `/observe`; canbus carries ego-frame speed and the simulator's acceleration. The command comes from AlpaSim's route by the datasets' own rule (`route_command`; table above) |
 
 ## Verification
 
