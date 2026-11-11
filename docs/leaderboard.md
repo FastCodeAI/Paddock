@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
 96 runs across 9 benchmarks.
-55 run(s) excluded as invalid — shown at the end, never averaged in.
+57 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -103,7 +103,7 @@
 | alpamayo15 | full-nav | 223 | 1.002 | 0.362 | 1.088 | 2.158 | 3.486 | 2.364 | 0.543 |
 | alpamayo15 | full-letterbox | 223 | 1.176 | 0.418 | 1.284 | 2.535 | 3.384 | 2.364 | 0.619 |
 | openpilot [1] [2] [3] [4] | 20261008T004723-a369d1 | 223 | 1.248 | 0.618 | 1.398 | 2.355 | - | - | - |
-| visionpilot | 20260909T202724-153b04 | 223 | 1.534 | 0.700 | 1.567 | 3.089 | - | - | - |
+| visionpilot | 20261105T191932-c71101 | 223 | 1.475 | 0.679 | 1.497 | 2.968 | - | - | - |
 | openpilot | 20260930T154018-242869 | 223 | 1.595 | 0.828 | 1.801 | 2.904 | - | - | - |
 | openpilot | full223 | 223 | 1.599 | 0.836 | 1.808 | 2.894 | 18.731 | 2.364 | - |
 | openpilot | 20260901T175755-cc27fb | 223 | 1.599 | 0.836 | 1.808 | 2.894 | - | - | - |
@@ -179,8 +179,8 @@
 | constant_velocity | 20260907T093007-9697fe | 5119 | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
 | autoe2e | 20261023T004711-eedbe2 | 5119 | 1.565 | 0.553 | 0.398 | 0.008 | 0.008 | 1.444 | 0.798 |
-| drivejepa | 20260905T093335-4513d4 | 5119 | 1.882 | 0.540 | 0.376 | 0.006 | 0.008 | 1.587 | 0.824 |
 | meteor | 20260914T202122-4320bb | 5119 | 1.885 | 0.616 | 0.447 | 0.030 | 0.023 | 1.683 | 0.914 |
+| drivejepa | 20261105T201953-308dc5 | 5119 | 2.344 | 0.957 | 0.714 | 0.009 | 0.011 | 2.158 | 1.275 |
 | visionpilot | 20260905T093333-319ef5 | 5119 | 2.360 | 1.031 | 0.883 | 0.025 | 0.033 | 2.213 | 1.382 |
 | openpilot | 20260929T174538-b479ee | 5119 | 4.029 | 1.897 | 1.403 | 0.012 | 0.011 | 4.018 | 2.442 |
 | openpilot | 20260908T110028-b71f4f | 5119 | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
@@ -223,7 +223,9 @@
 - **comma2k19/constant_velocity/20260911T231819-736a8a** — Reference baseline: straight ahead at the recorded speed, no model. Produced by tools/benchmarks/comma2k19/constant_velocity.py against the benchmark's own harness and scoring; video decoding skipped, since the policy reads no pixels. Stored under the pseudo-model 'constant_velocity' because it is not a registered model. Superseded by 20260916T162837-b89038: that is the row the docs cite. This one predates measuring comfort on a common 0.5 s grid, so its comfort and far-horizon columns are not comparable with the rows beside it. Kept rather than deleted so the record of it having happened survives. Superseded by 20261106T045541-d0cdb5: the row it pointed at, 20260916T162837-b89038, is itself superseded by the re-run of 6 Nov 2026 (issue #141), so this one points at the ranked row.
 - **navsim_v1/human/20260911T041230-67c4f3** — privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer
 - **navsim/alpamayo15/20260911T024038-d518fc** — 1 scenario(s) failed in the scorer and are excluded
+- **kitscenes/visionpilot/20260909T202724-153b04** — Superseded by 20261105T191932-c71101: Re-run on 5 Nov 2026 with CURV_SCALE 0.21; this run predates the September 2026 fix, when the planner was handed a curvature 4.8x too large.
 - **bench2drive/constant_velocity/20260908T084921-804913** — Four independent CARLA workers; 4 completed route checkpoints reused. Duration covers this attempt. Superseded by pooled50-3mps-40c29d24c37d542a-02b6ac: Its 24 routes are already inside the 50-route run at the same 3 m/s target, so the same drives ranked twice.
+- **nuscenes/drivejepa/20260905T093335-4513d4** — Superseded by 20261105T201953-308dc5: Re-run on 5 Nov 2026 with the camera-frame fix of 13 Oct 2026; this run was camera-blind, so the model planned from ego status alone.
 - **navsim/alpamayo15/20260903T183459-753b33** — --limit 12: a subset of the benchmark, run to test the pipeline
 - **navsim/alpamayo15/20260901T213227-d6117e** — 242-scenario subset (5 of navtest's 136 logs had sensor blobs), run under PADDOCK_NAVSIM_ALLOW_PARTIAL=1 before the runner recorded that switch; marked valid=false and config.allow_partial added retroactively on 2026-09-03 under the rule that nothing below the full split is ranked against a full run. alpamayo15; this is the current headline for alpamayo15 until its full-navtest run lands, and it is a subset figure.
 - **navsim/alpamayo15/20260901T212250-b5daf0** — EXPERIMENT, not a result: the 'distinct' arm of the same paired A/B. 0.709 EPDMS over the same 60 scenarios, +0.207 over 'grid' (better on 36, worse on 19, sign test p=0.03), almost all of it collisions avoided (no_at_fault_collisions 0.708 -> 0.992). This selection is now the default via `auto`; the full 242-scenario run supersedes this.

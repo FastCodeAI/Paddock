@@ -182,10 +182,13 @@ which differences its history for speed, plans badly there (L2 avg 9.47 m on
 those 150 keyframes vs 1.23 m with a full 2 s); Drive-JEPA and VisionPilot are
 unaffected. The protocol keeps all 5119.
 
-**The Drive-JEPA row is camera-blind.** It was measured before the camera-frame
-fix: the adapter placed the cameras relative to LIDAR_TOP, which nuScenes yaws
-−90°, so none of the model's image samples landed in the front image and it
-planned from ego status alone. A re-measure with the fix replaces it.
+**The Drive-JEPA row above is camera-blind.** It was measured before the
+camera-frame fix of 13 Oct 2026: the adapter placed the cameras relative to
+LIDAR_TOP, which nuScenes yaws −90°, so none of the model's image samples landed in
+the front image and it planned from ego status alone. The re-run with the fix
+(`20261105T201953-308dc5`, 5 Nov 2026) sees the camera and scores worse: cumulative
+L2 1.328 against 0.912, point L2 2.344 against 1.882. The support-matrix table
+below uses the re-run.
 
 Overlays for every scored keyframe (camera with the human future and each
 model's plan, BEV with annotated boxes, per-scene videos) are on the NAS:
@@ -246,11 +249,6 @@ is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
 
-⊘ Measured camera-blind: until the camera-frame fix of 13 Oct 2026 Drive-JEPA's adapter
-placed the cameras so that no sample point landed in the image on nuScenes and
-neuroNCAP, and the plan came from ego status alone. Re-measure pending for
-nuScenes; its other columns are not affected.
-
 △ nuScenes val, open loop, zero-shot (none of these models was trained on
 nuScenes): the average L2 over 0-3 s on the official 150-scene val split (5119
 keyframes), UniAD/VAD protocol, `--bench nuscenes` -- the cumulative (per-step)
@@ -272,7 +270,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
-| Drive-JEPA ⊘ | 0.540 | 1.587 | 3.519 | 1.882 | 0.912 | 1.536 | 1.459 |
+| Drive-JEPA | 0.957 | 2.158 | 3.917 | 2.344 | 1.328 | 1.996 | 1.628 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
@@ -286,8 +284,6 @@ is predicted ego-footprint overlap with annotated boxes, not an observed crash.
 ⧗ AutoE2E (`kitscenes-epoch-5`, run `20261023T004711-eedbe2`, valid) is fed the
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
 starting weights were trained on nuScenes train, not val.
-
-⊘ Measured camera-blind; re-measure pending, see the note above.
 
 **Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
 which is below it on every column**, collision included, and is the first model

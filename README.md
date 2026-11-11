@@ -63,8 +63,7 @@ it differs.
   and its driver-resume nudge, which stands in for a driver pressing resume
   once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** Every VisionPilot figure but
-  comma2k19's predates the `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
-  before the camera fix of 13 Oct 2026.
+  comma2k19's and KITScenes' predates the `CURV_SCALE` fix.
 - **What never leaves a cell unranked.** How many cameras a model is given,
   whether it drives through paddock's bridge or its own simulator driver, and
   whether its Bench2Drive routes end early as failed drives are never reasons to

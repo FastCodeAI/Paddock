@@ -281,7 +281,7 @@ shared `kitscenes_e2e_final` list, the six-camera ring, native 3 s plan,
 | **1.879** (median 1.419) | 0.695 | 2.040 | 4.034 | 1.563 | 0.688 |
 
 Constant velocity scores 1.381 on the same list; Alpamayo 1.002, VisionPilot
-1.534, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.364. A
+1.475, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.364. A
 second run reproduced all 223 predictions exactly.
 
 **Front camera only, kept as an ablation:**
@@ -317,9 +317,9 @@ anchors in 150 scenes, all six cameras, 2 Hz keyframes, native 3 s plan,
 |---|---|---|---|---|---|---|
 | 0.616 | 1.683 | 3.356 | **1.885** (median 1.581) | 0.977 | 1.570 | 6.15 % |
 
-Drive-JEPA scores 1.882 / 0.912 / 1.46 % on the same anchors and constant
+Drive-JEPA scores 2.344 / 1.328 / 1.63 % on the same anchors and constant
 velocity 1.288 / 0.641 / 1.66 %. With its cameras filled in, METEOR's
-displacement error sits with Drive-JEPA; the collision rate does not. Where
+displacement error is below Drive-JEPA's; its collision rate is above both. Where
 each comes from, measured on the per-sample records:
 
 - **Speed is in range here.** nuScenes is urban: 96 % of anchors are below
