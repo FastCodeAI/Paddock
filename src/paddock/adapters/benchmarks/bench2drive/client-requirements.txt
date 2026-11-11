@@ -2,8 +2,8 @@
 # Bench2Drive's own scorers import. setup.sh installs these into Python 3.8.
 #
 # Every version is the one in the working CARLA-client environment on the machine
-# Paddock is developed on, so a new site drives CARLA with the same code. The one
-# exception is carla itself.
+# Paddock is developed on, so a new site drives CARLA with the same code. There are
+# two exceptions: carla itself, and scipy, which that environment does not have.
 
 # CARLA's client library, from PyPI rather than the egg in carla_root. Both are
 # CARLA's own 0.9.15 build; the egg needs the system's libtiff.so.5, which newer
