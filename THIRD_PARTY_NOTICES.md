@@ -26,6 +26,7 @@ Each file names its source, at the top or beside the copied lines.
 | `src/paddock/adapters/benchmarks/nuscenes/val_scenes.json` | The nuScenes validation split, as listed in Motional's [nuscenes-devkit](https://github.com/nutonomy/nuscenes-devkit) (`python-sdk/nuscenes/utils/splits.py`) | Apache-2.0, Copyright 2021 Motional |
 | `src/paddock/adapters/benchmarks/neuroncap/scenarios_10hz/` | [neuro-ncap](https://github.com/atonderski/neuro-ncap)'s `scenarios/`, with the time step changed from 0.5 s to 0.1 s | MIT, Copyright (c) 2024 William Ljungbergh & Adam Tonderski |
 | `src/paddock/adapters/benchmarks/alpasim/scenes/` | Scene IDs and file paths as listed in [NVIDIA AlpaSim](https://github.com/NVlabs/alpasim)'s `data/scenes/` | Apache-2.0, Copyright 2025 NVIDIA Corporation |
+| `src/paddock/adapters/benchmarks/bench2drive/tests/fixtures/routes_sample.xml` | The id, town and scenario type of two routes in [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive)'s `leaderboard/data/bench2drive220.xml`; the rest of each entry is left out | CC BY-NC-ND 4.0 |
 
 The neuroNCAP scenarios refer to objects in nuScenes scenes by their nuScenes IDs.
 nuScenes itself is under its own terms (see the last table).
