@@ -117,7 +117,7 @@ files a benchmark scores: the evaluation split, cameras only.
 | `nuscenes` | `metadata`, `keyframes`, `can_bus`, `map_expansion` | 46.5 GB | CC BY-NC-SA 4.0 | `--accept-terms`; nuScenes asks you to register at nuscenes.org |
 | `nuplan` | `logs`, `cameras` (the mini split), `maps` | 460.2 GB | CC BY-NC-SA 4.0 | `--accept-terms`; the host is slow, so the cameras take more than a day |
 | `neurad_checkpoints` | `renderers`: neuroNCAP's 14 scene renderers | 13.5 GB | CC BY-NC-SA 4.0 (trained on nuScenes) | `--accept-terms`; then set `[benchmarks.neuroncap] checkpoints` to the same folder |
-| `kitscenes` | `val`, `overlap_train_val` | 594.3 GB | CC BY-NC 4.0 | accept the terms on [its Hugging Face page](https://huggingface.co/datasets/KIT-MRT/KITScenes-Multimodal), log in with `huggingface-cli login`, and pass `--accept-terms` |
+| `kitscenes` | `val`, `overlap_train_val` | 594.3 GB | CC BY-NC 4.0 | accept the terms on [its Hugging Face page](https://huggingface.co/datasets/KIT-MRT/KITScenes-Multimodal), log in with `huggingface-cli login`, and pass `--accept-terms`. Scoring it also needs the benchmark's list of 223 keyframes, which is not public yet ([#178](https://github.com/FastCodeAI/Paddock/issues/178)) |
 | `carla` | `simulator`: CARLA 0.9.15; `maps`: Towns 12, 13 and 15 | 15.8 GB | MIT code, CC BY assets | a simulator, not data: Bench2Drive drives in it. Then set `[benchmarks.bench2drive] carla_root` to the same folder |
 
 ```bash
