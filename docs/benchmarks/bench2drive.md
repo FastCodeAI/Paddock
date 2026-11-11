@@ -529,6 +529,7 @@ What it guarantees, and what each key is for:
 | `label` | the run id is `<label>-<route hash>-<config hash>`. The config hash is why five constant-velocity speed bands over the same 50 routes are five directories and not one overwritten one |
 | `model_env` | recorded in `config.model_env`, layered over what the source runs recorded. For the CV baseline it is the only machine-readable statement of which speed band a row is |
 | `setups` | the configuration each route was actually driven under, aggregated into `metrics.json`'s `by_group`. A run pooling more than one is written `valid: false` — its mean is not a measurement — and `paddock report` lists it as excluded instead of ranking it |
+| `tracked` | records in `results/`, each named `"bench2drive/<model>/<run_id>"` as the store keeps it. Each record's `upstream_scores.json` supplies the routes that no run under `runs` scored (*Routes from a record made at another site*, below). `runs` may be left out when every route comes from a record |
 
 Per route the ingest keeps the latest run id whose `results.json` *scores*: a
 crashed attempt never shadows its rerun, because `parse_results` refuses a route
@@ -548,6 +549,71 @@ every tick; before 23 Oct 2026, a rate set by hand reached the record only as
 `PADDOCK_INFER_HZ` in `model_env`, and such a pool does not rank either.
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
+
+### Routes from a record made at another site
+
+Sometimes a record is pooled at a site whose raw `results.json` files never leave it, and
+the routes it is missing are driven here. Its routes can still join a pool here, from the
+rows of the record's `upstream_scores.json` (*Efficiency and comfort*). That file is
+tracked beside the record, and it holds each route's driving score, route completion,
+infraction penalty and infraction counts, as read from the route's `results.json`. It also
+holds the reason, if any, the early stop ended the route.
+
+```toml
+[[ingest.bench2drive]]
+model   = "alpamayo15"
+runs    = "/path/to/paddock-runs/bench2drive/alpamayo15"   # the routes driven here
+label   = "full220"
+routes  = "all"
+tracked = ["bench2drive/alpamayo15/full220-836dda734659a86c-f81033"]
+```
+
+For each route, a route that scored under `runs` is used. Otherwise the route is taken
+from the record that holds it; a route held by two records, and scored by no run here,
+is refused. Each row is measured by the same code as a `results.json`
+(`harness.parse_checkpoint` and `harness.stop_shares`), so the route's metrics are the
+ones the raw file would give, with one exception. `duration_s` is the evaluator's
+wall-clock time, and the rows do not hold it, so a route taken from a record carries
+`null` there and `metrics.json` counts it in `duration_s.n_missing`. That is how a route
+reused by `--resume` is counted. Wall-clock time is not a measurement of the drive, and
+nothing in the leaderboard reads it.
+
+That is exact only when the rows describe the record completely, so the ingest refuses,
+by name, a record that has any of these problems:
+
+| refused | because |
+|---|---|
+| no `upstream_scores.json` | nothing holds its routes' rows. `python -m tools.benchmarks.bench2drive.upstream_scores` writes it, at the site where the raw results are |
+| rows that are not the record's own | a row count or route set (`dataset.sequences_sha256`) that differs from the record's, or a `record` or `model` field that names another record |
+| `n_runs` not pinned to 1 or `n_crashed` not pinned to 0 in its `metrics.json` | a row holds only the first record of its route, so it describes the route only when every route had one scored repetition and none that crashed |
+| `ended_*` blocks that some routes lack | a row's `ended_early: null` means either that the route went to Bench2Drive's own end or that it had no `early_stop.json`. Only blocks present for every route, or absent for every route, say which |
+| a row with a crashed status | it is not a measurement, as in a `results.json` |
+| rows that do not reproduce its `metrics.json` | the rows, aggregated as the store aggregates them, must give every block of the record's `metrics.json` and of its `by_split` except `duration_s` |
+
+Otherwise the record counts as one more source run. Its `config` goes through every
+agreement check above: the early stop, `declared_env`, the camera rig, `infer_hz`,
+`observe_hz` and `model_env`. As between two runs, `routes_file` and `waypoint_dt` that
+disagree are recorded as a list, and this does not by itself stop the pool from ranking.
+A record that does not rank (`valid: false`) stops the pool from ranking too. Every pooled
+route names where it came from:
+- a raw run: its `native_id` gives the `run_id` and the sha256 of its `results.json`;
+- a record: its `native_id` gives the `record` and the sha256 of the record's
+  `upstream_scores.json`.
+
+`config.source_records` lists each record that contributed routes, with the site that
+pooled it and that file's sha256. The notes count the routes from each origin and name the
+sites. A route that no run here and no record scored keeps the reason the record gave in
+its own `routes_never_scored`.
+
+Each of the four 216-route records made at `a100-gpu-vm-002` (Alpamayo 1.5, AutoE2E,
+METEOR, openpilot), pooled again from its own rows, gives its own `metrics.json` exactly,
+every block except `duration_s`. So does VisionPilot's 220-route record, pooled from the
+rows the tool wrote for it here, compared with the same record pooled from its raw routes.
+`tests/test_ingest_bench2drive_tracked.py` checks this in CI, against the four records and
+against five routes whose raw files are in the repo.
+
+The pooled record cannot be given `upstream_scores.json` of its own yet: the tool finds a
+record's routes under `--runs`, and the routes taken from another record are not there.
 
 ## The 220-route protocol
 
