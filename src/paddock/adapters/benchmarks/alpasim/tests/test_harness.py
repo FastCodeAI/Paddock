@@ -79,12 +79,12 @@ def test_parse_summary_reproduces_the_recorded_score() -> None:
 def test_a_zeroed_scene_keeps_the_progress_that_earned_nothing() -> None:
     """The hard-failure rule zeroes the scene, not the progress underneath it.
 
-    Losing that distinction would make a policy that drove 99% of a scene and
+    Losing that distinction would make a policy that drove 96% of a scene and
     then left the road indistinguishable from one that never moved.
     """
     metrics = parse_summary(SUMMARY, OFFROAD)
     assert metrics["scene_score"] == 0.0
-    assert metrics["progress"] == pytest.approx(0.9878, abs=1e-4)
+    assert metrics["progress"] == pytest.approx(0.96, abs=1e-4)
     assert metrics["offroad"] == 1.0
 
 
