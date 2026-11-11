@@ -109,10 +109,11 @@ For every entry in [`repos.yaml`](../repos.yaml) this clones it into
 listed for it. It prints one line per repo -- name, path, and what it did -- and
 the exit code is the verdict.
 
-Plain `paddock setup` fetches every entry, including Alpamayo 2, which no model
-uses yet. To fetch only what you will run, give `--repo NAME` for each one, or
-use `paddock setup --model NAME` (step 5), which fetches that model's repo and
-then builds its environment.
+Plain `paddock setup` fetches every entry, including two that no model uses:
+Alpamayo 2, not yet evaluated, and V-JEPA 2, of which Drive-JEPA and WA-JEPA
+carry their own copies. To fetch only what you will run, give `--repo NAME` for
+each one, or use `paddock setup --model NAME` (step 5), which fetches that
+model's repo and then builds its environment.
 
 **Existing clones are adopted, not re-cloned.** If you already have these repos
 checked out under `[roots.repos]`, paddock uses them where they are, and your
