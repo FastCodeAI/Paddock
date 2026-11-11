@@ -107,9 +107,10 @@ gpu_nodes    = 1
 
 Every other key is read as `[benchmarks.navsim]` reads it (see
 [navsim.md](navsim.md)), except `chunk_logs`, which is always 0 here.
-`paddock data fetch navhard` downloads the data from OpenScene's Hugging Face
-repository at a pinned commit: the navtest logs, cameras and maps that stage
-one reads, and the three `navsim_v2.2_navhard_two_stage_*` archives.
+`paddock data fetch navhard` downloads the data, pinned: from OpenScene's Hugging
+Face repository at a fixed commit, the navtest logs and cameras that stage one reads
+and the three `navsim_v2.2_navhard_two_stage_*` archives; from nuPlan's own host, the
+maps, checked by size and sha256.
 
 ## Results
 
