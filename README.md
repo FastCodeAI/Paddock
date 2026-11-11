@@ -162,6 +162,7 @@ flowchart LR
         me["METEOR<br/>uv · py3.11 · onnxruntime"]
         ae["AutoE2E<br/>uv · py3.12 · torch"]
         qd["Qwen-Drive 1.0<br/>uv · py3.12 · torch"]
+        uv["UniAD · VAD (+ Bench2Drive)<br/>conda · py3.9 · mmcv"]
         wj["WA-JEPA<br/>uv · py3.10 · torch"]
         cv["Constant velocity<br/>uv · py3.11 · numpy"]
     end
@@ -188,7 +189,7 @@ flowchart LR
 
     res[("results/<br/>one schema, with provenance")]
 
-    op & al & dj & vp & me & ae & qd & wj & cv --> pol
+    op & al & dj & vp & me & ae & qd & uv & wj & cv --> pol
     pol -- "harness posts a recording<br/>/infer_sequence" --> open
     pol -- "scorer posts a recording,<br/>then simulates the plan" --> simscored
     pol -- "simulator posts /infer<br/>every tick, the plan<br/>moves the car<br/>(AlpaSim: via a gRPC bridge)" --> closed
@@ -205,7 +206,7 @@ flowchart LR
     classDef pcl     fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#1f2328
     classDef cl      fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px,color:#1f2328
     classDef store   fill:#f6f8fa,stroke:#57606a,stroke-width:1.5px,color:#1f2328
-    class op,al,dj,vp,me,ae,qd,wj,cv model
+    class op,al,dj,vp,me,ae,qd,uv,wj,cv model
     class pol waist
     class ns,ks,c2k,npl ol
     class nv pcl
@@ -228,6 +229,10 @@ benchmark is one new directory under `adapters/`. What crosses the wire:
 | [METEOR](docs/models/meteor.md) | TIER IV's 8-camera multi-task network | [tier4/METEOR](https://github.com/tier4/METEOR) · Apache-2.0 | |
 | [OpenPilot](docs/models/openpilot.md) | comma.ai's driving model, a single 30M-parameter network | [commaai/openpilot](https://github.com/commaai/openpilot) · MIT | [Learning to Drive from a World Model](https://arxiv.org/abs/2504.19077) |
 | [Qwen-Drive 1.0](docs/models/qwendrive.md) | 4B vision-language model with a flow-matching planner | [QwenLM/Qwen-Drive-1.0](https://github.com/QwenLM/Qwen-Drive-1.0) · Apache-2.0 | [Qwen-Drive-1.0](https://arxiv.org/abs/2609.00111) |
+| [UniAD](docs/models/uniad.md) | OpenDriveLab's planning-oriented stack: tracking, mapping, motion, occupancy and planning on one BEV grid (nuScenes checkpoint) | [OpenDriveLab/UniAD](https://github.com/OpenDriveLab/UniAD) · Apache-2.0 | [UniAD](https://arxiv.org/abs/2212.10156) |
+| [UniAD-B2D](docs/models/uniad_b2d.md) | UniAD trained by the Bench2Drive authors on CARLA | [Thinklab-SJTU/Bench2DriveZoo](https://github.com/Thinklab-SJTU/Bench2DriveZoo) · CC BY-NC-ND 4.0 | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
+| [VAD](docs/models/vad.md) | HUST's vectorised planner: agent and map queries on one BEV grid (nuScenes checkpoint) | [hustvl/VAD](https://github.com/hustvl/VAD) · Apache-2.0 | [VAD](https://arxiv.org/abs/2303.12077) |
+| [VAD-B2D](docs/models/vad_b2d.md) | VAD trained by the Bench2Drive authors on CARLA | [Thinklab-SJTU/Bench2DriveZoo](https://github.com/Thinklab-SJTU/Bench2DriveZoo) · CC BY-NC-ND 4.0 | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
 | [VisionPilot](docs/models/visionpilot.md) | Autoware's lane and speed networks; Paddock builds the trajectory around them | [autowarefoundation/vision_pilot](https://github.com/autowarefoundation/vision_pilot) · Apache-2.0 | |
 | [WA-JEPA](docs/models/wajepa.md) | AFARI Research's V-JEPA world-action model | [AFARI-Research/WA-JEPA](https://github.com/AFARI-Research/WA-JEPA) · Apache-2.0 | [WA-JEPA](https://arxiv.org/abs/2608.20974) |
 | [Constant velocity](docs/models/constant_velocity.md) | A floor, not a model: it holds its speed in a straight line | in this repo | |

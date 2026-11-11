@@ -111,6 +111,22 @@ key = "autoe2e"
 name = "AutoE2E"
 
 [[model]]
+key = "uniad"
+name = "UniAD"
+
+[[model]]
+key = "vad"
+name = "VAD"
+
+[[model]]
+key = "uniad_b2d"
+name = "UniAD (Bench2Drive)"
+
+[[model]]
+key = "vad_b2d"
+name = "VAD (Bench2Drive)"
+
+[[model]]
 key = "constant_velocity"
 name = "Baseline (Constant Velocity)"
 floor = true

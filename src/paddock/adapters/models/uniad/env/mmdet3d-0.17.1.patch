@@ -1,0 +1,641 @@
+diff --git a/mmdet3d/__init__.py b/mmdet3d/__init__.py
+index ee89aa5..090469f 100644
+--- a/mmdet3d/__init__.py
++++ b/mmdet3d/__init__.py
+@@ -19,7 +19,7 @@ def digit_version(version_str):
+ 
+ 
+ mmcv_minimum_version = '1.3.8'
+-mmcv_maximum_version = '1.4.0'
++mmcv_maximum_version = '1.7.2'  # was '1.4.0'; env runs mmcv-full 1.7.2 (sm_120 build)
+ mmcv_version = digit_version(mmcv.__version__)
+ 
+ 
+diff --git a/mmdet3d/datasets/pipelines/data_augment_utils.py b/mmdet3d/datasets/pipelines/data_augment_utils.py
+index 23b6aad..01bab03 100644
+--- a/mmdet3d/datasets/pipelines/data_augment_utils.py
++++ b/mmdet3d/datasets/pipelines/data_augment_utils.py
+@@ -2,7 +2,7 @@
+ import numba
+ import numpy as np
+ import warnings
+-from numba.errors import NumbaPerformanceWarning
++from numba.core.errors import NumbaPerformanceWarning  # uniad_vad: numba>=0.49 moved it
+ 
+ from mmdet3d.core.bbox import box_np_ops
+ 
+diff --git a/mmdet3d/ops/_missing_ext.py b/mmdet3d/ops/_missing_ext.py
+new file mode 100644
+index 0000000..25d6174
+--- /dev/null
++++ b/mmdet3d/ops/_missing_ext.py
+@@ -0,0 +1,13 @@
++# uniad_vad patch: the PyPI sdist of mmdet3d 0.17.1 ships no *.cu/*.h sources for these
++# point-cloud / voxel ops, so they are not built. They are lidar-only and unused by
++# camera-only UniAD/VAD. Equivalent kernels exist in mmcv-full 1.7.2 (mmcv.ops.*).
++
++
++class MissingExt:
++    def __init__(self, name):
++        self._name = name
++
++    def __getattr__(self, attr):
++        raise RuntimeError(
++            f'mmdet3d op extension "{self._name}" was not built in the uniad_vad env '
++            f'(PyPI sdist lacks its CUDA sources); use the mmcv.ops equivalent instead.')
+diff --git a/mmdet3d/ops/ball_query/ball_query.py b/mmdet3d/ops/ball_query/ball_query.py
+index bae81ad..9d05dd6 100644
+--- a/mmdet3d/ops/ball_query/ball_query.py
++++ b/mmdet3d/ops/ball_query/ball_query.py
+@@ -1,7 +1,11 @@
+ import torch
+ from torch.autograd import Function
+ 
+-from . import ball_query_ext
++try:
++    from . import ball_query_ext
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    ball_query_ext = MissingExt('ball_query_ext')
+ 
+ 
+ class BallQuery(Function):
+diff --git a/mmdet3d/ops/ball_query/src/ball_query.cpp b/mmdet3d/ops/ball_query/src/ball_query.cpp
+index 6e9d5f7..e6cb7bb 100644
+--- a/mmdet3d/ops/ball_query/src/ball_query.cpp
++++ b/mmdet3d/ops/ball_query/src/ball_query.cpp
+@@ -1,7 +1,7 @@
+ // Modified from
+ // https://github.com/sshaoshuai/Pointnet2.PyTorch/tree/master/pointnet2/src/ball_query.cpp
+ 
+-#include <THC/THC.h>
++// #include <THC/THC.h>  (removed: THC is gone in torch>=1.11)
+ #include <cuda.h>
+ #include <cuda_runtime_api.h>
+ #include <torch/extension.h>
+@@ -9,10 +9,10 @@
+ 
+ #include <vector>
+ 
+-extern THCState *state;
++// extern THCState *state;  (removed: THC is gone in torch>=1.11)
+ 
+ #define CHECK_CUDA(x) \
+-  TORCH_CHECK(x.type().is_cuda(), #x, " must be a CUDAtensor ")
++  TORCH_CHECK(x.is_cuda(), #x, " must be a CUDAtensor ")
+ #define CHECK_CONTIGUOUS(x) \
+   TORCH_CHECK(x.is_contiguous(), #x, " must be contiguous ")
+ #define CHECK_INPUT(x) \
+diff --git a/mmdet3d/ops/furthest_point_sample/furthest_point_sample.py b/mmdet3d/ops/furthest_point_sample/furthest_point_sample.py
+index af53317..a8a1ece 100644
+--- a/mmdet3d/ops/furthest_point_sample/furthest_point_sample.py
++++ b/mmdet3d/ops/furthest_point_sample/furthest_point_sample.py
+@@ -1,7 +1,11 @@
+ import torch
+ from torch.autograd import Function
+ 
+-from . import furthest_point_sample_ext
++try:
++    from . import furthest_point_sample_ext
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    furthest_point_sample_ext = MissingExt('furthest_point_sample_ext')
+ 
+ 
+ class FurthestPointSampling(Function):
+diff --git a/mmdet3d/ops/furthest_point_sample/src/furthest_point_sample.cpp b/mmdet3d/ops/furthest_point_sample/src/furthest_point_sample.cpp
+index be05890..0cc3c5f 100644
+--- a/mmdet3d/ops/furthest_point_sample/src/furthest_point_sample.cpp
++++ b/mmdet3d/ops/furthest_point_sample/src/furthest_point_sample.cpp
+@@ -2,13 +2,13 @@
+ // https://github.com/sshaoshuai/Pointnet2.PyTorch/tree/master/pointnet2/src/sampling.cpp
+ 
+ #include <ATen/cuda/CUDAContext.h>
+-#include <THC/THC.h>
++// #include <THC/THC.h>  (removed: THC is gone in torch>=1.11)
+ #include <torch/extension.h>
+ #include <torch/serialize/tensor.h>
+ 
+ #include <vector>
+ 
+-extern THCState *state;
++// extern THCState *state;  (removed: THC is gone in torch>=1.11)
+ 
+ int furthest_point_sampling_wrapper(int b, int n, int m,
+                                     at::Tensor points_tensor,
+diff --git a/mmdet3d/ops/gather_points/gather_points.py b/mmdet3d/ops/gather_points/gather_points.py
+index 8f109a0..c634cbd 100644
+--- a/mmdet3d/ops/gather_points/gather_points.py
++++ b/mmdet3d/ops/gather_points/gather_points.py
+@@ -1,7 +1,11 @@
+ import torch
+ from torch.autograd import Function
+ 
+-from . import gather_points_ext
++try:
++    from . import gather_points_ext
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    gather_points_ext = MissingExt('gather_points_ext')
+ 
+ 
+ class GatherPoints(Function):
+diff --git a/mmdet3d/ops/gather_points/src/gather_points.cpp b/mmdet3d/ops/gather_points/src/gather_points.cpp
+index 01a3e40..f7be93d 100644
+--- a/mmdet3d/ops/gather_points/src/gather_points.cpp
++++ b/mmdet3d/ops/gather_points/src/gather_points.cpp
+@@ -1,11 +1,11 @@
+ #include <ATen/cuda/CUDAContext.h>
+-#include <THC/THC.h>
++// #include <THC/THC.h>  (removed: THC is gone in torch>=1.11)
+ #include <torch/extension.h>
+ #include <torch/serialize/tensor.h>
+ 
+ #include <vector>
+ 
+-extern THCState *state;
++// extern THCState *state;  (removed: THC is gone in torch>=1.11)
+ 
+ int gather_points_wrapper(int b, int c, int n, int npoints,
+                           at::Tensor points_tensor, at::Tensor idx_tensor,
+diff --git a/mmdet3d/ops/group_points/group_points.py b/mmdet3d/ops/group_points/group_points.py
+index 88122a8..736848d 100644
+--- a/mmdet3d/ops/group_points/group_points.py
++++ b/mmdet3d/ops/group_points/group_points.py
+@@ -5,7 +5,11 @@ from typing import Tuple
+ 
+ from ..ball_query import ball_query
+ from ..knn import knn
+-from . import group_points_ext
++try:
++    from . import group_points_ext
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    group_points_ext = MissingExt('group_points_ext')
+ 
+ 
+ class QueryAndGroup(nn.Module):
+diff --git a/mmdet3d/ops/group_points/src/group_points.cpp b/mmdet3d/ops/group_points/src/group_points.cpp
+index 3cd6fc8..0d0d349 100644
+--- a/mmdet3d/ops/group_points/src/group_points.cpp
++++ b/mmdet3d/ops/group_points/src/group_points.cpp
+@@ -1,7 +1,7 @@
+ // Modified from
+ // https://github.com/sshaoshuai/Pointnet2.PyTorch/tree/master/pointnet2/src/group_points.cpp
+ 
+-#include <THC/THC.h>
++// #include <THC/THC.h>  (removed: THC is gone in torch>=1.11)
+ #include <cuda.h>
+ #include <cuda_runtime_api.h>
+ #include <torch/extension.h>
+@@ -9,7 +9,7 @@
+ 
+ #include <vector>
+ 
+-extern THCState *state;
++// extern THCState *state;  (removed: THC is gone in torch>=1.11)
+ 
+ int group_points_wrapper(int b, int c, int n, int npoints, int nsample,
+                          at::Tensor points_tensor, at::Tensor idx_tensor,
+diff --git a/mmdet3d/ops/interpolate/src/interpolate.cpp b/mmdet3d/ops/interpolate/src/interpolate.cpp
+index 6382579..80357f5 100644
+--- a/mmdet3d/ops/interpolate/src/interpolate.cpp
++++ b/mmdet3d/ops/interpolate/src/interpolate.cpp
+@@ -1,7 +1,7 @@
+ // Modified from
+ // https://github.com/sshaoshuai/Pointnet2.PyTorch/tree/master/pointnet2/src/interpolate.cpp
+ 
+-#include <THC/THC.h>
++// #include <THC/THC.h>  (removed: THC is gone in torch>=1.11)
+ #include <cuda.h>
+ #include <cuda_runtime_api.h>
+ #include <math.h>
+@@ -12,7 +12,7 @@
+ 
+ #include <vector>
+ 
+-extern THCState *state;
++// extern THCState *state;  (removed: THC is gone in torch>=1.11)
+ 
+ void three_nn_wrapper(int b, int n, int m, at::Tensor unknown_tensor,
+                       at::Tensor known_tensor, at::Tensor dist2_tensor,
+diff --git a/mmdet3d/ops/interpolate/three_interpolate.py b/mmdet3d/ops/interpolate/three_interpolate.py
+index 233cb5d..29bcc2a 100644
+--- a/mmdet3d/ops/interpolate/three_interpolate.py
++++ b/mmdet3d/ops/interpolate/three_interpolate.py
+@@ -2,7 +2,11 @@ import torch
+ from torch.autograd import Function
+ from typing import Tuple
+ 
+-from . import interpolate_ext
++try:
++    from . import interpolate_ext
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    interpolate_ext = MissingExt('interpolate_ext')
+ 
+ 
+ class ThreeInterpolate(Function):
+diff --git a/mmdet3d/ops/interpolate/three_nn.py b/mmdet3d/ops/interpolate/three_nn.py
+index 6c174bd..f5f4e14 100644
+--- a/mmdet3d/ops/interpolate/three_nn.py
++++ b/mmdet3d/ops/interpolate/three_nn.py
+@@ -2,7 +2,11 @@ import torch
+ from torch.autograd import Function
+ from typing import Tuple
+ 
+-from . import interpolate_ext
++try:
++    from . import interpolate_ext
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    interpolate_ext = MissingExt('interpolate_ext')
+ 
+ 
+ class ThreeNN(Function):
+diff --git a/mmdet3d/ops/knn/knn.py b/mmdet3d/ops/knn/knn.py
+index f05bc75..93421ee 100644
+--- a/mmdet3d/ops/knn/knn.py
++++ b/mmdet3d/ops/knn/knn.py
+@@ -1,7 +1,11 @@
+ import torch
+ from torch.autograd import Function
+ 
+-from . import knn_ext
++try:
++    from . import knn_ext
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    knn_ext = MissingExt('knn_ext')
+ 
+ 
+ class KNN(Function):
+diff --git a/mmdet3d/ops/knn/src/knn.cpp b/mmdet3d/ops/knn/src/knn.cpp
+index 84ddf4b..6dc2d9c 100644
+--- a/mmdet3d/ops/knn/src/knn.cpp
++++ b/mmdet3d/ops/knn/src/knn.cpp
+@@ -3,10 +3,10 @@
+ #include <torch/serialize/tensor.h>
+ #include <torch/extension.h>
+ #include <vector>
+-#include <THC/THC.h>
++// #include <THC/THC.h>  (removed: THC is gone in torch>=1.11)
+ #include <ATen/cuda/CUDAContext.h>
+ 
+-extern THCState *state;
++// extern THCState *state;  (removed: THC is gone in torch>=1.11)
+ 
+ #define CHECK_CUDA(x) TORCH_CHECK(x.is_cuda(), #x, " must be a CUDAtensor ")
+ #define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), #x, " must be contiguous ")
+diff --git a/mmdet3d/ops/paconv/assign_score.py b/mmdet3d/ops/paconv/assign_score.py
+index 3e3f673..d356e9a 100644
+--- a/mmdet3d/ops/paconv/assign_score.py
++++ b/mmdet3d/ops/paconv/assign_score.py
+@@ -1,6 +1,10 @@
+ from torch.autograd import Function
+ 
+-from . import assign_score_withk_ext
++try:
++    from . import assign_score_withk_ext
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    assign_score_withk_ext = MissingExt('assign_score_withk_ext')
+ 
+ 
+ class AssignScoreWithK(Function):
+diff --git a/mmdet3d/ops/spconv/conv.py b/mmdet3d/ops/spconv/conv.py
+index 6a38f0e..b02ad3c 100644
+--- a/mmdet3d/ops/spconv/conv.py
++++ b/mmdet3d/ops/spconv/conv.py
+@@ -24,6 +24,14 @@ from .modules import SparseModule
+ from .structure import SparseConvTensor
+ 
+ 
++def _register_if_absent(cls):
++    # uniad_vad: mmcv-full>=1.5 already registers its own (working) sparse convs under
++    # these names; registering again raises KeyError. Keep mmcv's.
++    if cls.__name__ not in CONV_LAYERS.module_dict:
++        CONV_LAYERS.register_module(module=cls)
++    return cls
++
++
+ def _calculate_fan_in_and_fan_out_hwio(tensor):
+     dimensions = tensor.ndimension()
+     if dimensions < 2:
+@@ -204,7 +212,7 @@ class SparseConvolution(SparseModule):
+         return out_tensor
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SparseConv2d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -230,7 +238,7 @@ class SparseConv2d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SparseConv3d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -256,7 +264,7 @@ class SparseConv3d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SparseConv4d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -282,7 +290,7 @@ class SparseConv4d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SparseConvTranspose2d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -309,7 +317,7 @@ class SparseConvTranspose2d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SparseConvTranspose3d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -336,7 +344,7 @@ class SparseConvTranspose3d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SparseInverseConv2d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -355,7 +363,7 @@ class SparseInverseConv2d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SparseInverseConv3d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -374,7 +382,7 @@ class SparseInverseConv3d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SubMConv2d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -401,7 +409,7 @@ class SubMConv2d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SubMConv3d(SparseConvolution):
+ 
+     def __init__(self,
+@@ -428,7 +436,7 @@ class SubMConv3d(SparseConvolution):
+             indice_key=indice_key)
+ 
+ 
+-@CONV_LAYERS.register_module()
++@_register_if_absent
+ class SubMConv4d(SparseConvolution):
+ 
+     def __init__(self,
+diff --git a/mmdet3d/ops/spconv/ops.py b/mmdet3d/ops/spconv/ops.py
+index a7ea4fb..a6fdb57 100644
+--- a/mmdet3d/ops/spconv/ops.py
++++ b/mmdet3d/ops/spconv/ops.py
+@@ -14,7 +14,10 @@
+ 
+ import torch
+ 
+-from . import sparse_conv_ext
++try:
++    from . import sparse_conv_ext
++except ImportError:  # uniad_vad: spconv not built (sdist lacks its headers;
++    sparse_conv_ext = None  # lidar-only op, never used by camera-only UniAD/VAD)
+ 
+ 
+ def get_conv_output_size(input_size, kernel_size, stride, padding, dilation):
+diff --git a/mmdet3d/ops/voxel/scatter_points.py b/mmdet3d/ops/voxel/scatter_points.py
+index faf44ad..14969d5 100644
+--- a/mmdet3d/ops/voxel/scatter_points.py
++++ b/mmdet3d/ops/voxel/scatter_points.py
+@@ -2,8 +2,14 @@ import torch
+ from torch import nn
+ from torch.autograd import Function
+ 
+-from .voxel_layer import (dynamic_point_to_voxel_backward,
+-                          dynamic_point_to_voxel_forward)
++try:
++    from .voxel_layer import (dynamic_point_to_voxel_backward,
++                              dynamic_point_to_voxel_forward)
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    _vl = MissingExt('voxel_layer')
++    dynamic_point_to_voxel_backward = lambda *a, **k: _vl.dynamic_point_to_voxel_backward(*a, **k)
++    dynamic_point_to_voxel_forward = lambda *a, **k: _vl.dynamic_point_to_voxel_forward(*a, **k)
+ 
+ 
+ class _dynamic_scatter(Function):
+diff --git a/mmdet3d/ops/voxel/voxelize.py b/mmdet3d/ops/voxel/voxelize.py
+index e12e0c6..8ed01ed 100644
+--- a/mmdet3d/ops/voxel/voxelize.py
++++ b/mmdet3d/ops/voxel/voxelize.py
+@@ -4,9 +4,13 @@ from torch import nn
+ from torch.autograd import Function
+ from torch.nn.modules.utils import _pair
+ 
+-from .voxel_layer import dynamic_voxelize, hard_voxelize
+-
+-
++try:
++    from .voxel_layer import dynamic_voxelize, hard_voxelize
++except ImportError:  # uniad_vad: not built, see ops/_missing_ext.py
++    from .._missing_ext import MissingExt
++    _vl = MissingExt('voxel_layer')
++    dynamic_voxelize = lambda *a, **k: _vl.dynamic_voxelize(*a, **k)
++    hard_voxelize = lambda *a, **k: _vl.hard_voxelize(*a, **k)
+ class _Voxelization(Function):
+ 
+     @staticmethod
+diff --git a/setup.py b/setup.py
+index 28ec46c..e1b247f 100644
+--- a/setup.py
++++ b/setup.py
+@@ -222,26 +222,28 @@ if __name__ == '__main__':
+             'optional': parse_requirements('requirements/optional.txt'),
+         },
+         ext_modules=[
+-            make_cuda_ext(
+-                name='sparse_conv_ext',
+-                module='mmdet3d.ops.spconv',
+-                extra_include_path=[
+-                    # PyTorch 1.5 uses ninjia, which requires absolute path
+-                    # of included files, relative path will cause failure.
+-                    os.path.abspath(
+-                        os.path.join(*'mmdet3d.ops.spconv'.split('.'),
+-                                     'include/'))
+-                ],
+-                sources=[
+-                    'src/all.cc',
+-                    'src/reordering.cc',
+-                    'src/reordering_cuda.cu',
+-                    'src/indice.cc',
+-                    'src/indice_cuda.cu',
+-                    'src/maxpool.cc',
+-                    'src/maxpool_cuda.cu',
+-                ],
+-                extra_args=['-w', '-std=c++14']),
++            # uniad_vad: spconv not built (PyPI sdist ships no spconv/include headers)
++#             make_cuda_ext(
++#                 name='sparse_conv_ext',
++#                 module='mmdet3d.ops.spconv',
++#                 extra_include_path=[
++#                     # PyTorch 1.5 uses ninjia, which requires absolute path
++#                     # of included files, relative path will cause failure.
++#                     os.path.abspath(
++#                         os.path.join(*'mmdet3d.ops.spconv'.split('.'),
++#                                      'include/'))
++#                 ],
++#                 sources=[
++#                     'src/all.cc',
++#                     'src/reordering.cc',
++#                     'src/reordering_cuda.cu',
++#                     'src/indice.cc',
++#                     'src/indice_cuda.cu',
++#                     'src/maxpool.cc',
++#                     'src/maxpool_cuda.cu',
++#                 ],
++#                 extra_args=['-w', '-std=c++17']),
++
+             make_cuda_ext(
+                 name='iou3d_cuda',
+                 module='mmdet3d.ops.iou3d',
+@@ -249,16 +251,17 @@ if __name__ == '__main__':
+                     'src/iou3d.cpp',
+                     'src/iou3d_kernel.cu',
+                 ]),
+-            make_cuda_ext(
+-                name='voxel_layer',
+-                module='mmdet3d.ops.voxel',
+-                sources=[
+-                    'src/voxelization.cpp',
+-                    'src/scatter_points_cpu.cpp',
+-                    'src/scatter_points_cuda.cu',
+-                    'src/voxelization_cpu.cpp',
+-                    'src/voxelization_cuda.cu',
+-                ]),
++            # uniad_vad: voxel_layer not built (PyPI sdist lacks its CUDA sources)
++#             make_cuda_ext(
++#                 name='voxel_layer',
++#                 module='mmdet3d.ops.voxel',
++#                 sources=[
++#                     'src/voxelization.cpp',
++#                     'src/scatter_points_cpu.cpp',
++#                     'src/scatter_points_cuda.cu',
++#                     'src/voxelization_cpu.cpp',
++#                     'src/voxelization_cuda.cu',
++#                 ]),
+             make_cuda_ext(
+                 name='roiaware_pool3d_ext',
+                 module='mmdet3d.ops.roiaware_pool3d',
+@@ -270,43 +273,50 @@ if __name__ == '__main__':
+                     'src/roiaware_pool3d_kernel.cu',
+                     'src/points_in_boxes_cuda.cu',
+                 ]),
+-            make_cuda_ext(
+-                name='ball_query_ext',
+-                module='mmdet3d.ops.ball_query',
+-                sources=['src/ball_query.cpp'],
+-                sources_cuda=['src/ball_query_cuda.cu']),
+-            make_cuda_ext(
+-                name='knn_ext',
+-                module='mmdet3d.ops.knn',
+-                sources=['src/knn.cpp'],
+-                sources_cuda=['src/knn_cuda.cu']),
+-            make_cuda_ext(
+-                name='assign_score_withk_ext',
+-                module='mmdet3d.ops.paconv',
+-                sources=['src/assign_score_withk.cpp'],
+-                sources_cuda=['src/assign_score_withk_cuda.cu']),
+-            make_cuda_ext(
+-                name='group_points_ext',
+-                module='mmdet3d.ops.group_points',
+-                sources=['src/group_points.cpp'],
+-                sources_cuda=['src/group_points_cuda.cu']),
+-            make_cuda_ext(
+-                name='interpolate_ext',
+-                module='mmdet3d.ops.interpolate',
+-                sources=['src/interpolate.cpp'],
+-                sources_cuda=[
+-                    'src/three_interpolate_cuda.cu', 'src/three_nn_cuda.cu'
+-                ]),
+-            make_cuda_ext(
+-                name='furthest_point_sample_ext',
+-                module='mmdet3d.ops.furthest_point_sample',
+-                sources=['src/furthest_point_sample.cpp'],
+-                sources_cuda=['src/furthest_point_sample_cuda.cu']),
+-            make_cuda_ext(
+-                name='gather_points_ext',
+-                module='mmdet3d.ops.gather_points',
+-                sources=['src/gather_points.cpp'],
+-                sources_cuda=['src/gather_points_cuda.cu'])
++            # uniad_vad: ball_query_ext not built (PyPI sdist lacks its CUDA sources)
++#             make_cuda_ext(
++#                 name='ball_query_ext',
++#                 module='mmdet3d.ops.ball_query',
++#                 sources=['src/ball_query.cpp'],
++#                 sources_cuda=['src/ball_query_cuda.cu']),
++            # uniad_vad: knn_ext not built (PyPI sdist lacks its CUDA sources)
++#             make_cuda_ext(
++#                 name='knn_ext',
++#                 module='mmdet3d.ops.knn',
++#                 sources=['src/knn.cpp'],
++#                 sources_cuda=['src/knn_cuda.cu']),
++            # uniad_vad: assign_score_withk_ext not built (PyPI sdist lacks its CUDA sources)
++#             make_cuda_ext(
++#                 name='assign_score_withk_ext',
++#                 module='mmdet3d.ops.paconv',
++#                 sources=['src/assign_score_withk.cpp'],
++#                 sources_cuda=['src/assign_score_withk_cuda.cu']),
++            # uniad_vad: group_points_ext not built (PyPI sdist lacks its CUDA sources)
++#             make_cuda_ext(
++#                 name='group_points_ext',
++#                 module='mmdet3d.ops.group_points',
++#                 sources=['src/group_points.cpp'],
++#                 sources_cuda=['src/group_points_cuda.cu']),
++            # uniad_vad: interpolate_ext not built (PyPI sdist lacks its CUDA sources)
++#             make_cuda_ext(
++#                 name='interpolate_ext',
++#                 module='mmdet3d.ops.interpolate',
++#                 sources=['src/interpolate.cpp'],
++#                 sources_cuda=[
++#                     'src/three_interpolate_cuda.cu', 'src/three_nn_cuda.cu'
++#                 ]),
++            # uniad_vad: furthest_point_sample_ext not built (PyPI sdist lacks its CUDA sources)
++#             make_cuda_ext(
++#                 name='furthest_point_sample_ext',
++#                 module='mmdet3d.ops.furthest_point_sample',
++#                 sources=['src/furthest_point_sample.cpp'],
++#                 sources_cuda=['src/furthest_point_sample_cuda.cu']),
++            # uniad_vad: gather_points_ext not built (PyPI sdist lacks its CUDA sources)
++#             make_cuda_ext(
++#                 name='gather_points_ext',
++#                 module='mmdet3d.ops.gather_points',
++#                 sources=['src/gather_points.cpp'],
++#                 sources_cuda=['src/gather_points_cuda.cu'])
+         ],
+         cmdclass={'build_ext': BuildExtension},
+         zip_safe=False)

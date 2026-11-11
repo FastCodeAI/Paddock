@@ -1,0 +1,75 @@
+name: vad
+description: VAD-Base (HUST Vision Lab, ICCV 2023) - vectorised scene representation and planning on a BEVFormer grid, released nuScenes checkpoint
+repo: VAD
+
+runtime:
+  # The env uniad builds and shares (setup.sh beside uniad's model.yaml); set [models.vad] venv to point at it.
+  kind: conda
+  python: "3.9"
+  venv: "{repos}/.conda-envs/uniad-vad"
+  # The repo root, for `projects.mmdet3d_plugin`, which the config names as its plugin.
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    # The config the README links the VAD-Base checkpoint to. It differs from VAD_base_e2e.py only in loss
+    # weights, epochs and load_from, none of which is read at inference.
+    VAD_CONFIG: "{repo}/projects/configs/VAD/VAD_base_stage_2.py"
+    # VAD-Base from the hustvl/VAD README (Google Drive id 1FLX-4LVm4z-RskghFbxGuYlcYOQmV5bS); docs/models/vad.md.
+    VAD_CHECKPOINT: "{weights}/vad/VAD_base.pth"
+    # VAD_HORIZON_S (unset): continue the plan past its own 3 s by holding the last 0.5 s step, for
+    # NAVSIM, which scores 4 s and refuses a shorter plan. An extrapolation the model never made, so it is
+    # set per benchmark, in a [models.vad.benchmarks.navsim.env] pairing, and the report notes it.
+    # VAD_HORIZON_S: "4.0"
+    PYTHONNOUSERSITE: "1"
+    MPLBACKEND: "Agg"
+    OMP_NUM_THREADS: "2"
+    # Frame-preparing threads beside the model's own, as uniad's model.yaml explains. Speed only.
+    UNIAD_VAD_THREADS: "5"
+  tuning_env: [UNIAD_VAD_THREADS]
+
+capabilities:
+  # In the model's own order (the nuScenes info files').
+  cameras: [CAM_FRONT, CAM_FRONT_RIGHT, CAM_FRONT_LEFT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT]
+  # Measured 3.7 GB for the process (2.0 GB allocated, 2.9 GB reserved peak).
+  vram_gb: 5
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  # Trained on nuScenes keyframes, 2 Hz; its temporal BEV fuses the previous grid as 0.5 s old.
+  planning_hz: 2.0
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "ResNet-50 + BEVFormer (200x200) with vectorised agent and map queries and an ego planning query"
+  params_m: 58.4
+  size_gb: 0.71
+  precision: fp32
+  # Loaded at 1600x900; the config's test pipeline scales every camera by 0.8 to 1280x720.
+  input_size: [1280, 720]
+  # One frame of images per call; the previous BEV grid is recurrent state.
+  history_frames: 1
+  camera_hz: 2.0
+  output_kind: waypoints
+  horizon_s: 3.0
+  plan_points_hz: 2.0
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    # Stage 1 and stage 2 both train on nuScenes `train` (vad_nuscenes_infos_temporal_train.pkl in
+    # projects/configs/VAD/VAD_base_stage_{1,2}.py at the pinned sha); stage 1 initialises its ResNet-50 from
+    # torchvision's ImageNet weights (pretrained=dict(img='torchvision://resnet50')).
+    - dataset: nuscenes
+      split: train
+    - dataset: imagenet
+# VAD_HORIZON_S changes what a NAVSIM score means. tests/test_report.py accepts a score note only once a
+# stored run sets its key, so these two lines go in with the first stored NAVSIM run; until then such a
+# run is stored valid: false:
+#   score_notes:
+#     VAD_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+#   ranked_with_note: [VAD_HORIZON_S]
+
+# Where it runs (docs/models/vad.md, "Benchmarks"): every benchmark that sends the six surround cameras.
+# navsim and navsim_v1 need VAD_HORIZON_S = "4.0" (above). neuroncap asks every 0.1 s whatever
+# planning_hz says; the policy steps the model every 0.5 s and holds its plan in between
+# (bev_planners.held_plan). alpasim re-renders its six cameras as nuScenes' rig, at nuScenes' own intrinsics and
+# poses, and asks every 0.5 s (alpasim.yaml, paddock_bridge_nuscenes_rig.yaml). Not listed: comma2k19 sends one
+# camera.
+benchmarks: [hugsim, nuscenes, bench2drive, kitscenes, nuplan, neuroncap, navsim, navsim_v1, alpasim]

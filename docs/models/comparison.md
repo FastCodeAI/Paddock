@@ -16,20 +16,20 @@ narrative half: provenance, licences, and the things that do not fit a schema.
 
 ## Inputs
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
-|---|---|---|---|---|---|---|---|
-| **Camera views @ freq** | front, 2 frames 0.5 s apart (JEPA encoder); back, front, left, right at the current frame (BEV stage) | 4 (front_left, front_wide, front_right, front_tele), 4 frames 0.1 s apart; paddock crops the tele slot out of CAM_FRONT. Rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 6 surround (front, front-left, front-right, rear-left, rear, rear-right), 8 frames 0.5 s apart | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so on a monocular source (comma2k19) the side slots get black frames; `QWENDRIVE_VIEWS=replicate` or `crop` fill them from the road camera instead, and the policy then re-declares `cameras` to match |
-| **Per-camera input** | 512×256 | 448×280 (→160 tokens/img); triplane tokenizer fixes 288 tokens/timestep regardless of camera count | 512×256 (medmodel); 1024×512 (bigmodel) | 1024×512 (2:1) all three nets; AutoDrive adds a 50° centre crop | 768×432 uint8 RGB | 512×512 (squashed); the current front also 1024×1024 | pixel budget on a 32 px grid: current ~720p (921,600 px), history ~320p (174,080 px) |
-| **Other inputs** | ego state (NAVSIM protocol) | text prompt; egomotion history (3D translation + 9D rotation, multi-timestep); optional route | desire/nav command, 512-d feature history. **No speed channel at all** | vehicle speed | ego speed; optional LiDAR raster / SD map / driving command in the checkpoint, none in the released ONNX | 256-d egomotion history (6.4 s @ 10 Hz); optional route raster + 14-channel semantic map (450×300 @ 0.4 m; paddock sends the route where the benchmark has one, never the map); per-frame camera projections | 16 ego poses @10 Hz (1.5 s) + velocity + acceleration; ego status [v, a, one-hot command]; nav command in the prompt |
+| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 | UniAD (`uniad`; `uniad_b2d`) | VAD (`vad`; `vad_b2d`) |
+|---|---|---|---|---|---|---|---|---|---|
+| **Camera views @ freq** | front, 2 frames 0.5 s apart (JEPA encoder); back, front, left, right at the current frame (BEV stage) | 4 (front_left, front_wide, front_right, front_tele), 4 frames 0.1 s apart; paddock crops the tele slot out of CAM_FRONT. Rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 6 surround (front, front-left, front-right, rear-left, rear, rear-right), 8 frames 0.5 s apart | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so on a monocular source (comma2k19) the side slots get black frames; `QWENDRIVE_VIEWS=replicate` or `crop` fill them from the road camera instead, and the policy then re-declares `cameras` to match | 6 surround (nuScenes rig), current frame; the previous BEV grid and the track queries are recurrent state, so frames arrive 0.5 s apart | 6 surround (nuScenes rig), current frame; the previous BEV grid is recurrent state, frames 0.5 s apart |
+| **Per-camera input** | 512×256 | 448×280 (→160 tokens/img); triplane tokenizer fixes 288 tokens/timestep regardless of camera count | 512×256 (medmodel); 1024×512 (bigmodel) | 1024×512 (2:1) all three nets; AutoDrive adds a 50° centre crop | 768×432 uint8 RGB | 512×512 (squashed); the current front also 1024×1024 | pixel budget on a 32 px grid: current ~720p (921,600 px), history ~320p (174,080 px) | 1600×900, padded to 1600×928; BGR, caffe mean | 1600×900 scaled to 1280×720, padded to 32; torchvision mean/std |
+| **Other inputs** | ego state (NAVSIM protocol) | text prompt; egomotion history (3D translation + 9D rotation, multi-timestep); optional route | desire/nav command, 512-d feature history. **No speed channel at all** | vehicle speed | ego speed; optional LiDAR raster / SD map / driving command in the checkpoint, none in the released ONNX | 256-d egomotion history (6.4 s @ 10 Hz); optional route raster + 14-channel semantic map (450×300 @ 0.4 m; paddock sends the route where the benchmark has one, never the map); per-frame camera projections | 16 ego poses @10 Hz (1.5 s) + velocity + acceleration; ego status [v, a, one-hot command]; nav command in the prompt | 18-float CAN bus (pose, accel, rotation rate, velocity, heading) into the BEV queries; lidar→global pose and time for the tracker; command (3-way nuScenes, 6-way Bench2Drive) | 18-float CAN bus into the BEV queries; command (3-way nuScenes, 6-way Bench2Drive), which selects one of its plans |
 
 ## Outputs and architecture
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
-|---|---|---|---|---|---|---|---|
-| **Output @ freq** | trajectory from an 8192-entry anchor vocabulary | trajectory @ 6.4 s + chain-of-causation trace; 99 ms end-to-end | 33 waypoints over 10 s @ 20 Hz + lane lines/lead | AutoSteer: ego-path waypoints in camera coords, **no time parameterisation**; AutoSpeed: CIPO boxes (3 classes); AutoDrive: CIPO distance + curvature + presence prob | K=3 × 6 waypoints @ 0.5 s (3 s) + mode logits + steer/accel/brake; plus 11 perception heads | 128-d = 64 steps × (accel, curvature), 6.4 s @ 10 Hz; paddock integrates them with upstream's rollout | 50 poses (x, y, heading) @10 Hz, 5 s; optional one-sentence rationale |
-| **Architecture** | V-JEPA-2-init ViT-L encoder + proposal-centric planner; MTD + momentum-aware selection | Cosmos-Reason2 + diffusion trajectory decoder (AR1: Cosmos-Reason VLM + traj decoder) | supercombo, a single ONNX graph | 3 separate conv nets, all YOLO-family 'n' variant | ResNet-34 + FPN per camera, depth-gated IPM lift to one 800×500 BEV @ 0.2 m, 12 task heads + refiners (`DepthSegIPMNetV52`) | ResNet-50 + BEVFormer V2 T8 (300×200 BEV, frozen for the KITScenes fine-tune), deformable map/route fusion, GRU planner | Qwen3.5-4B VLM (unchanged) + 1 B flow-matching Planning Expert reading its KV caches; separate BEV perception head |
-| **Parameters** | 307 M (encoder + planner) | **10 B** (34 B for Super) | **30.0 M** ᵐ, counted in the pinned ONNX (comma gives 26.6 M for this generation) | **28.1 M** — AutoSteer 8.22 + AutoSpeed 9.33 + AutoDrive 10.58 ᵐ | 54 M (refiner incl.) ᵖ | 79.9 M ᵖ | **5.58 B** (4.54 B VLM + 1.04 B expert, counted from the checkpoint; the 125 M perception head is not loaded for planning) |
-| **Size** | 1.23 GB fp32 / 0.61 fp16 ᶜ | 20 GB bf16 ᶜ | **0.061 GB** (`driving_supercombo.onnx`); 1.76 GB big variant; 0.0075 GB dmonitoring ᵐ | 0.112 GB fp32 / 0.028 INT8 ᵐ | 0.35 GB fp32 ONNX ᵐ; 2:4 sparse trunk | 0.32 GB fp32 ᶜ | 9.1 GB VLM + 2.1 GB per planner, bf16 ᶜ |
+| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 | UniAD (`uniad`; `uniad_b2d`) | VAD (`vad`; `vad_b2d`) |
+|---|---|---|---|---|---|---|---|---|---|
+| **Output @ freq** | trajectory from an 8192-entry anchor vocabulary | trajectory @ 6.4 s + chain-of-causation trace; 99 ms end-to-end | 33 waypoints over 10 s @ 20 Hz + lane lines/lead | AutoSteer: ego-path waypoints in camera coords, **no time parameterisation**; AutoSpeed: CIPO boxes (3 classes); AutoDrive: CIPO distance + curvature + presence prob | K=3 × 6 waypoints @ 0.5 s (3 s) + mode logits + steer/accel/brake; plus 11 perception heads | 128-d = 64 steps × (accel, curvature), 6.4 s @ 10 Hz; paddock integrates them with upstream's rollout | 50 poses (x, y, heading) @10 Hz, 5 s; optional one-sentence rationale | 6 waypoints @ 0.5 s (3 s) of the lidar's position, after a collision optimiser over predicted occupancy; plus tracks, map, motion, occupancy | one plan per command, 6 offsets @ 0.5 s (3 s) of the lidar's position; plus agent boxes with motion, map vectors |
+| **Architecture** | V-JEPA-2-init ViT-L encoder + proposal-centric planner; MTD + momentum-aware selection | Cosmos-Reason2 + diffusion trajectory decoder (AR1: Cosmos-Reason VLM + traj decoder) | supercombo, a single ONNX graph | 3 separate conv nets, all YOLO-family 'n' variant | ResNet-34 + FPN per camera, depth-gated IPM lift to one 800×500 BEV @ 0.2 m, 12 task heads + refiners (`DepthSegIPMNetV52`) | ResNet-50 + BEVFormer V2 T8 (300×200 BEV, frozen for the KITScenes fine-tune), deformable map/route fusion, GRU planner | Qwen3.5-4B VLM (unchanged) + 1 B flow-matching Planning Expert reading its KV caches; separate BEV perception head | ResNet-101-DCN + FPN, BEVFormer 200×200, track/map/motion/occupancy/planning heads | ResNet-50 + FPN, BEVFormer 200×200 (30 m × 60 m), vectorised agent and map queries, ego planning query |
+| **Parameters** | 307 M (encoder + planner) | **10 B** (34 B for Super) | **30.0 M** ᵐ, counted in the pinned ONNX (comma gives 26.6 M for this generation) | **28.1 M** — AutoSteer 8.22 + AutoSpeed 9.33 + AutoDrive 10.58 ᵐ | 54 M (refiner incl.) ᵖ | 79.9 M ᵖ | **5.58 B** (4.54 B VLM + 1.04 B expert, counted from the checkpoint; the 125 M perception head is not loaded for planning) | 131.8 M ᶜ | 58.4 M ᶜ |
+| **Size** | 1.23 GB fp32 / 0.61 fp16 ᶜ | 20 GB bf16 ᶜ | **0.061 GB** (`driving_supercombo.onnx`); 1.76 GB big variant; 0.0075 GB dmonitoring ᵐ | 0.112 GB fp32 / 0.028 INT8 ᵐ | 0.35 GB fp32 ONNX ᵐ; 2:4 sparse trunk | 0.32 GB fp32 ᶜ | 9.1 GB VLM + 2.1 GB per planner, bf16 ᶜ | 1.00 GB fp32 ᶜ (both checkpoints) | 0.71 GB (`vad`) / 0.70 GB (`vad_b2d`) fp32 ᶜ |
 
 Note the four-order-of-magnitude spread in the size row, and then read the
 neuroNCAP column of the support matrix, where the top three are statistically
@@ -37,11 +37,11 @@ indistinguishable.
 
 ## Availability
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
-|---|---|---|---|---|---|---|---|
-| **Training code** | yes | yes (Apache-2.0) | **no** — comma trains offline and ships weights | yes | yes (Apache-2.0), + autolabel factory | yes | **no** — inference code only |
-| **Inference code** | yes | yes, + AlpaSim integration | yes (`modeld`, MIT) | yes (Python + C++, ONNX Runtime/TensorRT, ROS2/Zenoh) | yes (Python + C++ TensorRT runtimes; plain ONNX runs in onnxruntime) | yes | yes (Apache-2.0) |
-| **Checkpoints** | yes (HF) | yes — `nvidia/Alpamayo-R1-10B`, `nvidia/Alpamayo-1.5-10B`. **OpenMDW-1.1, non-commercial**; commercial on request | yes — git-LFS in repo, MIT | yes — `.pth` + ONNX fp32 + ONNX INT8, **Apache-2.0, commercial OK** | yes — `AutowareFoundation/meteor` (`.pt` + ONNX), **Apache-2.0** | yes — `AutowareFoundation/auto_e2e` v1.0 (`nuplan-epoch-5`, `kitscenes-epoch-5`); code Apache-2.0, checkpoint licence "other" (model card), BEVFormer initialisation NOASSERTION | yes — `Qwen/Qwen-Drive-1.0-4B` (VLM + planner-sft + planner-rl + perception), **Apache-2.0, commercial OK** |
+| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 | UniAD (`uniad`; `uniad_b2d`) | VAD (`vad`; `vad_b2d`) |
+|---|---|---|---|---|---|---|---|---|---|
+| **Training code** | yes | yes (Apache-2.0) | **no** — comma trains offline and ships weights | yes | yes (Apache-2.0), + autolabel factory | yes | **no** — inference code only | yes (Apache-2.0); Bench2DriveZoo's yes (**CC BY-NC-ND 4.0**) | yes (Apache-2.0); Bench2DriveZoo's yes (**CC BY-NC-ND 4.0**) |
+| **Inference code** | yes | yes, + AlpaSim integration | yes (`modeld`, MIT) | yes (Python + C++, ONNX Runtime/TensorRT, ROS2/Zenoh) | yes (Python + C++ TensorRT runtimes; plain ONNX runs in onnxruntime) | yes | yes (Apache-2.0) | yes (test pipeline; no closed-loop agent upstream; Bench2DriveZoo has a CARLA agent) | yes (as UniAD) |
+| **Checkpoints** | yes (HF) | yes — `nvidia/Alpamayo-R1-10B`, `nvidia/Alpamayo-1.5-10B`. **OpenMDW-1.1, non-commercial**; commercial on request | yes — git-LFS in repo, MIT | yes — `.pth` + ONNX fp32 + ONNX INT8, **Apache-2.0, commercial OK** | yes — `AutowareFoundation/meteor` (`.pt` + ONNX), **Apache-2.0** | yes — `AutowareFoundation/auto_e2e` v1.0 (`nuplan-epoch-5`, `kitscenes-epoch-5`); code Apache-2.0, checkpoint licence "other" (model card), BEVFormer initialisation NOASSERTION | yes — `Qwen/Qwen-Drive-1.0-4B` (VLM + planner-sft + planner-rl + perception), **Apache-2.0, commercial OK** | yes — GitHub release `uniad_base_e2e.pth`; `rethinklab/Bench2DriveZoo` on Hugging Face | yes — Google Drive (README link); `rethinklab/Bench2DriveZoo` on Hugging Face |
 
 The licence row is the one to read before planning a product. Alpamayo's weights
 are non-commercial by default; VisionPilot's and OpenPilot's are not.
@@ -57,6 +57,10 @@ are non-commercial by default; VisionPilot's and OpenPilot's are not.
 | **METEOR** | ResNet-34 from **ImageNet**; TIER IV Co-MLOps DRS recordings (Japan + a US subset) and a 7-camera minibus corpus @ 5 Hz, every label from CoMET (TIER IV's ensemble of 12 models, unnamed); Cosmos Transfer re-renders of those scenes train perception only. 953 GB / 12,595 scenes is the disk, not the training list | released v157: a 2:4-sparse fine-tune from v151 with the planner frozen and RL off (`rl_w 0.0`, read from the checkpoint); the GRPO stage is not shown to be in its ancestry |
 | **AutoE2E** | ResNet-50 via **COCO** (FCOS); BEVFormer V2 R50 T8 on **nuScenes train**, frozen in every later stage; then nuPlan v1.1 **train** sensor logs (1,085 logs, none of `navtest`'s) | **KITScenes** train fine-tune (404 scenes), camera BEV still frozen (`kitscenes-epoch-5`, the checkpoint paddock runs) |
 | **Qwen-Drive 1.0** | Qwen3.5-4B's own corpus (not published); VLM adapted with a perception head on **nuScenes** official train and **OpenScene** trainval minus 16 logs, plus 24 public driving-VQA sets (about 20 % of each; some of their training splits hold nuScenes val scenes and, in Impromptu VLA, **navtest** frames) and 30K in-house examples from China | planning expert (`planner-sft`, what paddock runs): **NAVSIM**, OpenScene, WOD-E2E, PhysicalAI-AV, no split named; `planner-rl`: 15K `navtrain`, 15K PhysicalAI-AV, 479 WOD-E2E validation scenarios |
+| **UniAD** (`uniad`) | BEVFormer-Base's released nuScenes detector (stage 1's `load_from`), so ResNet-101 trained on **nuScenes** through BEVFormer | stage 1 (track + map) and stage 2 (end to end, planning) on **nuScenes `train`**, reported on `val` |
+| **VAD** (`vad`) | ResNet-50 from torchvision's **ImageNet** weights | stage 1 (perception, prediction) and stage 2 (planning) on **nuScenes `train`**, reported on `val` |
+| **UniAD-B2D** (`uniad_b2d`) | not stated at the pinned sha (its stage configs set no `load_from`; Bench2DriveZoo's BEVFormer starts from FCOS3D's **nuScenes** weights) | **Bench2Drive base** (1,000 CARLA clips by the Think2Drive RL expert) less its validation clips |
+| **VAD-B2D** (`vad_b2d`) | ResNet-50 from torchvision's **ImageNet** weights | **Bench2Drive base** less its validation clips |
 
 ---
 
@@ -410,6 +414,56 @@ and the closed-loop ones least: Bench2Drive and neuroNCAP are urban and slow
 enough that the cap rarely binds, which is why the defect survived them.
 `docs/models/visionpilot.md` has the derivation; the re-sweep is an open
 item in `docs/ROADMAP.md`.
+
+### UniAD × nuscenes — the benchmark is UniAD's own protocol, and its training set's twin
+
+**UniAD's nuScenes cell is in-distribution, by design.** Both of its training stages read nuScenes `train`
+(`nuscenes_infos_temporal_train.pkl` in `projects/configs/stage1_track_map/base_track_map.py` and
+`stage2_e2e/base_e2e.py` at the pinned sha) and its paper reports the `val` split, which is the split
+paddock's nuScenes benchmark scores. The scenes are held out; the cameras, the city streets, the rig and the
+annotation conventions are the ones it trained on, and paddock's open-loop metric is UniAD's own (its L2 and
+collision definitions). So this column measures it at home, the way NAVSIM measures Drive-JEPA at home,
+while OpenPilot, VisionPilot and METEOR meet nuScenes zero-shot. Its stage 1 also starts from BEVFormer's
+nuScenes detector, so the backbone saw nuScenes `train` twice. One protocol difference remains: UniAD's own
+evaluation runs each val scene front to back, carrying its tracks and BEV state from the scene's first
+frame; paddock feeds two seconds of keyframes before each scored one.
+
+### VAD × nuscenes — trained on nuScenes train, scored on val
+
+**VAD's nuScenes cell is in-distribution too.** Its two stages train on nuScenes `train`
+(`vad_nuscenes_infos_temporal_train.pkl` in `projects/configs/VAD/VAD_base_stage_{1,2}.py` at the pinned sha)
+and its paper reports `val`, the split paddock scores; the command it is given on this benchmark is derived
+from the recorded future by VAD's own rule. Read the column the way the UniAD section above says: held-out
+scenes from the training distribution, against other models seeing nuScenes for the first time. Like UniAD,
+VAD's own evaluation runs whole scenes in order; paddock gives it two seconds of keyframes first.
+
+### UniAD and VAD × hugsim — some of HUGSIM's nuScenes scenes are nuScenes training drives
+
+HUGSIM reconstructs real drives as Gaussian-splatting scenes, 88 of its scenarios from nuScenes. They are not
+all `val` scenes: `scene-0013` is in nuScenes `val`, but `scene-0166`, which paddock's HUGSIM notes name, is a
+`train` scene, so UniAD and VAD trained on the very drive it reconstructs (the renders and the trajectories
+driven through them are new). The split of the other nuScenes scenarios has not been checked here. HUGSIM
+also renders the nuScenes camera rig on its KITTI-360, PandaSet and Waymo scenes, black behind the car on
+KITTI-360 and Waymo, so those are out of distribution twice over. A 9 Nov 2026 A/B on three scenarios
+against HUGSIM's own UniAD client gave the same outcomes as paddock's adapter (docs/models/uniad.md).
+
+### UniAD-B2D × bench2drive — CARLA-trained, scored in CARLA
+
+**`uniad_b2d` and `vad_b2d` are the only rows trained in the simulator Bench2Drive scores.** Bench2DriveZoo
+trained them on Bench2Drive base: 1,000 CARLA clips driven by the Think2Drive reinforcement-learning expert,
+less a validation split. No base clip carries an evaluation route's id, but checked on 29 Sep 2026 against
+the base listing, 26 of the 220 evaluation routes have a base clip of the same scenario type passing within a
+few metres of the route's scenario trigger, the same scenario instance under another id. The other rows meet
+CARLA zero-shot from real data. Paddock drives them through its own camera rig (800×450 at paddock's mounts),
+not the 1600×900 rig they trained on, and at their training rate of 2 Hz, where Bench2DriveZoo's own agent
+asked every 20 Hz tick for its published 45.81 / 42.35 DS; see docs/models/uniad_b2d.md.
+
+### VAD-B2D × bench2drive — the same training set and the same caveats
+
+VAD-B2D shares UniAD-B2D's training data, its overlap with the evaluation routes and its rig difference: see
+the section above. It plans one trajectory per Bench2Drive command, six in all, and the command picks the one
+driven, so the command mapping (docs/models/vad_b2d.md) decides directly what it drives, more than for
+UniAD-B2D, which reads the command only as an embedding.
 
 ## Provenance of these figures
 

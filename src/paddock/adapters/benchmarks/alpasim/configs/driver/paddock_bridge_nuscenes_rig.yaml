@@ -1,0 +1,255 @@
+# @package _global_
+# The driver AlpaSim composes when paddock serves UniAD or VAD through the bridge.
+#
+# Both read nuScenes' six surround cameras: 1600 x 900 rectified pinholes on the
+# nuScenes recording car. The spatial cross-attention learns one embedding per
+# camera slot and projects every BEV sample point through each camera's
+# lidar2img, so the models need that rig, not just six images. AlpaSim's 26.01
+# scenes record six f-theta cameras that point elsewhere and have none looking
+# straight back, so all six are re-rendered here through `extra_cameras` as
+# nuScenes' rig, value for value. AlpaSim can only change a camera a scene
+# already has, never add one (camera_catalog.py, "sensorsim only supports
+# changing, not adding"), so CAM_BACK borrows camera_front_tele_30fov, as
+# AutoE2E's rear view does (paddock_bridge_autoe2e.yaml, whose layout this file
+# follows). `models/uniad/alpasim.yaml` and `models/vad/alpasim.yaml` select it.
+# It is here, not in a model's own driver/ folder, because the two models share
+# it and AlpaSim searches only the folder of the model being driven.
+#
+#   AlpaSim id                  node name, nuScenes camera
+#   camera_front_wide_120fov    CAM_FRONT
+#   camera_cross_left_120fov    CAM_FRONT_LEFT
+#   camera_cross_right_120fov   CAM_FRONT_RIGHT
+#   camera_rear_left_70fov      CAM_BACK_LEFT
+#   camera_front_tele_30fov     CAM_BACK (borrowed id)
+#   camera_rear_right_70fov     CAM_BACK_RIGHT
+#
+# What the values are, briefly:
+#   * Calibration: nuScenes' own, as recorded on the log of scene-0103, the
+#     scene of the adapters' golden tests. Its LIDAR_TOP (calibrated_sensor
+#     d051cafdd9fe4d999b413462364d44a0) is bev_planners.NUSC_LIDAR2EGO, the
+#     lidar the models' grid is laid out in on AlpaSim, so cameras and lidar
+#     come from one calibration. The same values are in 452 of the 850 trainval
+#     scenes' calibrated_sensor records. Intrinsics are camera_intrinsic
+#     (square pixels, principal point off centre), every distortion coefficient
+#     zero: nuScenes publishes rectified images and K alone, and the bridge
+#     sends K without undistorting. rig_to_camera is the record's translation
+#     and rotation, the quaternion reordered from nuScenes' (w, x, y, z) to
+#     AlpaSim's (x, y, z, w). tests/test_nuscenes_rig_profile.py checks every
+#     number against adapters/models/uniad/tests/fixtures/golden_uniad.json.
+#   * Frames: nuScenes' ego frame and AlpaSim's rig are the same frame, origin
+#     on the ground under the middle of the rear axle, x forward, y left, z up
+#     (alpasim_utils/scenario.py, VehicleConfig), and both put a camera's axes
+#     the OpenCV way (x right, y down, z forward), as sensorsim_service.py
+#     composes world_camera = world_rig @ rig_to_camera. So the calibration
+#     goes in unchanged: CAM_FRONT looks along +x (yaw 0.6 degrees),
+#     CAM_FRONT_LEFT at +55.3, CAM_FRONT_RIGHT at -57.6, CAM_BACK_LEFT at
+#     +108.6, CAM_BACK_RIGHT at -112.5, CAM_BACK at 179.5, all within 1.2
+#     degrees of level.
+#   * Pose: every camera at its nuScenes pose, the front and cross cameras too
+#     (AutoE2E keeps each scene's own pose there). These models were trained on
+#     exactly this geometry, and the bridge sends each camera's pose as
+#     declared here, so lidar2img is built from the poses the frames were
+#     rendered at.
+#   * CAM_BACK stays where nuScenes has it, over the rear axle 1.57 m up, not
+#     on the roof where AutoE2E moved its rear view. AutoE2E moved it because a
+#     camera near the front of the car looking back sees through our own car,
+#     which the renderer never draws, onto the ground under it, which no
+#     recorded camera saw. CAM_BACK's lowest image row meets the ground
+#     2.9-3.0 m behind the rear axle, past the back of the car (1.3 m behind
+#     the axle on AlpaSim's default vehicle), so it never sees that ground;
+#     AutoE2E's roof view reaches 2.1 m behind the axle. CAM_BACK is 0.13 and
+#     0.07 m above the roofs of the two lower cars in the 30 scenes (1.439 and
+#     1.503 m) and 0.26 m below the tallest's (1.823 m); the car is never
+#     drawn, so it sees the same either way. What remains is shared with
+#     AutoE2E's rear view: ground just behind the car is reconstructed only
+#     where a recorded camera saw it earlier, which may not hold for a car
+#     that has barely moved since the clip began.
+#   * Global shutter on all six, open for 1 us, as in AutoE2E's file (its
+#     header has the reason: a global render is drawn at the shutter's opening
+#     and the bridge sends the pose at its closing; 0 would mean "the recorded
+#     duration"). nuScenes' cameras are global-shutter as well.
+#   * Cameras every 500 ms, against a 50 ms control step. UniAD and VAD step
+#     every 0.5 s and read no frame between steps, and this renders a tenth of
+#     the frames. Every frame they step on is still rendered at exactly the
+#     pose it is sent with:
+#       - assert_zero_decision_delay (true here and in AlpaSim's
+#         base_config.yaml) makes every camera's first frame close at the first
+#         policy step (unbound_rollout._build_rollout_timing) and each later
+#         one frame_interval_us after it (types.Clock.ith_trigger);
+#       - the bridge's 500 ms replan grid is anchored on that first step
+#         (replan_rhythm.ReplanRhythmPlanner._due), and the 3.0 s warm-up is a
+#         whole number of grid steps, so every replan falls on a camera frame;
+#       - a camera event runs before the policy event of the same time
+#         (events/base.py: CAMERA 10, POLICY 20), so at each replan every
+#         camera's newest frame closed at that replan's own time.
+#     Warm-up steps off the 0.5 s grid still go to /observe, each with the
+#     last frame, up to 450 ms older than its pose. The model never steps on
+#     them: the first plan steps through the warm-up frames on the 0.5 s grid
+#     (bev_planners.history_on_grid takes the nearest, here an exact match).
+#     The runtime's own check (events/policy.py, assert_sensors_up_to_date)
+#     only asks for a frame at or before each step. A site's video comes out
+#     at 2 frames a second.
+#   * 50 ms control step, 3.0 s of ground-truth warm-up with the driver called
+#     throughout (the bridge sends those frames to the node's /observe), 400
+#     steps, one rollout: AutoE2E's and Drive-JEPA's values.
+
+wizard:
+  # driver is absent on purpose: the bridge is already listening.
+  run_sim_services:
+    ["renderer", "physics", "trafficsim", "controller", "runtime"]
+
+  external_services:
+    # Overridden per episode with the port the harness actually reserved; this
+    # value only has to compose.
+    driver:
+      - "localhost:9200"
+
+  debug_flags:
+    # Containers join the host network, so localhost:<port> reaches the bridge.
+    use_localhost: true
+
+# Do NOT set `runtime.endpoints.driver.skip: true`. Combined with
+# external_services it makes the runtime skip the driver entirely, and the run
+# still exits 0 with a full metrics table that is not the model's.
+runtime:
+  simulation_config:
+    force_gt_duration_us: 3_000_000
+    # The driver is called during warm-up, so the node's history is full at
+    # handover. Stated rather than left to the schema default.
+    skip_driver_during_force_gt: false
+    control_timestep_us: 50_000
+    n_sim_steps: 400
+    n_rollouts: 1
+    ego_mask_rig_config_id: null
+    # Every camera's first frame closes at the first policy step; the 500 ms
+    # camera interval relies on it (see the header). Also base_config.yaml's
+    # value; stated because the alignment depends on it.
+    assert_zero_decision_delay: true
+    # Each camera's height and width must equal its extra_cameras resolution_hw:
+    # the render request takes its size from here and its intrinsics from there.
+    # frame_interval_us must equal the bridge's --replan-every-us (a test checks).
+    cameras:
+      - logical_id: camera_front_wide_120fov
+        height: 900
+        width: 1600
+        frame_interval_us: 500_000
+        shutter_duration_us: 1
+      - logical_id: camera_cross_left_120fov
+        height: 900
+        width: 1600
+        frame_interval_us: 500_000
+        shutter_duration_us: 1
+      - logical_id: camera_cross_right_120fov
+        height: 900
+        width: 1600
+        frame_interval_us: 500_000
+        shutter_duration_us: 1
+      - logical_id: camera_rear_left_70fov
+        height: 900
+        width: 1600
+        frame_interval_us: 500_000
+        shutter_duration_us: 1
+      - logical_id: camera_front_tele_30fov
+        height: 900
+        width: 1600
+        frame_interval_us: 500_000
+        shutter_duration_us: 1
+      - logical_id: camera_rear_right_70fov
+        height: 900
+        width: 1600
+        frame_interval_us: 500_000
+        shutter_duration_us: 1
+
+  extra_cameras:
+    # CAM_FRONT: yaw 0.6, pitch 0.5, roll -0.7 degrees.
+    - logical_id: camera_front_wide_120fov
+      rig_to_camera:
+        translation_m: [1.72200568478, 0.00475453292289, 1.49491291905]
+        rotation_xyzw: [-0.4973392230703816, 0.49837167536166627, -0.4964832014373754, 0.5077241387638071]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [1252.8131021185304, 1252.8131021185304]
+          principal_point: [826.588114781398, 469.9846626224581]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [900, 1600]
+      shutter_type: GLOBAL
+    # CAM_FRONT_LEFT: yaw 55.3, pitch 1.0, roll -0.2 degrees.
+    - logical_id: camera_cross_left_120fov
+      rig_to_camera:
+        translation_m: [1.5752559464, 0.500519383135, 1.50696032589]
+        rotation_xyzw: [-0.6687507165046241, 0.2101702448905517, -0.21108161122114324, 0.6812088525125634]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [1257.8625342125129, 1257.8625342125129]
+          principal_point: [827.2410631095686, 450.915498205774]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [900, 1600]
+      shutter_type: GLOBAL
+    # CAM_FRONT_RIGHT: yaw -57.6, pitch 0.3, roll -0.9 degrees.
+    - logical_id: camera_cross_right_120fov
+      rig_to_camera:
+        translation_m: [1.58082565783, -0.499078711449, 1.51749368405]
+        rotation_xyzw: [-0.19146333228946724, 0.6785710044972951, -0.6793609166212989, 0.20335173766558642]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [1256.7485116440405, 1256.7485116440403]
+          principal_point: [817.7887570959712, 451.9541780095127]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [900, 1600]
+      shutter_type: GLOBAL
+    # CAM_BACK_LEFT: yaw 108.6, pitch 1.2, roll -0.1 degrees.
+    - logical_id: camera_rear_left_70fov
+      rig_to_camera:
+        translation_m: [1.04852047718, 0.483058131052, 1.56210154484]
+        rotation_xyzw: [-0.6907306801461466, -0.11209091960167808, 0.11617345743327073, 0.7048620297871717]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [1254.9860565800168, 1254.9860565800168]
+          principal_point: [829.5769333630991, 467.1680561863987]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [900, 1600]
+      shutter_type: GLOBAL
+    # CAM_BACK: yaw 179.5, pitch 0.4, roll 0.6 degrees, over the rear axle (see
+    # the header). No recorded camera looks this way; the tele camera's id
+    # carries the render.
+    - logical_id: camera_front_tele_30fov
+      rig_to_camera:
+        translation_m: [0.05524611077, 0.0107882366898, 1.56794286957]
+        rotation_xyzw: [-0.4977567019405021, -0.4987849934090844, 0.496594225837321, 0.5067997344989889]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [796.8910634503094, 796.8910634503094]
+          principal_point: [857.7774326863696, 476.8848988407415]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [900, 1600]
+      shutter_type: GLOBAL
+    # CAM_BACK_RIGHT: yaw -112.5, pitch 0.7, roll -0.1 degrees.
+    - logical_id: camera_rear_right_70fov
+      rig_to_camera:
+        translation_m: [1.05945173053, -0.46720294852, 1.55050857555]
+        rotation_xyzw: [-0.13796718183628456, -0.6893329941542625, 0.697630335509333, 0.13819187705364147]
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [1249.9629280788233, 1249.9629280788233]
+          principal_point: [825.3768045375984, 462.54816385708756]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [900, 1600]
+      shutter_type: GLOBAL
