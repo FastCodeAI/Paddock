@@ -229,14 +229,15 @@ not been run at 10 Hz, so compare it with the 2 Hz pair.
 made at a different site from the earlier NAVSIM rows, with metric caches built there.
 The constant-velocity floor, scored on those caches, reproduces its stored rows exactly:
 0.238544 EPDMS and 0.206517 PDMS, every sub-metric to six decimals, with the same
-`sequences_sha256` (`82e33c6837552a03` for v2, `013e89176339021d` for v1). Edge's two
-records carry the same hashes.
+`sequences_sha256` (`82e33c6837552a03` for v2, `013e89176339021d` for v1). The two
+records reported here carry the same hashes.
 
 **The plans are reproducible.** The run reported here is the second full run. The first,
-from the commit before the redraw was added, scored 12,144 scenarios and stopped at the
-two the vendor refused, so it was stored partial and is not reported. Every one of
-those 12,144 plans is identical in the two runs, to the 0.1 mm the plan dump records,
-although different nodes served them.
+`navsim/alpamayo2edge/20261111T031938-f9f90a`, was made at `02b26a8`, before the redraw
+was added. It scored 12,144 scenarios and lost the two the vendor refused, so it was
+stored partial and `valid: false`; its record is kept in `results/`, and the leaderboard
+lists it under "Excluded runs". Every one of those 12,144 plans is identical in the two
+runs, to the 0.1 mm the plan dump records, although different nodes served them.
 
 What the plans look like, from the run's plan dump and node logs:
 
