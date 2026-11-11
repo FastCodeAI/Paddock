@@ -94,12 +94,26 @@ same shape.
 [benchmarks.navsim]
 python       = ".../envs/drive-jepa/bin/python"   # can import navsim and nuplan
 devkit       = ".../Drive-JEPA/navsim_v2"         # the directory holding navsim/
-metric_cache = ".../exp/metric_cache_v2"          # run_metric_caching.py builds one
+metric_cache = ".../exp/metric_cache_v2"          # tools/benchmarks/navsim/build_metric_cache.py builds one
 split        = "navtest"
 workers      = 4
 nuplan       = ".../nuplan-v1.1"                   # optional: 10 Hz frames, see "10 Hz from nuPlan"
 keyframe_cameras = false                          # optional: rear views from OpenScene's keyframes, same section
 gpu_nodes    = 1                                  # policy nodes per GPU model
+```
+
+Build the `metric_cache` from the navtest logs and maps (no sensor blobs
+needed) with paddock's tool, which runs the devkit's own `run_metric_caching.py`
+the way the scorer is run. The tool skips scenarios already cached, so a killed
+build is finished by running the same command again. Run by hand, the devkit's
+v2 script recomputes every one of them, because its `force_feature_computation`
+is on by default. Name the benchmark: without `--bench navsim` the tool builds
+navsim_v1's cache. Timing, and what preflight checks before a run uses the
+cache, are in [navsim_v1.md](navsim_v1.md#the-metric-cache-is-per-devkit-generation).
+
+```bash
+python -m tools.benchmarks.navsim.build_metric_cache --bench navsim --logs 2021.06.03.12.02.06_veh-35_01100_01227   # timing smoke
+python -m tools.benchmarks.navsim.build_metric_cache --bench navsim                                                 # the split
 ```
 
 Four environment switches, all deliberate and all narrow. Every one is
