@@ -149,11 +149,13 @@ the same steps (`prepare_inputs`). A test checks that both give the same tensors
 
 `make check` runs `tests/test_inputs.py` and `tests/test_policy.py` in paddock's own
 environment, with the model stubbed. `tests/test_vendor_inputs.py` needs the model's
-environment. It runs on the CPU and loads no weights:
+environment and the checkpoint's config, tokenizer and processor. It runs on the CPU
+and loads no weights. `make check-alpamayo2edge` runs the whole folder there, and
+fails rather than skips when the environment or the checkpoint is missing:
 
 ```bash
-ALPAMAYO2_EDGE_CHECKPOINT=<{weights}/Alpamayo2-Edge> CUDA_VISIBLE_DEVICES= PYTHONPATH=src \
-  <model venv>/bin/python -m pytest -p no:cacheprovider -q src/paddock/adapters/models/alpamayo2edge/tests
+make check-alpamayo2edge ALPAMAYO2_EDGE_PY=<model venv>/bin/python \
+  ALPAMAYO2_EDGE_CHECKPOINT=<{weights}/Alpamayo2-Edge>
 ```
 
 It checks the restated constants against the vendor's. It also checks that a NAVSIM
