@@ -68,8 +68,11 @@ capabilities:
   # side cameras and a 30 deg telephoto, which policy.py crops out of CAM_FRONT.
   camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK_RIGHT, CAM_FRONT_TELE]
   # Five frames for the front and telephoto cameras (-2, -1, -0.5, -0.1, 0 s) and
-  # three for the others (-1, -0.1, 0 s): no single rate, so camera_hz is left out.
+  # three for the others (-1, -0.1, 0 s). No single rate fits; camera_hz only draws
+  # the README's and the website's caption, where 2 Hz spans the 2 s the frames do
+  # and leaving it out would read as five frames back to back.
   history_frames: 5
+  camera_hz: 2.0
   ego_history_steps: 20
   ego_history_hz: 10.0
   output_kind: waypoints

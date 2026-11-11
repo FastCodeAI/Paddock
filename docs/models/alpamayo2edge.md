@@ -69,8 +69,10 @@ to the vendor's 1920×1080.
 | 5 rear right | 70° | `CAM_BACK_RIGHT` (R2, 141° right), 62° |
 | 6 front telephoto | 30° | a 30° crop of `CAM_FRONT`: exact |
 
-In the three 120° slots, things look about twice as near as the model learned to
-read them. Alpamayo 1.5 has the same mismatch on NAVSIM.
+In the three 120° slots everything looks larger, so nearer, than the model learned to
+read it: 1.8 times at the centre of the frame if the training cameras are fisheye
+lenses, 2.9 times if they are pinhole, and NVIDIA does not publish which. Alpamayo 1.5
+has the same mismatch on NAVSIM.
 
 **Frames.** For each slot, the newest frame at or before the slot's time, which is
 the vendor's own rule. At 2 Hz the front and telephoto cameras get the frames at
@@ -165,8 +167,9 @@ Measured on an H200 shared with other jobs, with one plan per scenario:
 
 - **GPU memory:** 6.9 GiB per node as `nvidia-smi` counts it, of which 5.8 GiB is
   torch's peak. Six plans per scenario need 10.6 GiB.
-- **Time per plan:** about 0.3 s to build the input on the CPU from 1164×874 frames,
-  and 0.5 to 0.75 s in the model.
+- **Time per plan,** on NAVSIM's 1920×1080 frames: 0.14 s to build the input when
+  three of the four frames are already resized, 0.45 s for a log's first scenario
+  (16 files read), and 0.5 to 1.2 s in the model.
 - **Disk reads:** resized frames are kept by file across scenarios. NAVSIM's next
   scenario in a log is 0.5 s later and shares three of its four frames, so it reads
   5 files instead of 16.
