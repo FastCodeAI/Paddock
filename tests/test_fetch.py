@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import socket
 import tarfile
 import zipfile
 from pathlib import Path
@@ -389,6 +390,31 @@ def test_a_part_that_replaces_files_goes_on_after_them(site, hub, tmp_path) -> N
     assert (dest / "Content/shared.uasset").read_bytes() == b"new"
 
 
+def _closed_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def test_no_network_is_one_line_not_a_traceback(site, tmp_path, monkeypatch) -> None:
+    """Both kinds of source: a Hugging Face file listing, and the size check against a web host."""
+    for var in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    down = f"http://127.0.0.1:{_closed_port()}"
+    hub = fetch.Sources(endpoint=down)
+    with pytest.raises(fetch.FetchError, match="could not reach 127.0.0.1"):
+        hub.files(REPO, REV, "raw", recursive=False)
+
+    pins = {"a.tgz": {"size": 3, "etag": "e"}}
+    web = {"license": "MIT", "base": down + "/", "parts": {"a": {"files": pins}}}
+    lines: list[str] = []
+    registry = SimpleNamespace(datasets={"toy": _spec(web)})
+    dest = tmp_path / "d"
+    code = fetch.fetch(site, "toy", dest=dest, dry_run=True, echo=lines.append, registry=registry, hub=hub)
+    assert code == 1
+    assert "could not reach 127.0.0.1" in lines[-1]
+
+
 def test_a_pattern_matching_nothing_at_the_source_fails(hub, recipe) -> None:
     broken = {**recipe, "parts": {"raw": {"files": ["raw/Shard_*.zip"]}}}
     with pytest.raises(fetch.FetchError, match="matches"):
@@ -483,7 +509,7 @@ def test_a_link_out_of_its_own_folder_is_refused(tmp_path, target) -> None:
 
 @pytest.mark.parametrize("kind", ["tar", "zip"])
 def test_an_executable_stays_executable(tmp_path, kind) -> None:
-    """CARLA is started by running CarlaUE4.sh; unpacked without its mode, the shell says Permission denied."""
+    """CARLA starts by running CarlaUE4.sh; unpacked without its mode, the shell says Permission denied."""
     archive = tmp_path / f"carla.{kind}"
     members = {"CarlaUE4.sh": (b"#!/bin/sh\n", 0o4755), "VERSION": (b"0.9.15", 0o644)}
     if kind == "tar":

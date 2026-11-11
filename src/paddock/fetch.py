@@ -253,13 +253,16 @@ class Sources:
         """
         import httpx
 
-        response = httpx.head(url, follow_redirects=True, timeout=60, headers=self.headers(url))
-        length = response.headers.get("content-length")
-        if response.status_code < 400 and not length:
-            ranged = {**self.headers(url), "Range": "bytes=0-0"}
-            with httpx.stream("GET", url, follow_redirects=True, timeout=60, headers=ranged) as response:
-                total = response.headers.get("content-range", "").rpartition("/")[2]
-                length = total if total.isdigit() else None
+        try:
+            response = httpx.head(url, follow_redirects=True, timeout=60, headers=self.headers(url))
+            length = response.headers.get("content-length")
+            if response.status_code < 400 and not length:
+                ranged = {**self.headers(url), "Range": "bytes=0-0"}
+                with httpx.stream("GET", url, follow_redirects=True, timeout=60, headers=ranged) as response:
+                    total = response.headers.get("content-range", "").rpartition("/")[2]
+                    length = total if total.isdigit() else None
+        except httpx.HTTPError as exc:
+            raise _unreachable(url, exc) from exc
         etag = response.headers.get("etag")
         return (int(length) if length else None, etag.strip('"') if etag else None, response.status_code)
 
@@ -267,7 +270,10 @@ class Sources:
         """The status a download of `url` would start with; 401 or 403 means no access."""
         import httpx
 
-        return httpx.head(url, follow_redirects=False, timeout=60, headers=self.headers(url)).status_code
+        try:
+            return httpx.head(url, follow_redirects=False, timeout=60, headers=self.headers(url)).status_code
+        except httpx.HTTPError as exc:
+            raise _unreachable(url, exc) from exc
 
     def files(self, repo: str, revision: str, directory: str, recursive: bool) -> list[Remote]:
         import httpx
@@ -277,27 +283,30 @@ class Sources:
             f"{self.endpoint}/api/datasets/{repo}/tree/{revision}/{directory}".rstrip("/") + query
         )
         found: list[Remote] = []
-        with httpx.Client(follow_redirects=True, timeout=60) as client:
-            while url:
-                response = client.get(url, headers=self.headers(url))
-                if response.status_code in (401, 403):
-                    raise FetchError(_login_needed(repo))
-                if response.status_code == 404:
-                    raise FetchError(f"{repo} has no {directory or 'top level'} at {revision[:12]}")
-                response.raise_for_status()
-                for entry in response.json():
-                    if entry.get("type") != "file":
-                        continue
-                    lfs = entry.get("lfs") or {}
-                    found.append(
-                        Remote(
-                            path=entry["path"],
-                            url=self.url(repo, revision, entry["path"]),
-                            size=entry.get("size"),
-                            sha256=lfs.get("oid"),
+        try:
+            with httpx.Client(follow_redirects=True, timeout=60) as client:
+                while url:
+                    response = client.get(url, headers=self.headers(url))
+                    if response.status_code in (401, 403):
+                        raise FetchError(_login_needed(repo))
+                    if response.status_code == 404:
+                        raise FetchError(f"{repo} has no {directory or 'top level'} at {revision[:12]}")
+                    response.raise_for_status()
+                    for entry in response.json():
+                        if entry.get("type") != "file":
+                            continue
+                        lfs = entry.get("lfs") or {}
+                        found.append(
+                            Remote(
+                                path=entry["path"],
+                                url=self.url(repo, revision, entry["path"]),
+                                size=entry.get("size"),
+                                sha256=lfs.get("oid"),
+                            )
                         )
-                    )
-                url = response.links.get("next", {}).get("url")
+                    url = response.links.get("next", {}).get("url")
+        except httpx.HTTPError as exc:
+            raise _unreachable(url or self.endpoint, exc) from exc
         return found
 
 
@@ -317,6 +326,13 @@ def _listing_dir(pattern: str) -> tuple[str, bool]:
     if len(fixed) == len(parts):  # no glob: one file, so list its directory
         return "/".join(fixed[:-1]), False
     return "/".join(fixed), len(parts) - len(fixed) > 1
+
+
+def _unreachable(url: str, exc: Exception) -> FetchError:
+    host = url.split("://", 1)[-1].split("/", 1)[0]
+    return FetchError(
+        f"could not reach {host} ({type(exc).__name__}: {exc}); check the network and run again"
+    )
 
 
 def _login_needed(repo: str) -> str:
@@ -685,7 +701,11 @@ def fetch(
     # Before anything is downloaded, and in a dry run too: a dry run that passed
     # here and a real one that failed on the first file would make the dry run
     # worthless as a check.
-    problems = _unpacked_out_of_order(rec, todo, dest, hub) + check_sources(todo, hub)
+    try:
+        problems = _unpacked_out_of_order(rec, todo, dest, hub) + check_sources(todo, hub)
+    except FetchError as exc:
+        echo(str(exc))
+        return 1
     for problem in problems:
         echo(problem)
     if problems:
