@@ -55,6 +55,12 @@ capabilities:
   # The vendor's loader: 0.1 s apart at the newest frames, 2 s of history. A
   # benchmark holding 10 Hz frames (NAVSIM with [benchmarks.navsim] nuplan) feeds them.
   native_input_hz: 10.0
+  # How often it plans in closed loop: once per frame of that 0.1 s grid, as
+  # Alpamayo 1.5, whose loader has the same grid, declares. Bench2Drive steps at
+  # 20 Hz, so it asks once every 0.1 s and follows the last plan in between; the
+  # frames Edge then holds are 0.1 s apart, exactly the ones its slots and its pose
+  # history ask for. NVIDIA states no rate of its own.
+  planning_hz: 10.0
   history_s: 2.0
 
   # -- model card (docs/models/alpamayo2edge.md) --
@@ -98,4 +104,4 @@ capabilities:
     - dataset: nvidia-physical-ai
 
 # One key: two `benchmarks:` lines keep only the last.
-benchmarks: [navsim, navsim_v1]
+benchmarks: [navsim, navsim_v1, bench2drive]

@@ -243,6 +243,9 @@ class Alpamayo2EdgePolicy(Policy):
     def reset(self) -> None:
         """Forget the sequence. Resized frames stay cached by file for the next one."""
         self._frames: list[Observation] = []
+        #: This sequence's frames that came as pixels (a closed-loop client), resized, by the
+        #: time they were taken: the next sequence's clock may start again at the same time.
+        self._held: dict[tuple, np.ndarray] = {}
 
     def _record(self, obs: Observation) -> None:
         """Keep one observation. One stamped no later than the last is the same frame
@@ -259,13 +262,19 @@ class Alpamayo2EdgePolicy(Policy):
 
     # -- input --------------------------------------------------------------------
 
-    def _warp(self, frame: Observation, camera: str, hfov: float | None, memo: dict) -> np.ndarray:
-        """One camera of one frame, cropped for its slot: once per call, and across calls once per file."""
+    def _warp(self, frame: Observation, camera: str, hfov: float | None) -> np.ndarray:
+        """One camera of one frame, cropped for its slot, once.
+
+        A file is known by its path, across sequences. Pixels sent in the body (a
+        closed-loop client) are known by the time they were taken, which `_record`
+        keeps strictly increasing within a sequence: at 10 Hz a plan reads 22 frames,
+        16 of them read by an earlier plan, and resizing one is 30-40 ms.
+        """
         intrinsics = np.asarray(frame.camera2image[camera], dtype=np.float64)
         fx, cx, cy = float(intrinsics[0, 0]), float(intrinsics[0, 2]), float(intrinsics[1, 2])
         path = frame.image_paths.get(camera)
-        key = (path, hfov, fx, cx, cy) if path else (id(frame), camera, hfov)
-        cache = self._warped if path else memo
+        cache = self._warped if path else self._held
+        key = (path, hfov, fx, cx, cy) if path else (frame.timestamp_us, camera, hfov, fx, cx, cy)
         if key in cache:
             self._warp_hits += 1
             if path:
@@ -302,7 +311,6 @@ class Alpamayo2EdgePolicy(Policy):
             raise RuntimeError("no frame has been recorded")
         frames = self._frames
         now_us = frames[-1].timestamp_us
-        memo: dict = {}
         images, ids, stamps, chosen_times = [], [], [], {}
         for camera_id, camera, hfov in inputs.SLOTS:
             carrying = [frame for frame in frames if _has(frame, camera)]
@@ -316,11 +324,15 @@ class Alpamayo2EdgePolicy(Policy):
             )
             chosen = [carrying[i] for i in picks]
             for frame in chosen:
-                images.append(self._warp(frame, camera, hfov, memo))
+                images.append(self._warp(frame, camera, hfov))
                 ids.append(camera_id)
                 stamps.append(frame.timestamp_us)
             chosen_times[camera_id] = [round((frame.timestamp_us - now_us) / 1e6, 3) for frame in chosen]
             self._slot_geometry(camera_id, chosen[-1], camera, hfov)
+        # Kept for the 2 s the slots look back, 21 frames at 10 Hz. An older frame that a slot
+        # reads again for want of a newer one, as on a source slower than 0.5 Hz, is resized again.
+        oldest_us = now_us - int(round((max(map(abs, inputs.FRONT_OFFSETS_S)) + inputs.JITTER_S) * 1e6))
+        self._held = {key: image for key, image in self._held.items() if key[0] >= oldest_us}
         times = [frame.timestamp_us / 1e6 for frame in frames]
         poses = np.stack([np.asarray(frame.ego2world, dtype=np.float64) for frame in frames])
         # Measured velocity, ego frame -> world frame (NAVSIM's EgoStatus, the CAN bus elsewhere).
@@ -443,6 +455,8 @@ class Alpamayo2EdgePolicy(Policy):
             ),
             "warp_cache": {
                 "entries": len(self._warped),
+                # This sequence's frames that came as pixels, kept while a slot may still read them.
+                "held": len(self._held),
                 "hits": self._warp_hits,
                 "misses": self._warp_misses,
             },
