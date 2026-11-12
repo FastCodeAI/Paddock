@@ -35,7 +35,7 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 [neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
 [AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
 [HUGSIM](docs/benchmarks/hugsim.md) has no column yet: two of these models have driven it.
-[nuPlan](docs/benchmarks/nuplan.md) has no column yet: its runs so far cover 25 of 351 anchors.
+[nuPlan](docs/benchmarks/nuplan.md) has no column yet: three models are scored on all 351 anchors, and the rest are being re-run.
 
 <details>
 <summary>Why each cell is marked, and what to check before comparing</summary>
