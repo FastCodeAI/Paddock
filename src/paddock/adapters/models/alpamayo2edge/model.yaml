@@ -45,8 +45,9 @@ capabilities:
   vram_gb: 8
   # A 5 GB checkpoint read from a network disk, then the processor.
   startup_timeout_s: 900
-  # All 64 poses go back, 0.1 s apart; NAVSIM resamples them to its 0.5 s grid, and
-  # KITScenes scores every fifth (its harness's plan_on_grid).
+  # All 64 poses go back, 0.1 s apart. NAVSIM resamples them to its 0.5 s grid;
+  # KITScenes scores every fifth, and nuScenes reads the plan at every 0.5 s, which
+  # lands on the same points (each harness's plan_on_grid).
   waypoint_dt: 0.1
   # No floor. Every frame carries the time it was taken into the prompt, and the
   # 0.1 s pose history is rebuilt from slower poses with their measured speeds
@@ -99,4 +100,4 @@ capabilities:
     - dataset: nvidia-physical-ai
 
 # One key: two `benchmarks:` lines keep only the last.
-benchmarks: [navsim, navsim_v1, kitscenes]
+benchmarks: [navsim, navsim_v1, kitscenes, nuscenes]
