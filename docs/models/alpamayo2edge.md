@@ -182,10 +182,11 @@ the node, because torch takes every core by default. On a 48-core machine shared
 CARLA, the vendor's processor then took 1.4 s to pack one plan's 22 frames, where 4
 threads take 0.18 s and 16 take 0.07 s. The packed pixels and the plan were
 bit-identical at 2, 4, 8, 16 and 48 threads, on one input. The runner counts
-`OMP_NUM_THREADS` as a speed setting for every model, so a site that sets its own keeps
-its run ranked. Edge's Bench2Drive record was driven when the 4 threads came from a
-setting of Edge's own, `ALPAMAYO2_EDGE_THREADS`, which its notes name: it set torch's
-threads alone and left numpy's at every core.
+`OMP_NUM_THREADS` as a speed setting for every model, so a site that sets its own in
+`[models.alpamayo2edge.env]` in `paddock.toml` keeps its run ranked. Edge's Bench2Drive
+record was driven when the 4 threads came from a setting of Edge's own,
+`ALPAMAYO2_EDGE_THREADS`, which its notes name: it set torch's threads alone and left
+numpy's at every core.
 
 The seed is set before every plan. A plan therefore depends on its input alone, not
 on the node, the order, a retry or a resumed run. It is still one draw: on one
