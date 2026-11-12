@@ -339,15 +339,15 @@ What the plans look like, from the run's plan dump and node logs:
 Every route of `bench2drive220.xml` but the four set aside for every model, driven
 under the [220-route protocol](../benchmarks/bench2drive.md#the-220-route-protocol):
 asked at its declared 10 Hz, routes ended after 30 s without progress or at four times
-the expert's time, three attempts a route.
+the expert's time, up to three attempts a route.
 
 | Routes | Driving score ↑ | Route completion ↑ | Infraction penalty ↑ | Run | How |
 |---|---:|---:|---:|---|---|
 | 216 of 220 | **13.74** | 38.84 % | 0.481 | `bench2drive/alpamayo2edge/full220-836dda734659a86c-56db50` | 4 workers on each of two A100s, 11.6 h |
 
 It ranks fourth of the five models in that column, just below AutoE2E (14.36), and
-behind openpilot (43.42) and Alpamayo 1.5 (37.66). Every per-route figure and
-Bench2Drive's own scores are in [bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
+behind openpilot (43.42) and Alpamayo 1.5 (37.66). The tables, and Bench2Drive's own
+scores for the record, are in [bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
 
 - **It completes 16 routes, and none is a success.** Each of the 16 has an
   infraction, and 142 of the 216 routes have a collision.
