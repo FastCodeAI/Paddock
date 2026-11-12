@@ -34,9 +34,9 @@ DATA_ENV = "UNIAD_VAD_GOLDEN_DATA"
 #: Metres. Same inputs on the same GPU gave bit-identical plans (0.0) when this was written; the slack is for
 #: another card's kernels, not for an input difference.
 TOLERANCE_M = 1e-3
-#: The variants each model is held to, written here rather than read from the driver: a driver that drops one,
-#: or returns none, must fail this test, not pass it by comparing nothing. The fixtures also record the
-#: variants the adapter does not reproduce (`camera_poses`, `agent_rgb`); docs/models/uniad.md gives their gaps.
+#: The variants each model is held to, written here rather than read from the driver: a driver that drops
+#: one, or returns none, must fail this test, not pass it by comparing nothing. The fixtures also record the
+#: variants the adapter does not reproduce (`camera_poses`, `agent_rgb`); docs/models/uniad.md gives the gaps.
 ASSERTED = {
     "uniad": {"stored_quaternion", "canonical_quaternion"},
     "vad": {"stored_quaternion", "canonical_quaternion"},
@@ -45,7 +45,7 @@ ASSERTED = {
 }
 
 
-def _driver(model: str, fixture: Path, data: str) -> dict:
+def _driver(model: str, fixture: Path, data: str, log_dir: Path) -> dict:
     from paddock.config import SiteConfig
     from paddock.registry import Registry
     from paddock.runtime import env as env_builder
@@ -57,34 +57,40 @@ def _driver(model: str, fixture: Path, data: str) -> dict:
         pytest.fail(
             f"{model}: no interpreter at {interpreter}; set [models.{model}] venv or run its setup.sh"
         )
-    proc = subprocess.run(  # noqa: S603 -- the interpreter comes from the tracked registry
-        [
-            str(interpreter),
-            "-m",
-            "paddock.adapters.models.uniad.tests.golden_driver",
-            "--model",
-            model,
-            "--fixture",
-            str(fixture),
-            "--data",
-            data,
-        ],
-        env=env_builder.build(spec, cfg),
-        cwd=env_builder.working_dir(spec, cfg),
-        capture_output=True,
-        text=True,
-        timeout=1800,
-    )
-    lines = [line for line in proc.stdout.splitlines() if line.startswith("GOLDEN ")]
-    if proc.returncode != 0 or not lines:
-        pytest.fail(
-            f"{model}: the driver exited {proc.returncode}\n{proc.stdout[-2000:]}\n{proc.stderr[-4000:]}"
-        )
+    # Streamed to a file as it runs, so a driver that hangs leaves its log (docs/reviewing.md, section 8).
+    log = log_dir / f"golden_{model}.log"
+    with log.open("w") as handle:
+        try:
+            returncode = subprocess.run(  # noqa: S603 -- the interpreter comes from the tracked registry
+                [
+                    str(interpreter),
+                    "-m",
+                    "paddock.adapters.models.uniad.tests.golden_driver",
+                    "--model",
+                    model,
+                    "--fixture",
+                    str(fixture),
+                    "--data",
+                    data,
+                ],
+                env=env_builder.build(spec, cfg),
+                cwd=env_builder.working_dir(spec, cfg),
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=1800,
+            ).returncode
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"{model}: the driver ran past 1800 s; its log, {log}:\n{log.read_text()[-4000:]}")
+    text = log.read_text()
+    lines = [line for line in text.splitlines() if line.startswith("GOLDEN ")]
+    if returncode != 0 or not lines:
+        pytest.fail(f"{model}: the driver exited {returncode}; its log, {log}:\n{text[-6000:]}")
     return json.loads(lines[-1][len("GOLDEN ") :])
 
 
 @pytest.mark.parametrize("model", MODELS)
-def test_the_adapter_plans_what_the_original_tools_plan(model: str) -> None:
+def test_the_adapter_plans_what_the_original_tools_plan(model: str, tmp_path: Path) -> None:
     if os.environ.get(GOLDEN_ENV) != "1":
         pytest.skip(
             f"needs {model}'s environment, weights, a GPU and the scene-0103 images: make check-uniad-vad"
@@ -96,14 +102,15 @@ def test_the_adapter_plans_what_the_original_tools_plan(model: str) -> None:
     if not fixture.exists():
         pytest.fail(f"no {fixture.name}; write it with golden_reference.py (its docstring)")
     expected = json.loads(fixture.read_text())
-    worst = compare(model, expected, _driver(model, fixture, data))
+    worst = compare(model, expected, _driver(model, fixture, data, tmp_path))
     print(f"{model}: max |adapter - original| per variant, m: {worst}")
 
 
 def compare(model: str, expected: dict, result: dict) -> dict[str, float]:
     """Hold the driver's plans to the fixture's, variant by variant; the largest gap per variant, metres."""
     assert set(result["variants"]) == ASSERTED[model], (
-        f"{model}: the driver ran {sorted(result['variants'])}, the test holds it to {sorted(ASSERTED[model])}"
+        f"{model}: the driver ran {sorted(result['variants'])}, "
+        f"the test holds it to {sorted(ASSERTED[model])}"
     )
     worst = {}
     for variant, run in result["variants"].items():
