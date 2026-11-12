@@ -59,6 +59,10 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   config, tokenizer and processor, so `make check` skips them. They run on the CPU
   and load no weights. If your site has no Alpamayo 2 Edge environment, say so in
   the review.
+- A PR that touches the UniAD / VAD adapters (`src/paddock/adapters/models/{uniad,vad,uniad_b2d,vad_b2d}/`)
+  needs `make check-uniad-vad UNIAD_VAD_DATA=<dir>` too: each adapter, in its own env on the GPU, must plan
+  what the model's original data path plans on four nuScenes keyframes (`<dir>` holds scene-0103's camera
+  JPEGs). `make check` runs their paddock-env tests only. If your site has no such env, say so in the review.
 - If the site has a checkout of the upstream tool the PR shells out to (CARLA,
   neuro-ncap, NAVSIM's devkit), open it and verify the flags, file layouts and
   output schema the PR assumes. "Matches the 0.0.4 checkout" is a verified
@@ -226,6 +230,7 @@ And the structure:
 - [ ] `make check-openpilot` run if the openpilot adapter changed, or marked not run
 - [ ] `make check-alpamayo` run if the Alpamayo 1.5 adapter changed, or marked not run
 - [ ] `make check-alpamayo2edge` run if the Alpamayo 2 Edge adapter changed, or marked not run
+- [ ] `make check-uniad-vad` run if a UniAD / VAD adapter changed, or marked not run
 - [ ] upstream flags / schemas verified against a real checkout, or marked argued
 - [ ] every external import and path is preflighted and documented
 - [ ] scorer failure statuses raise `RuntimeError`; poor outcomes still score

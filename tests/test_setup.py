@@ -507,7 +507,7 @@ def _run_conda_setup(model: str, tmp_path: Path, venv: Path) -> tuple[subprocess
     return done, log.read_text() if log.exists() else ""
 
 
-@pytest.mark.parametrize("model", ["drivejepa", "visionpilot"])
+@pytest.mark.parametrize("model", ["drivejepa", "visionpilot", "uniad"])
 def test_conda_setup_leaves_an_existing_environment_alone(model: str, tmp_path: Path) -> None:
     """`conda create -y -p` deletes what is at the path, and a site's venv can be a shared one.
 

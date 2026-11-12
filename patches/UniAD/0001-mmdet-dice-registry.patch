@@ -1,0 +1,42 @@
+Subject: [PATCH] let the plugin's DiceCost and DiceLoss win the mmdet registry
+
+UniAD v1's install guide pins mmdet 2.14.0. The paddock env runs mmdet 2.28.2
+(it installs beside mmcv-full 1.7.2, which builds for CUDA 12.8 and sm_120),
+and mmdet 2.28.2 registers a DiceCost and a DiceLoss of its own, so importing
+projects.mmdet3d_plugin fails before any model is built:
+
+    KeyError: 'DiceCost is already registered in Match Cost'
+
+`force=True` keeps the plugin's own classes under those names, which is what
+the UniAD configs mean by `type='DiceCost'` and `type='DiceLoss'` (the
+panoptic head's mask matcher and mask loss; neither has weights, and neither
+runs at test time). UniAD 2.0 made the same change. Registration happens at import,
+before any setting is read, so nothing outside the source can do it.
+
+---
+diff --git a/projects/mmdet3d_plugin/core/bbox/match_costs/match_cost.py b/projects/mmdet3d_plugin/core/bbox/match_costs/match_cost.py
+index d73b7e0..04cb6d2 100755
+--- a/projects/mmdet3d_plugin/core/bbox/match_costs/match_cost.py
++++ b/projects/mmdet3d_plugin/core/bbox/match_costs/match_cost.py
+@@ -28,7 +28,7 @@ class BBox3DL1Cost(object):
+         return bbox_cost * self.weight
+ 
+ 
+-@MATCH_COST.register_module()
++@MATCH_COST.register_module(force=True)  # mmdet 2.28 registers its own DiceCost
+ class DiceCost(object):
+     """IoUCost.
+ 
+diff --git a/projects/mmdet3d_plugin/losses/dice_loss.py b/projects/mmdet3d_plugin/losses/dice_loss.py
+index 3cb635f..fa7b08a 100644
+--- a/projects/mmdet3d_plugin/losses/dice_loss.py
++++ b/projects/mmdet3d_plugin/losses/dice_loss.py
+@@ -21,7 +21,7 @@ def dice_loss(input, target,mask=None,eps=0.001):
+     d = (2 * a) / (b + c)
+     return 1 - d
+ 
+-@LOSSES.register_module()
++@LOSSES.register_module(force=True)  # mmdet 2.28 registers its own DiceLoss
+ class DiceLoss(nn.Module):
+ 
+     def __init__(self, eps=1e-6, reduction='mean', loss_weight=1.0):
