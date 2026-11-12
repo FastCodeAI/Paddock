@@ -4,8 +4,7 @@ VAD is vectorised: a BEVFormer grid (200 x 200 cells, 30 m across and 60 m along
 scaled to 1280x720) feeds agent queries with their own motion forecasts and map queries for lane dividers,
 crossings and boundaries, and one ego query attends to both. It plans three trajectories, one per
 command, as six 0.5 s offsets each, and the command picks which one is driven. What it is fed and how
-its plan comes back is shared with UniAD and the Bench2Drive checkpoints (`bev_planners`); what follows
-is VAD's own.
+its plan comes back is shared with UniAD (`bev_planners`); what follows is VAD's own.
 
 *Code.* The upstream repo (``hustvl/VAD``, pinned in repos.yaml), not HUGSIM's client fork ``VAD_SIM``,
 whose client never calls ``model.eval()`` (dropout stays on, so a plan is a draw) and normalises the frames
@@ -87,7 +86,7 @@ class VADPolicy(bp.Mmdet3dPlannerPolicy):
 
 
 def reset_vad_state(model) -> None:
-    """Shared with the Bench2Drive checkpoint, whose code keeps the same dict plus a queue of past frames."""
+    """Clear what VAD carries from one frame to the next: the previous grid and the pose it was taken at."""
     model.prev_frame_info = {"prev_bev": None, "scene_token": None, "prev_pos": 0, "prev_angle": 0}
     if hasattr(model, "prev_frame_infos"):
         model.prev_frame_infos = []

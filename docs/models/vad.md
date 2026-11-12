@@ -25,10 +25,9 @@ queries, each with its own motion forecast, and map queries for lane dividers, c
 boundaries. One ego query attends to both and plans three trajectories, one per command (right, left,
 straight), each six offsets 0.5 s apart (3 s); the command picks the one driven.
 
-Paddock runs the released VAD-Base checkpoint, trained on nuScenes `train`, on the upstream code. Its
-Bench2Drive-trained sibling is [`vad_b2d`](vad_b2d.md). What VAD shares with UniAD -- the environment, the
-lidar frame, the CAN bus, the frame of the plan, the history grid, the verification -- is written up once in
-[uniad.md](uniad.md); this page is what is VAD's own.
+Paddock runs the released VAD-Base checkpoint, trained on nuScenes `train`, on the upstream code. What VAD
+shares with UniAD -- the environment, the lidar frame, the CAN bus, the frame of the plan, the history grid,
+the verification -- is written up once in [uniad.md](uniad.md); this page is what is VAD's own.
 
 ## Code and weights
 

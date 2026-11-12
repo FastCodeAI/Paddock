@@ -4,8 +4,7 @@ UniAD stacks tracking, online mapping, motion forecasting, occupancy prediction 
 BEVFormer grid (200 x 200 cells of 0.512 m, ResNet-101 with DCNv2, six cameras at 1600x900). The planner
 reads the ego track query, the motion queries and a learned embedding of the command, then nudges its six
 waypoints off predicted occupancy with a small nonlinear optimiser (``use_col_optim``). What it is fed and
-how its plan comes back is shared with VAD and the Bench2Drive checkpoints (`bev_planners`); what follows is
-UniAD's own.
+how its plan comes back is shared with VAD (`bev_planners`); what follows is UniAD's own.
 
 *Code.* The upstream repo at its v1 release (``OpenDriveLab/UniAD`` ``main``, pinned in repos.yaml), not
 HUGSIM's client fork ``UniAD_SIM``. That fork changes the model as well as its inputs: its motion head
@@ -91,8 +90,7 @@ def reset_uniad_state(model) -> None:
     """UniAD's temporal state as a freshly built model has it: no previous grid, no tracks, no ego motion.
 
     ``prev_frame_info`` holds the ego pose the CAN-bus delta is taken from; the tracker keeps its queries,
-    the previous grid, the lidar pose and the time it last ran; ``track_base`` numbers new tracks. Shared
-    with the Bench2Drive checkpoint, whose code keeps the same fields plus a queue of past frames.
+    the previous grid, the lidar pose and the time it last ran; ``track_base`` numbers new tracks.
     """
     model.prev_frame_info = {"prev_bev": None, "scene_token": None, "prev_pos": 0, "prev_angle": 0}
     if hasattr(model, "prev_frame_infos"):

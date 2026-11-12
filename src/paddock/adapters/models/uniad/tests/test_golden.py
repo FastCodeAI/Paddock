@@ -1,16 +1,14 @@
 """Each adapter plans what its model's own pipeline and forward plan, on the same four nuScenes keyframes.
 
 Exact, for the inputs paddock's wire can carry: every camera placed with the frame's one ego pose, and the
-quaternion sign the source sends (or paddock's continuous rule when it sends none); for the Bench2Drive
-checkpoints, the frames in BGR as the dataset was read in training. Three departures from the original path
-are measured in each fixture and not asserted (docs/models/uniad.md, vad.md, uniad_b2d.md): each camera's own
-ego pose (up to 0.23 m at 3 s for uniad, 0.04 m for vad), the stored quaternion sign against paddock's rule
-(up to 0.50 m and 0.71 m), and the Bench2Drive agents' RGB (up to 2.3 m for uniad_b2d, 1.2 m for vad_b2d).
+quaternion sign the source sends (or paddock's continuous rule when it sends none). Two departures from the
+original path are measured in each fixture and not asserted (docs/models/uniad.md, vad.md): each camera's own
+ego pose (up to 0.23 m at 3 s for uniad, 0.04 m for vad), and the stored quaternion sign against paddock's
+rule (up to 0.50 m and 0.71 m).
 
 The claim pinned: fed through paddock -- an Observation of image paths, calibration, the LIDAR_TOP ego pose
 and the CAN-bus values, the adapter's own `infer` -- each model makes the plan its original tools make from
-the same keyframes: the repo's converter, dataset and test pipeline for the nuScenes checkpoints,
-Bench2DriveZoo's dataset maths and agent pipeline for the Bench2Drive ones. The expected plans are in
+the same keyframes: the repo's converter, dataset and test pipeline. The expected plans are in
 ``fixtures/golden_<model>.json``, written by ``golden_reference.py`` from those tools (provenance inside each
 file); nothing in them came from the adapter. A `reset` must then reproduce the same sequence exactly.
 
@@ -34,7 +32,7 @@ import pytest
 from paddock.adapters.models.uniad import bev_planners as bp
 
 FIXTURES = Path(__file__).parent / "fixtures"
-MODELS = ["uniad", "vad", "uniad_b2d", "vad_b2d"]
+MODELS = ["uniad", "vad"]
 #: Opt-in switch and image directory (the one the fixtures' image paths are relative to).
 GOLDEN_ENV = "UNIAD_VAD_GOLDEN"
 DATA_ENV = "UNIAD_VAD_GOLDEN_DATA"
@@ -43,12 +41,10 @@ DATA_ENV = "UNIAD_VAD_GOLDEN_DATA"
 TOLERANCE_M = 1e-3
 #: The variants each model is held to, written here rather than read from the driver: a driver that drops
 #: one, or returns none, must fail this test, not pass it by comparing nothing. The fixtures also record the
-#: variants the adapter does not reproduce (`camera_poses`, `agent_rgb`); docs/models/uniad.md gives the gaps.
+#: variants the adapter does not reproduce (`camera_poses`); docs/models/uniad.md gives the gaps.
 ASSERTED = {
     "uniad": {"stored_quaternion", "canonical_quaternion"},
     "vad": {"stored_quaternion", "canonical_quaternion"},
-    "uniad_b2d": {"dataset_colour"},
-    "vad_b2d": {"dataset_colour"},
 }
 
 

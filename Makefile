@@ -116,7 +116,7 @@ check-openpilot:
 	@PYTHONPATH="$(OPENPILOT_REPO)" $(PY) -c "import openpilot.common.transformations.model" || { echo "$(OPENPILOT_REPO) is not an openpilot checkout paddock's python can import"; exit 2; }
 	PYTHONPATH="$(OPENPILOT_REPO)" $(PY) -m pytest src/paddock/adapters/models/openpilot/tests -q -rs
 
-# The four BEVFormer planners' golden tests (uniad, vad, uniad_b2d, vad_b2d): each adapter, run in its model's
+# UniAD's and VAD's golden tests (uniad, vad): each adapter, run in its model's
 # own environment through the site's paddock.toml, must plan what the model's original tools plan on four
 # nuScenes keyframes (adapters/models/uniad/tests/test_golden.py). They need the env, the weights, a GPU
 # (~4 GB) and scene-0103's camera JPEGs, so `make check` skips them; a reviewer at a site that has them runs

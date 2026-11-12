@@ -1,4 +1,4 @@
-"""Write the golden fixture for one of the four BEVFormer planners, from the models' own data path.
+"""Write the golden fixture for UniAD or VAD (nuScenes checkpoints), from the models' own data path.
 
 Not a test, and not paddock code: this is the *original* tools' path, run once in the model's environment
 to produce the numbers the adapter is held to (`test_golden.py`). It does what each repo's data converter,
@@ -8,24 +8,18 @@ with its own file loader reading the JPEGs, ``prepare_test_data``, collate, and 
 what the model was given and what it planned. Nothing here imports the adapter.
 
 The inputs are four consecutive nuScenes val keyframes of scene-0103 (the phase-1 sample: six cameras,
-calibration, ego poses) and the scene's CAN-bus ``pose`` messages. The Bench2Drive checkpoints are fed the
-same photographs through Bench2DriveZoo's own path (its dataset's ``get_data_info`` maths and its agents'
-``inference_only_pipeline`` call), with a Bench2Drive-style record built from the nuScenes one: that proves
-the input path, not that a CARLA-trained model plans well on nuScenes.
+calibration, ego poses) and the scene's CAN-bus ``pose`` messages.
 
 Each model is run under named *variants*: what the adapter must reproduce exactly, and two that measure an
 input paddock's wire cannot carry (recorded, not asserted):
 
-* nuScenes: ``stored_quaternion`` -- each camera placed with the lidar's ego pose and the ego pose's
+``stored_quaternion`` -- each camera placed with the lidar's ego pose and the ego pose's
   quaternion as nuScenes stores it (the adapter's input when a source sends that quaternion);
   ``canonical_quaternion`` -- the same with the quaternion's sign chosen w >= 0 on the first frame and held
   continuous (the adapter's input when a source sends none); ``camera_poses`` -- each camera placed with its
-  *own* ego pose, as the converter does (an Observation has one ego pose per frame).
-* Bench2Drive: ``dataset_colour`` -- BGR frames, as the dataset was read in training; ``agent_rgb`` -- RGB,
-  as Bench2DriveZoo's agents hand them over.
+*own* ego pose, as the converter does (an Observation has one ego pose per frame).
 
-Run from the model's repo root (the Bench2DriveZoo root for the Bench2Drive checkpoints), paddock's src on
-PYTHONPATH after it::
+Run from the model's repo root, paddock's src on PYTHONPATH after it::
 
     python -m paddock.adapters.models.uniad.tests.golden_reference --model uniad \\
         --config <cfg> --checkpoint <ckpt> [--anchors <pkl>] \\
@@ -40,7 +34,6 @@ import copy
 import hashlib
 import importlib
 import json
-import math
 import os
 import subprocess
 import sys
@@ -58,20 +51,8 @@ NUSC_CAMERAS = [
     "CAM_BACK_LEFT",
     "CAM_BACK_RIGHT",
 ]
-B2D_CAMERAS = [
-    "CAM_FRONT",
-    "CAM_FRONT_LEFT",
-    "CAM_FRONT_RIGHT",
-    "CAM_BACK",
-    "CAM_BACK_LEFT",
-    "CAM_BACK_RIGHT",
-]
-#: Bench2DriveZoo's agents, ``self.lidar2ego``.
-B2D_LIDAR2EGO = np.array(
-    [[0.0, 1.0, 0.0, -0.39], [-1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 1.84], [0, 0, 0, 1.0]]
-)
-#: Commands fed: nuScenes 2 = FORWARD (the scene drives straight); Bench2Drive 3 = LANEFOLLOW.
-NUSC_COMMAND, B2D_COMMAND = 2, 3
+#: Command fed: nuScenes 2 = FORWARD (the scene drives straight).
+NUSC_COMMAND = 2
 
 
 def sha256(path: str) -> str:
@@ -415,161 +396,6 @@ def run_nuscenes(args, meta: dict, messages: list[dict]) -> dict:
     return out
 
 
-def first_meta(obj) -> dict:
-    """The first sample's img_metas dict, through however many DataContainers and lists collate made."""
-    while not isinstance(obj, dict):
-        obj = obj.data if hasattr(obj, "data") else obj[0]
-    return obj
-
-
-def b2d_record(meta: dict, index: int, messages: list[dict]) -> dict:
-    """A Bench2Drive annotation's fields for one nuScenes keyframe, run through ``prepare_B2D.py``'s formulas.
-
-    CARLA's IMU is simulated from the nuScenes CAN-bus message: compass = pi/2 - heading (mod 2pi); the
-    accelerometer in CARLA's left-handed frame is (ax, -ay, az); the gyroscope, an axial vector mirrored
-    with y, is (-wx, wy, -wz). The converter's own lines then turn them back.
-    """
-    from pyquaternion import Quaternion
-
-    frame = meta["frames"][index]
-    pose = frame["lidar"]["ego_pose"]
-    heading = math.atan2(*reversed(Quaternion(pose["rotation"]).rotation_matrix[:2, 0]))
-    compass = (math.pi / 2 - heading) % (2 * math.pi)
-    message = converter_can_bus(messages, frame["timestamp"])
-    accel, rate, vel = message[7:10], message[10:13], message[13:16]
-    imu_acceleration = np.array([accel[0], -accel[1], accel[2]])
-    imu_angular_velocity = np.array([-rate[0], rate[1], -rate[2]])
-    return {
-        "ego_yaw": -np.nan_to_num(compass, nan=np.pi) + np.pi / 2,
-        "ego_translation": np.array([pose["translation"][0], pose["translation"][1], 0]),
-        "ego_vel": np.array([vel[0], 0, 0]),
-        "ego_accel": np.array([imu_acceleration[0], -imu_acceleration[1], imu_acceleration[2]]),
-        "ego_rotation_rate": -np.array(imu_angular_velocity),
-    }
-
-
-def run_b2d(args, meta: dict, messages: list[dict]) -> dict:
-    import cv2
-    import torch
-    from mmcv import Config
-    from mmcv.core.bbox import get_box_type
-    from mmcv.datasets.pipelines import Compose
-    from mmcv.models import build_model
-    from mmcv.parallel.collate import collate
-    from mmcv.utils import load_checkpoint
-    from pyquaternion import Quaternion
-
-    cfg = Config.fromfile(args.config)
-    model = build_model(cfg.model, train_cfg=cfg.get("train_cfg"), test_cfg=cfg.get("test_cfg"))
-    load_checkpoint(model, args.checkpoint, map_location="cpu", strict=True)
-    model.cuda()
-    model.eval()
-    pristine = copy.deepcopy(model.prev_frame_info)
-    pipeline = Compose(
-        [
-            p
-            for p in cfg.inference_only_pipeline
-            if p["type"] not in ("LoadMultiViewImageFromFilesInCeph", "LoadMultiViewImageFromFiles")
-        ]
-    )
-    box_type, _ = get_box_type("LiDAR")
-    out = {}
-    for name in ("dataset_colour", "agent_rgb"):
-        model.prev_frame_info = copy.deepcopy(pristine)
-        model.prev_frame_infos = []
-        if hasattr(model, "test_track_instances"):
-            model.test_track_instances = None
-            model.track_base.clear()
-        frames = []
-        for i, frame in enumerate(meta["frames"]):
-            rec = b2d_record(meta, i, messages)
-            # B2D_E2E_Dataset.get_data_info: lidar2img, l2g and can_bus
-            lidar2ego = B2D_LIDAR2EGO
-            lidar2img, lidar2cam, imgs = [], [], []
-            for cam in B2D_CAMERAS:
-                c = frame["cams"][cam]
-                cam2ego = np.eye(4)
-                cam2ego[:3, :3] = Quaternion(c["calib"]["rotation"]).rotation_matrix
-                cam2ego[:3, 3] = c["calib"]["translation"]
-                intrinsic_pad = np.eye(4)
-                intrinsic_pad[:3, :3] = np.array(c["calib"]["camera_intrinsic"])
-                l2c = np.linalg.inv(cam2ego) @ lidar2ego  # invert_pose(cam2ego) @ lidar2ego
-                lidar2img.append(intrinsic_pad @ l2c)
-                lidar2cam.append(l2c)
-                bgr = cv2.imread(os.path.join(args.data, c["filename"]), cv2.IMREAD_COLOR)
-                # data_collect.py writes CARLA's BGR frame at JPEG quality 20; mmcv.imread reads it back.
-                _, encoded = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 20])
-                image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-                if name == "agent_rgb":  # the agents: cvtColor(BGR2RGB) before the same round trip
-                    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-                    _, encoded = cv2.imencode(".jpg", rgb, [int(cv2.IMWRITE_JPEG_QUALITY), 20])
-                    image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-                imgs.append(image)
-            ego2world = np.eye(4)
-            ego2world[0:3, 0:3] = Quaternion(axis=[0, 0, 1], radians=rec["ego_yaw"]).rotation_matrix
-            ego2world[0:3, 3] = rec["ego_translation"]
-            lidar2global = ego2world @ lidar2ego
-            yaw = rec["ego_yaw"]
-            rotation = list(Quaternion(axis=[0, 0, 1], radians=yaw))
-            if yaw < 0:
-                yaw += 2 * np.pi
-            yaw_in_degree = yaw / np.pi * 180
-            can_bus = np.zeros(18)
-            can_bus[:3] = rec["ego_translation"]
-            can_bus[3:7] = rotation
-            can_bus[7:10] = rec["ego_vel"]
-            can_bus[10:13] = rec["ego_accel"]
-            can_bus[13:16] = rec["ego_rotation_rate"]
-            can_bus[16] = yaw
-            can_bus[17] = yaw_in_degree
-            # ... then the agents' run_step dict around them
-            results = {
-                "lidar2img": np.stack(lidar2img, 0),
-                "lidar2cam": np.stack(lidar2cam, 0),
-                "img": imgs,
-                "folder": " ",
-                "scene_token": f"{meta['scene_token']}-{name}",
-                "frame_idx": 0,
-                "timestamp": frame["timestamp"] / 1e6,
-                "box_type_3d": box_type,
-                "can_bus": can_bus,
-                "command": B2D_COMMAND,
-                "l2g_r_mat": lidar2global[0:3, 0:3],
-                "l2g_t": lidar2global[0:3, 3],
-            }
-            if args.model == "vad_b2d":
-                onehot = np.zeros(6)
-                onehot[B2D_COMMAND] = 1
-                results["ego_fut_cmd"] = onehot
-            stacked = np.stack(results["img"], axis=-1)
-            results["img_shape"] = results["ori_shape"] = results["pad_shape"] = stacked.shape
-            results = pipeline(results)
-            batch = collate([results], samples_per_gpu=1)
-            for key, data in batch.items():
-                if key != "img_metas" and torch.is_tensor(data[0]):
-                    data[0] = data[0].to("cuda")
-            metas = first_meta(batch["img_metas"])
-            seen = {
-                "lidar2img": np.asarray(metas["lidar2img"]).tolist(),
-                "can_bus": np.asarray(metas["can_bus"]).tolist(),
-                "img_shape": [list(s) for s in metas["img_shape"]],
-                "l2g_r_mat": np.asarray(lidar2global[0:3, 0:3]).tolist(),
-                "l2g_t": np.asarray(lidar2global[0:3, 3]).tolist(),
-                "command": B2D_COMMAND,
-            }
-            with torch.no_grad():
-                result = model(batch, return_loss=False, rescale=True)
-            if args.model == "uniad_b2d":
-                plan = result[0]["planning"]["result_planning"]["sdc_traj"][0].cpu().numpy()
-            else:
-                plan = result[0]["pts_bbox"]["ego_fut_preds"][B2D_COMMAND].cumsum(dim=-2).cpu().numpy()
-            seen["plan"] = plan.tolist()
-            frames.append(seen)
-            print(f"{name} frame {i}: last waypoint {np.round(plan[-1], 3).tolist()}", flush=True)
-        out[name] = {"frames": frames}
-    return out
-
-
 def observation_inputs(meta: dict, messages: list[dict]) -> list[dict]:
     """What paddock's nuScenes harness sends for each keyframe (as loader.py builds it), plus the CAN fields.
 
@@ -609,7 +435,7 @@ def observation_inputs(meta: dict, messages: list[dict]) -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--model", choices=["uniad", "vad", "uniad_b2d", "vad_b2d"], required=True)
+    parser.add_argument("--model", choices=["uniad", "vad"], required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--anchors", default=None, help="UniAD's motion_anchor_infos_mode6.pkl")
@@ -623,9 +449,7 @@ def main() -> None:
 
     meta = json.load(open(args.meta))
     messages = sorted(json.load(open(args.can_bus)), key=lambda m: m["utime"])
-    variants = (
-        run_b2d(args, meta, messages) if args.model.endswith("_b2d") else run_nuscenes(args, meta, messages)
-    )
+    variants = run_nuscenes(args, meta, messages)
     import mmcv
 
     fixture = {
@@ -645,7 +469,7 @@ def main() -> None:
             "mmcv": mmcv.__version__,
             "python": sys.version.split()[0],
             "device": torch.cuda.get_device_name(0),
-            "command": B2D_COMMAND if args.model.endswith("_b2d") else NUSC_COMMAND,
+            "command": NUSC_COMMAND,
         },
         "observations": observation_inputs(meta, messages),
         "variants": variants,

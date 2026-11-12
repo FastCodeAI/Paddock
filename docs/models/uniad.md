@@ -27,8 +27,8 @@ the ego motion queries and an embedding of the command (right, left, forward), p
 (3 s), and a small nonlinear optimiser pushes them off predicted occupancy.
 
 Paddock runs the released UniAD-Base stage-2 checkpoint, trained on nuScenes `train`, on the upstream v1
-code. Its Bench2Drive-trained sibling is a separate model, [`uniad_b2d`](uniad_b2d.md), and VAD is
-[`vad`](vad.md); all four share one adapter core, `adapters/models/uniad/bev_planners.py`, and one environment.
+code. VAD is [`vad`](vad.md); the two share one adapter core, `adapters/models/uniad/bev_planners.py`, and one
+environment.
 
 ## Code, weights and environment
 
@@ -47,15 +47,14 @@ the plugin's must be registered with `force=True` (UniAD 2.0 did the same).
 The config names the anchors relative to the working directory; `UNIAD_MOTION_ANCHORS` in model.yaml points
 the motion head at the weights folder instead.
 
-**Environment.** One conda env (Python 3.9) serves `uniad`, `vad`, `uniad_b2d` and `vad_b2d`:
+**Environment.** One conda env (Python 3.9) serves `uniad` and `vad`:
 torch 2.7.1+cu128, and the OpenMMLab 1.x stack compiled from source for the machine's GPU: mmcv-full 1.7.2,
 mmdet 2.28.2, mmsegmentation 0.29.1, mmdet3d 0.17.1. In this order:
 
-1. `paddock setup --repo Bench2DriveZoo`. The nuScenes models need it too: mmdet3d 0.17.1's tarball lacks two
+1. `paddock setup --repo Bench2DriveZoo`. The models need it: mmdet3d 0.17.1's tarball lacks two
    `roiaware_pool3d` kernels, and the build copies Bench2DriveZoo's (the same 0.17.1 files). Its own LICENSE is
    CC BY-NC-ND 4.0 (THIRD_PARTY_NOTICES.md). `setup.sh` checks for it before building anything.
 2. `paddock setup --model uniad` builds the env at `PADDOCK_VENV` (`adapters/models/uniad/setup.sh`).
-3. `paddock setup --model uniad_b2d` builds Bench2DriveZoo's own ops, for the two Bench2Drive checkpoints.
 
 Points to know:
 
@@ -198,7 +197,7 @@ What paddock does around the forward is CPU work, and `UNIAD_VAD_THREADS` (model
 collate -- while the model runs on this one, the others decode and convert the six cameras side by side, and
 OpenCV's own pool is held to as many (it otherwise takes all 32 cores of this box for VAD's resize). Frames
 are prepared strictly in order, one ahead, so each gets exactly the inputs it would get one at a time: the
-four golden tests stay at 0.000 m, and an A/B against preparing one frame at a time (commit 08a4b52's parent) on twelve keyframes gave identical
+the golden tests stay at 0.000 m, and an A/B against preparing one frame at a time (commit 08a4b52's parent) on twelve keyframes gave identical
 plans (0.0 m) for single calls, windows and in-order passes. Per call, old → new, two rounds on the shared
 card: `/infer` (reset + one keyframe) 1,544 / 1,863 → 1,167 / 1,031 ms; a five-keyframe window (nuScenes'
 default) 8.19 / 8.64 → 5.06 / 5.11 s; a keyframe of an in-order pass 1.76 / 1.63 → 0.96 / 0.96 s.

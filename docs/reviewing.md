@@ -59,7 +59,7 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   config, tokenizer and processor, so `make check` skips them. They run on the CPU
   and load no weights. If your site has no Alpamayo 2 Edge environment, say so in
   the review.
-- A PR that touches the UniAD / VAD adapters (`src/paddock/adapters/models/{uniad,vad,uniad_b2d,vad_b2d}/`)
+- A PR that touches the UniAD / VAD adapters (`src/paddock/adapters/models/{uniad,vad}/`)
   needs `make check-uniad-vad UNIAD_VAD_DATA=<dir>` too: each adapter, in its own env on the GPU, must plan
   what the model's own pipeline and forward plan on four nuScenes keyframes, given the inputs paddock's wire
   carries (one ego pose per frame, the source's quaternion sign; the gaps that leaves are in

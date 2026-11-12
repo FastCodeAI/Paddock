@@ -67,7 +67,7 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.
 - A NAVSIM preflight that refuses a model whose plan is shorter than 4 s when no pairing sets its horizon
-  key (METEOR, UniAD, VAD and their Bench2Drive checkpoints). Today every token is refused at scoring time;
+  key (METEOR, UniAD, VAD). Today every token is refused at scoring time;
   it needs `model.yaml` to name the horizon key, a core change.
 - Alpamayo 2 Edge on NAVSIM with nuPlan's 10 Hz frames, which it is built for. Its
   NAVSIM cells are 2 Hz: the site that ran it holds no nuPlan 10 Hz data.

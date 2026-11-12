@@ -4,8 +4,8 @@ repo: UniAD
 
 runtime:
   # Conda rather than uv: the stack is OpenMMLab's 1.x line (mmcv-full 1.7.2, mmdet 2.28.2, mmdet3d 0.17.1),
-  # compiled against the env's torch 2.7.1+cu128 and a CUDA 12.8 nvcc from conda. One env serves all four
-  # BEVFormer planners (uniad, vad, uniad_b2d, vad_b2d); setup.sh builds it. A site that keeps it elsewhere
+  # compiled against the env's torch 2.7.1+cu128 and a CUDA 12.8 nvcc from conda. One env serves both
+  # BEVFormer planners (uniad, vad); setup.sh builds it. A site that keeps it elsewhere
   # sets [models.uniad] venv.
   kind: conda
   python: "3.9"

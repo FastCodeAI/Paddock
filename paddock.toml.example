@@ -356,20 +356,16 @@ serialize = true
 # history_index_cache = "/path/to/cache/nuscenes_front_exposures.pkl"
 # history_seconds = 5.0
 
-# UniAD, VAD and their Bench2Drive checkpoints share one conda env, built by
+# UniAD and VAD share one conda env, built by
 # adapters/models/uniad/setup.sh at {repos}/.conda-envs/uniad-vad. A site that keeps it
-# elsewhere points all four at it (docs/models/uniad.md):
+# elsewhere points both at it (docs/models/uniad.md):
 # [models.uniad]
 # venv = "/path/to/envs/uniad-vad"
 # [models.vad]
 # venv = "/path/to/envs/uniad-vad"
-# [models.uniad_b2d]
-# venv = "/path/to/envs/uniad-vad"
-# [models.vad_b2d]
-# venv = "/path/to/envs/uniad-vad"
 # NAVSIM scores 4 s and refuses their 3 s plans on every token, so each NAVSIM benchmark needs its own
 # pairing (a pairing matches the benchmark name exactly: navsim's does not reach navsim_v1). Same for vad
-# (VAD_HORIZON_S), uniad_b2d (UNIAD_B2D_HORIZON_S) and vad_b2d (VAD_B2D_HORIZON_S).
+# (VAD_HORIZON_S).
 # [models.uniad.benchmarks.navsim.env]
 # UNIAD_HORIZON_S = "4.0"
 # [models.uniad.benchmarks.navsim_v1.env]
