@@ -367,12 +367,15 @@ paddock's CARLA rig renders `CAM_OP_ROAD` and `CAM_OP_WIDE`
 ([rig.py](../../src/paddock/adapters/benchmarks/bench2drive/rig.py)), and no
 other benchmark adapter has supplied the pair in any commit. The ONNX path
 itself reached `main` together with its fix, in #44 (merged 19 Sep 2026, UTC);
-until then `main` ran openpilot through tinygrad alone. Each cell, as its own
-`run.json` records it (checked for issue #194):
+until then `main` ran openpilot through tinygrad alone. Each cell is below,
+checked against its own `run.json` for issue #194. In three of those records,
+nuScenes', comma2k19's and NAVSIM v2's, `config.cameras` names `CAM_OP_WIDE`: it
+is the list in OpenPilot's `model.yaml`, not what the benchmark gave it. Their
+rows say where the count comes from:
 
 | Cell | Run | Cameras | Why the defect does not reach it |
 |---|---|---|---|
-| nuScenes | [`20260908T110028-b71f4f`](../../results/nuscenes/openpilot/20260908T110028-b71f4f/run.json) | 1 | One camera, and it ran on tinygrad's CUDA build, not ONNX (`config.model_env`) |
+| nuScenes | [`20260908T110028-b71f4f`](../../results/nuscenes/openpilot/20260908T110028-b71f4f/run.json) | 1 | nuScenes' camera list ([`CAMERAS`](../../src/paddock/adapters/benchmarks/nuscenes/loader.py)) has never held a comma camera, so of the three OpenPilot asks for only `CAM_FRONT` is there. It also ran on tinygrad's CUDA build, not ONNX (`config.model_env`) |
 | KITScenes | [`20261008T004723-a369d1`](../../results/kitscenes/openpilot/20261008T004723-a369d1/run.json) | 1 | `config.cameras_supplied` is `CAM_FRONT` alone |
 | comma2k19 | [`20261106T003719-5cde54`](../../results/comma2k19/openpilot/20261106T003719-5cde54/run.json) | 1 | One camera ([comma2k19.md](../benchmarks/comma2k19.md#recorded-results)), and driven after the fix |
 | NAVSIM v2 | [`20260911T161513-3a4c90`](../../results/navsim/openpilot/20260911T161513-3a4c90/run.json) | 1 | NAVSIM's camera map (`CAMERA_SLOTS`) has never held a comma camera, so it supplies `CAM_FRONT` alone |
