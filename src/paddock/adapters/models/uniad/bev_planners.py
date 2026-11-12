@@ -31,6 +31,7 @@ the models. The policy itself imports the model's code base inside `load()`.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import math
 import os
 from collections.abc import Callable
@@ -146,6 +147,117 @@ NUSC_LIDAR2EGO = pose_matrix(
     [0.706749235646644, -0.015300993788500868, 0.01739745181256607, -0.7070846669051719],
 )
 
+#: nuScenes' six cameras on the same log as `NUSC_LIDAR2EGO` (scene-0103's calibrated_sensor records, the
+#: golden fixtures' calibration): each camera's (intrinsics at 1600x900, camera2ego in optical axes). A slot a
+#: source has no camera for (comma2k19 sends its forward camera alone) is fed black (`_absent`), and the
+#: spatial cross-attention still projects every BEV point through that slot's lidar2img, so the slot keeps
+#: the geometry the checkpoints trained with. test_bev_planners checks every number against
+#: golden_uniad.json.
+NUSC_RIG: dict[str, tuple[np.ndarray, np.ndarray]] = {
+    "CAM_FRONT": (
+        np.array(
+            [
+                [1252.8131021185304, 0.0, 826.588114781398],
+                [0.0, 1252.8131021185304, 469.9846626224581],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        np.array(
+            [
+                [0.010260207775400836, 0.00843344807166727, 0.9999117986552754, 1.72200568478],
+                [-0.9998725753702894, 0.012316255772487425, 0.010155927635204, 0.00475453292289],
+                [-0.0122295199738352, -0.9998885871922777, 0.008558740785910231, 1.49491291905],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+    ),
+    "CAM_FRONT_RIGHT": (
+        np.array(
+            [
+                [1256.7485116440405, 0.0, 817.7887570959712],
+                [0.0, 1256.7485116440403, 451.9541780095127],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        np.array(
+            [
+                [-0.8439797263539992, 0.016455514361927055, 0.5361225956350965, 1.58082565783],
+                [-0.5361413772261798, 0.0036210747121631953, -0.8441204365752224, -0.499078711449],
+                [-0.015831775940933233, -0.9998580418564496, 0.005766368488289917, 1.51749368405],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+    ),
+    "CAM_FRONT_LEFT": (
+        np.array(
+            [
+                [1257.8625342125129, 0.0, 827.2410631095686],
+                [0.0, 1257.8625342125129, 450.915498205774],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        np.array(
+            [
+                [0.8225460431338631, 0.0064783206158985016, 0.5686616201985344, 1.5752559464],
+                [-0.5686843280499335, 0.01643406515767573, 0.8223916685696594, 0.500519383135],
+                [-0.004017705218174177, -0.999843964258619, 0.01720189467439451, 1.50696032589],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+    ),
+    "CAM_BACK": (
+        np.array(
+            [
+                [796.8910634503094, 0.0, 857.7774326863696],
+                [0.0, 796.8910634503094, 476.8848988407415],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        np.array(
+            [
+                [0.009215410429862864, -0.006800497022728537, -0.9999344125745713, 0.05524611077],
+                [0.9998947902096122, 0.011264881076691956, 0.009138433454562552, 0.0107882366898],
+                [0.011201996352644218, -0.9999134240995926, 0.006903592046427567, 1.56794286957],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+    ),
+    "CAM_BACK_LEFT": (
+        np.array(
+            [
+                [1254.9860565800168, 0.0, 829.5769333630991],
+                [0.0, 1254.9860565800168, 467.1680561863987],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        np.array(
+            [
+                [0.9478787070617002, -0.008923243758269323, -0.31850640875792396, 1.04852047718],
+                [0.31862179229696586, 0.01878971058568336, 0.9476956791341696, 0.483058131052],
+                [-0.0024718763133260322, -0.9997836378421765, 0.020653506495383587, 1.56210154484],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+    ),
+    "CAM_BACK_RIGHT": (
+        np.array(
+            [
+                [1249.9629280788233, 0.0, 825.3768045375984],
+                [0.0, 1249.9629280788233, 462.54816385708756],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        np.array(
+            [
+                [-0.9237361237050898, -0.0026030300067295302, -0.38302062346181753, 1.05945173053],
+                [0.383024352207656, -0.011446056573421563, -0.923667328319468, -0.46720294852],
+                [-0.0019797419530799, -0.9999311036384969, 0.0115701598129463, 1.55050857555],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+    ),
+}
+
 #: How far a source's lidar axes may sit from LIDAR_TOP's (x right, y forward, z up) and still be read as
 #: one, degrees. nuScenes' own calibrations are within 2.5.
 LIDAR_AXES_TOLERANCE_DEG = 10.0
@@ -171,6 +283,21 @@ def model_lidar2ego(source_lidar2ego, nominal: np.ndarray) -> tuple[np.ndarray, 
     if source_lidar2ego is not None and has_lidar_top_axes(source_lidar2ego):
         return np.asarray(source_lidar2ego, dtype=np.float64), "observation"
     return np.asarray(nominal, dtype=np.float64), "nominal"
+
+
+def with_blank_views(obs: Observation, cameras: list[str]) -> Observation:
+    """`obs` with each of `cameras` black, at `LOAD_SIZE` and nuScenes' own calibration of it (`NUSC_RIG`).
+
+    A new observation: the source's own tables are not written to, and each slot gets its own zeros, so a
+    pipeline that writes in place cannot reach another. Diagnostics list the slots as ``blank_views``, so a
+    run records which of its views were real.
+    """
+    images, camera2image, camera2ego = dict(obs.images), dict(obs.camera2image), dict(obs.camera2ego)
+    for camera in cameras:
+        intrinsics, pose = NUSC_RIG[camera]
+        images[camera] = np.zeros((LOAD_SIZE[1], LOAD_SIZE[0], 3), dtype=np.uint8)
+        camera2image[camera], camera2ego[camera] = intrinsics.copy(), pose.copy()
+    return dataclasses.replace(obs, images=images, camera2image=camera2image, camera2ego=camera2ego)
 
 
 def lidar2img(camera2image, camera2ego, lidar2ego) -> np.ndarray:
@@ -730,10 +857,16 @@ class BevPlannerPolicy(Policy):
         missing = [
             camera for camera in self.cameras if camera not in obs.images and camera not in obs.image_paths
         ]
-        if missing:
+        absent = [camera for camera in missing if self._absent(obs, camera)]
+        if len(absent) < len(missing):
             raise ValueError(
-                f"{type(self).__name__} reads all six surround cameras; this observation has no {missing}"
+                f"{type(self).__name__} reads all six surround cameras; this observation has no {missing}. "
+                "A slot is left black only when the source describes CAM_FRONT and sends neither an image "
+                "nor a calibration for that camera"
             )
+        if absent:
+            obs = with_blank_views(obs, absent)
+        self.last["blank_views"] = absent
         results = self._results(obs, lidar2ego)
         self._prepared += 1
         return lidar2ego, lidar_source, results, self._prepare(results)
@@ -747,6 +880,26 @@ class BevPlannerPolicy(Policy):
         self.plan_lidar, self.lidar2ego = plan, lidar2ego
         self.last.update(lidar_source=lidar_source, plan_lidar=plan.round(3).tolist(), steps=self._steps)
         return plan, lidar2ego
+
+    @staticmethod
+    def _absent(obs: Observation, camera: str) -> bool:
+        """Is `camera` one this source does not have, as opposed to one that went missing?
+
+        Qwen-Drive's rule (its policy's ``_absent``): only a source that describes its cameras can say one
+        is absent. comma2k19 calibrates its forward camera and sends nothing at all for the other five, so a
+        camera counts as absent only when CAM_FRONT has an image and a calibration and this camera has
+        neither. A source that sends a calibration without its image has lost a frame, and is refused.
+        """
+        front = "CAM_FRONT"
+        if camera == front:
+            return False
+        front_described = (
+            (front in obs.images or front in obs.image_paths)
+            and front in obs.camera2ego
+            and front in obs.camera2image
+        )
+        sent_anything = any(camera in table for table in (obs.camera2ego, obs.camera2image))
+        return front_described and not sent_anything
 
     def _camera(self, obs: Observation, camera: str) -> tuple[np.ndarray, np.ndarray]:
         """One camera at the config's load size, RGB, and its intrinsics."""
@@ -806,7 +959,8 @@ class BevPlannerPolicy(Policy):
         ``lidar_source`` is "observation" where a source's LIDAR_TOP framed the grid and "nominal" where the
         model's training mount did; ``quaternion_source`` (nuScenes checkpoints) is "canbus" where the
         source's own quaternion was used; ``gravity_added`` says the source's acceleration had no gravity
-        term; ``source_size`` is each camera as it arrived, before the resize to `LOAD_SIZE`;
+        term; ``source_size`` is each camera as it arrived, before the resize to `LOAD_SIZE`; ``blank_views``
+        the slots the source has no camera for, fed black (`_absent`);
         ``command_record`` (nuScenes checkpoints) is the last step's command and what decided it
         (`command_record`), also sent with the plan as ``extras["route_command"]`` when a route decided it.
         """

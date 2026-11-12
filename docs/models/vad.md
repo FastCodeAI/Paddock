@@ -9,7 +9,7 @@
 | Environment | conda, Python 3.9 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_FRONT_LEFT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 3 s ahead |
-| Paddock can run it on | [hugsim](../benchmarks/hugsim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuplan](../benchmarks/nuplan.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [alpasim](../benchmarks/alpasim.md) |
+| Paddock can run it on | [hugsim](../benchmarks/hugsim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuplan](../benchmarks/nuplan.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [alpasim](../benchmarks/alpasim.md), [comma2k19](../benchmarks/comma2k19.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -74,7 +74,8 @@ navsim, navsim_v1 and navhard need `VAD_HORIZON_S = "4.0"`, set in a pairing for
 (`[models.vad.benchmarks.navsim.env]` and likewise `navsim_v1` and `navhard`: a pairing matches the benchmark
 name exactly; `paddock.toml.example`); without it every token is refused. model.yaml lists the setting in
 `score_notes` and `ranked_with_note`, as UniAD's horizon is, so such a run is ranked with a note. comma2k19
-(one camera) does not run.
+sends one camera: it is CAM_FRONT, and the other five slots are black at nuScenes' own
+calibration, as for UniAD ([uniad.md](uniad.md)).
 
 ## Verification
 

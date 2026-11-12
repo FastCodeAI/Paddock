@@ -468,9 +468,16 @@ def test_an_open_loop_sequence_steps_the_model_on_the_grid_only() -> None:
 
 
 def test_a_missing_camera_is_an_error_naming_it() -> None:
+    """A camera the source calibrated but sent no image for is a lost frame, refused by name.
+
+    One the source has neither an image nor a calibration for is a camera it does not have, and is fed
+    black instead (`_absent`; the one-camera tests below).
+    """
     policy = StubPlanner()
     policy.load()
     obs = conformance.synthetic_observation(cameras=("CAM_FRONT",))
+    obs.camera2ego["CAM_BACK"] = np.eye(4)
+    obs.camera2image["CAM_BACK"] = np.eye(3)
     with pytest.raises(ValueError, match="CAM_BACK"):
         policy.infer(obs)
 
@@ -730,3 +737,72 @@ def test_a_step_that_fails_leaves_nothing_being_prepared_behind_it(monkeypatch: 
     assert policy.order == [0, 500_000, 1_000_000, 1_500_000], "the frame after the failure was finished"
     policy.reset()
     assert policy.order == [] and policy._prepared == 0
+
+
+# -- a source with one forward camera (comma2k19) --------------------------------------------------------
+
+
+def _front_only() -> Observation:
+    """A comma2k19-shaped observation: CAM_FRONT with an image and a calibration, nothing for the others."""
+    obs = conformance.synthetic_observation(cameras=("CAM_FRONT",))
+    obs.images["CAM_FRONT"] = np.full((874, 1164, 3), 77, dtype=np.uint8)
+    obs.camera2image["CAM_FRONT"] = np.array([[910.0, 0, 582.0], [0, 910.0, 437.0], [0, 0, 1.0]])
+    return obs
+
+
+def test_the_nuscenes_rig_is_the_golden_fixtures_calibration() -> None:
+    """NUSC_RIG, which a black slot keeps, is scene-0103's calibration as the fixtures recorded it."""
+    observed = _fixture("uniad")["observations"][0]
+    assert set(bp.NUSC_RIG) == set(bp.NUSC_CAMERAS)
+    for camera, (intrinsics, pose) in bp.NUSC_RIG.items():
+        np.testing.assert_array_equal(intrinsics, observed["camera2image"][camera])
+        np.testing.assert_array_equal(pose, observed["camera2ego"][camera])
+
+
+def test_a_camera_the_source_does_not_have_is_absent_and_one_it_lost_is_not() -> None:
+    obs = _front_only()
+    assert bp.BevPlannerPolicy._absent(obs, "CAM_BACK")
+    assert not bp.BevPlannerPolicy._absent(obs, "CAM_FRONT")
+    # A calibration without its image is a lost frame, not a missing camera.
+    obs.camera2ego["CAM_BACK"] = np.eye(4)
+    assert not bp.BevPlannerPolicy._absent(obs, "CAM_BACK")
+    # A source that does not describe its forward camera cannot say any camera is absent.
+    bare = _front_only()
+    del bare.camera2image["CAM_FRONT"]
+    assert not bp.BevPlannerPolicy._absent(bare, "CAM_BACK")
+
+
+@pytest.mark.parametrize("model", ["uniad", "vad"])
+def test_a_one_camera_source_is_fed_five_black_slots_at_nuscenes_calibration(monkeypatch, model: str) -> None:
+    """The road frame stays CAM_FRONT; the other five reach `_results` black, at NUSC_RIG, and are listed."""
+    import importlib
+
+    policy = importlib.import_module(f"paddock.adapters.models.{model}.policy").POLICY()
+    seen = {}
+    monkeypatch.setattr(policy, "_results", lambda obs, lidar2ego: seen.setdefault("obs", obs) and {})
+    monkeypatch.setattr(policy, "_prepare", lambda results: None)
+    obs = _front_only()
+    policy._prepare_frame(obs)
+    fed = seen["obs"]
+    blank = [c for c in bp.NUSC_CAMERAS if c != "CAM_FRONT"]
+    assert policy.diagnostics()["blank_views"] == blank
+    assert fed.images["CAM_FRONT"] is obs.images["CAM_FRONT"]
+    for camera in blank:
+        assert fed.images[camera].shape == (900, 1600, 3) and not fed.images[camera].any()
+        np.testing.assert_array_equal(fed.camera2image[camera], bp.NUSC_RIG[camera][0])
+        np.testing.assert_array_equal(fed.camera2ego[camera], bp.NUSC_RIG[camera][1])
+    assert set(obs.images) == {"CAM_FRONT"}, "the source's own observation is not written to"
+    fed.images["CAM_BACK"][0, 0] = 255
+    assert not fed.images["CAM_BACK_LEFT"].any(), "each slot has its own zeros"
+
+
+def test_a_camera_lost_from_a_described_rig_is_still_refused(monkeypatch) -> None:
+    from paddock.adapters.models.uniad.policy import POLICY
+
+    policy = POLICY()
+    monkeypatch.setattr(policy, "_prepare", lambda results: None)
+    obs = _front_only()
+    obs.camera2ego["CAM_BACK"] = np.eye(4)
+    obs.camera2image["CAM_BACK"] = np.eye(3)
+    with pytest.raises(ValueError, match="reads all six surround cameras"):
+        policy._prepare_frame(obs)
