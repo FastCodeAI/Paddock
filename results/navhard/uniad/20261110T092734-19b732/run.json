@@ -4,8 +4,8 @@
   "benchmark": "navhard",
   "model": "uniad",
   "mode": "open_loop",
-  "started_utc": "2026-11-10T09:27:34+00:00",
-  "duration_s": 34075.6,
+  "started_utc": "2026-11-12T12:52:12+00:00",
+  "duration_s": 99.9,
   "repo_sha": "532fc330151758c5e345aef74d2a1bf1042e50ab",
   "dataset": {
     "name": "navhard",
@@ -38,9 +38,9 @@
     "declared_env": {
       "MPLBACKEND": "Agg",
       "PYTHONNOUSERSITE": "1",
-      "UNIAD_CHECKPOINT": "{weights}uniad_base_e2e.pth",
-      "UNIAD_CONFIG": "{repo}base_e2e.py",
-      "UNIAD_MOTION_ANCHORS": "{weights}motion_anchor_infos_mode6.pkl"
+      "UNIAD_CHECKPOINT": "{weights}/uniad/uniad_base_e2e.pth",
+      "UNIAD_CONFIG": "{repo}/projects/configs/stage2_e2e/base_e2e.py",
+      "UNIAD_MOTION_ANCHORS": "{weights}/uniad/motion_anchor_infos_mode6.pkl"
     },
     "model_env": {
       "UNIAD_HORIZON_S": "4.0"
@@ -55,13 +55,13 @@
       "at_pin": true
     },
     "paddock": {
-      "sha": "9565e19061ffa7614c8cf323d537cfeb864b75bf",
+      "sha": "9e33d0b3a97e92e3a2d05961f48638a5a4033c2f",
       "dirty": false
     }
   },
   "status": "complete",
-  "valid": false,
+  "valid": true,
   "superseded_by": "",
-  "notes": "site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env)",
+  "notes": "",
   "ingested_from": ""
 }
