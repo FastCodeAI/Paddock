@@ -616,6 +616,86 @@ reference.
 `e2e_challenge` scorer: `open_loop_collision` does not exist there, so a number
 quoted from that scorer is not this one.
 
+## Watching a scene, every model side by side
+
+With `video = "true"` in `[benchmarks.alpasim]`, AlpaSim writes one video per
+scene: the wide front camera (`camera_front_wide_120fov`) with the model's plan
+(pink or orange) and the route (green) drawn on, under a map and a metrics table.
+`paddock render --bench alpasim --sample alpasim/clipgt-<scene id>` cuts the
+camera picture out of each run's video of that scene and lays the models side
+by side on one clock (`render_sample` in
+[render.py](../../src/paddock/adapters/benchmarks/alpasim/render.py)). It needs
+ffmpeg, from `PADDOCK_FFMPEG` or the PATH, and nothing from AlpaSim's own
+environment.
+
+AlpaSim stops scoring at the first collision, when the car leaves the road, or
+4 m from the route, and lets the drive run on to 20 s. So a tile freezes,
+dimmed, from the moment its scoring stopped, and its bar says how the scored
+part ended. The stop is read from `duration_frac_20s`: the scored time is
+counted from the hand-over at 3 s, and the event that ends it is one step
+later. That was checked step for step against `metrics.parquet` on 40 drives
+(eight models, five scenes). A speed in a bar is the car's own, from the
+controller's log; AlpaSim records no impact speed.
+
+All of this counts in steps of 0.05 s with one video frame a step and the
+hand-over at 3 s, which is how every row of the results table was run. A drive
+on another clock is refused with a message, not drawn wrongly: leave
+`video_every_nth_frame` at 1 for runs you mean to draw.
+
+The picture after the stop can smear, which the dimmed tile hides. The picture
+can also smear while a car is still scored, when it drifts from the recorded
+drive; nothing hides that, and the line under the website's videos says so.
+
+Every tile is the same front camera. Some models are also sent side and rear
+cameras, which are not shown. A run with a record of the scene and no video
+still takes a tile, which says so; a video with no record gets a bar that says
+"no record of this scene".
+
+### Drawing a run made outside Paddock
+
+Some rows of the results table were made by a model's own AlpaSim driver and
+brought in with `paddock ingest`. Their scene folders are wherever that driver
+wrote them, so the renderer cannot find them until the run's folder in the run
+store looks like one made through Paddock. That takes two things, once per run:
+
+1. **The records.** `paddock ingest --all` writes
+   `{runs}/alpasim/<model>/<run id>/samples.jsonl` for every run named in the
+   site's `[ingest]` section (`alpasim_run_dirs`, or an
+   `[ingest.alpasim_campaigns.<run id>]` block listing the run's folders). It
+   rewrites the tracked `run.json` and `metrics.json` too; they should come
+   out unchanged, and `git status` says if they did not.
+2. **One link per scene**, from `{runs}/alpasim/<model>/<run id>/<scene id>` to
+   the AlpaSim run folder that holds that scene, the one with `rollouts/` and
+   `controller/` in it:
+
+   ```bash
+   cd {runs}/alpasim/<model>/<run id>
+   for run in /path/to/alpasim-runs/<campaign>*; do
+     for scene in "$run"/rollouts/clipgt-*; do
+       ln -s "$run" "$(basename "$scene")"
+     done
+   done
+   ```
+
+   A folder that drove ten scenes gets ten links. Nothing is copied.
+
+The renderer then reads
+`<scene id>/rollouts/<scene id>/<rollout id>/*_camera_front_wide_120fov_default.mp4`
+and `<scene id>/controller/` the same way for every run. The five such rows
+behind the website's videos (OpenPilot, VisionPilot, Drive-JEPA, METEOR and
+constant velocity) were linked this way at the site that made them.
+
+The website's AlpaSim videos are made the same way, by
+`python -m tools.site.videos alpasim --out DIR`, from the runs the results
+table shows. Which scenes it shows is decided by `showcase` in the same file,
+never by hand: the two hardest scenes, then the two where the models split
+most. Hardest means the lowest scene score averaged over every model. Split
+means the largest spread (standard deviation) of the models' scores. A scene is
+skipped when fewer than three models are scored for 5 seconds or more. No scene
+is shown twice. Ties go to the harder scene, then the lower scene id. Only
+scenes every run scored are considered. Each model drives a scene once, so
+there is no most typical run to choose.
+
 ## Support-matrix results
 
 The per-metric results behind this benchmark's column in the
