@@ -60,6 +60,13 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   benchmark in NAVSIM v2.2's devkit (`docs/benchmarks/navhard.md`): eight models
   and the floor are stored, and the devkit it scores
   with is a site setting that `repos.yaml` does not pin.
+- **A `--resume` that finds every chunk already stored writes no note saying so.**
+  The record's `started_utc` and `duration_s` then describe the re-write, not the
+  run (UniAD's navtest `20261109T082522-c24426`, and the navhard records re-written
+  on 12 Nov). The runner should say "resumed" in `notes`, as a partial resume does.
+- **Nodeless replays record no provenance.** `navsim.nodeless --replay` stores an
+  empty `provenance` and no Paddock sha (the NAVSIM v1 replays, navhard's
+  constant-velocity row); it should record them as `paddock run` does.
 
 ## Next
 

@@ -426,7 +426,7 @@ item in `docs/ROADMAP.md`.
 
 ### UniAD × nuscenes — the benchmark is UniAD's own protocol, and its training set's twin
 
-**UniAD's nuScenes cell is in-distribution, by design.** Both of its training stages read nuScenes `train`
+**UniAD on nuScenes is in-distribution, by design** (no UniAD nuScenes record is stored yet). Both of its training stages read nuScenes `train`
 (`nuscenes_infos_temporal_train.pkl` in `projects/configs/stage1_track_map/base_track_map.py` and
 `stage2_e2e/base_e2e.py` at the pinned sha) and its paper reports the `val` split, which is the split
 paddock's nuScenes benchmark scores. The scenes are held out; the cameras, the city streets, the rig and the
@@ -442,7 +442,7 @@ none (up to 0.50 m); `test_golden.py` holds the adapter to the original pipeline
 
 ### VAD × nuscenes — trained on nuScenes train, scored on val
 
-**VAD's nuScenes cell is in-distribution too.** Its two stages train on nuScenes `train`
+**VAD on nuScenes is in-distribution too** (no VAD nuScenes record is stored yet). Its two stages train on nuScenes `train`
 (`vad_nuscenes_infos_temporal_train.pkl` in `projects/configs/VAD/VAD_base_stage_{1,2}.py` at the pinned sha)
 and its paper reports `val`, the split paddock scores; the command it is given on this benchmark is derived
 from the recorded future by VAD's own rule. Read the column the way the UniAD section above says: held-out
