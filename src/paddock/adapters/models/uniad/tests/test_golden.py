@@ -34,6 +34,15 @@ DATA_ENV = "UNIAD_VAD_GOLDEN_DATA"
 #: Metres. Same inputs on the same GPU gave bit-identical plans (0.0) when this was written; the slack is for
 #: another card's kernels, not for an input difference.
 TOLERANCE_M = 1e-3
+#: The variants each model is held to, written here rather than read from the driver: a driver that drops one,
+#: or returns none, must fail this test, not pass it by comparing nothing. The fixtures also record the
+#: variants the adapter does not reproduce (`camera_poses`, `agent_rgb`); docs/models/uniad.md gives their gaps.
+ASSERTED = {
+    "uniad": {"stored_quaternion", "canonical_quaternion"},
+    "vad": {"stored_quaternion", "canonical_quaternion"},
+    "uniad_b2d": {"dataset_colour"},
+    "vad_b2d": {"dataset_colour"},
+}
 
 
 def _driver(model: str, fixture: Path, data: str) -> dict:
@@ -87,12 +96,21 @@ def test_the_adapter_plans_what_the_original_tools_plan(model: str) -> None:
     if not fixture.exists():
         pytest.fail(f"no {fixture.name}; write it with golden_reference.py (its docstring)")
     expected = json.loads(fixture.read_text())
-    result = _driver(model, fixture, data)
+    worst = compare(model, expected, _driver(model, fixture, data))
+    print(f"{model}: max |adapter - original| per variant, m: {worst}")
 
+
+def compare(model: str, expected: dict, result: dict) -> dict[str, float]:
+    """Hold the driver's plans to the fixture's, variant by variant; the largest gap per variant, metres."""
+    assert set(result["variants"]) == ASSERTED[model], (
+        f"{model}: the driver ran {sorted(result['variants'])}, the test holds it to {sorted(ASSERTED[model])}"
+    )
     worst = {}
     for variant, run in result["variants"].items():
         reference = expected["variants"][variant]["frames"]
-        assert len(run["frames"]) == len(reference)
+        assert run["frames"] and len(run["frames"]) == len(reference), (
+            f"{model} {variant}: no frames to compare"
+        )
         for index, (got, want) in enumerate(zip(run["frames"], reference, strict=True)):
             plan = np.asarray(want["plan"])
             gap = float(np.abs(np.asarray(got["plan_lidar"]) - plan).max())
@@ -103,4 +121,36 @@ def test_the_adapter_plans_what_the_original_tools_plan(model: str) -> None:
             np.testing.assert_allclose(got["trajectory"], converted, atol=TOLERANCE_M)
             # A reset gives a freshly built model: the same sequence, exactly.
             np.testing.assert_array_equal(run["after_reset"][index]["plan_lidar"], got["plan_lidar"])
-    print(f"{model}: max |adapter - original| per variant, m: {worst}")
+    assert set(worst) == ASSERTED[model]
+    return worst
+
+
+def _as_the_driver_would_return(expected: dict, variants: set[str]) -> dict:
+    """Driver output that reproduces the fixture exactly, for the variants given."""
+    lidar2ego = np.eye(4)
+    out = {}
+    for variant in variants:
+        frames = [
+            {
+                "plan_lidar": frame["plan"],
+                "lidar2ego": lidar2ego.tolist(),
+                "trajectory": bp.lidar_plan_to_ego(np.asarray(frame["plan"]), lidar2ego).tolist(),
+            }
+            for frame in expected["variants"][variant]["frames"]
+        ]
+        out[variant] = {"frames": frames, "after_reset": frames}
+    return {"variants": out}
+
+
+@pytest.mark.parametrize("model", MODELS)
+def test_the_comparison_fails_when_the_driver_compares_nothing(model: str) -> None:
+    """No GPU: the comparison passes a faithful driver, and fails one that returns no variant or drops one."""
+    expected = json.loads((FIXTURES / f"golden_{model}.json").read_text())
+    assert (
+        set(compare(model, expected, _as_the_driver_would_return(expected, ASSERTED[model])))
+        == ASSERTED[model]
+    )
+    with pytest.raises(AssertionError, match="the test holds it to"):
+        compare(model, expected, {"variants": {}})
+    with pytest.raises(AssertionError, match="the test holds it to"):
+        compare(model, expected, _as_the_driver_would_return(expected, set(sorted(ASSERTED[model])[:-1])))
