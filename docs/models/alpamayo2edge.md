@@ -321,7 +321,7 @@ driving, at the recorded 20 Hz, so every frame is the one at the time Edge asks 
 no pose history is extrapolated. comma2k19 has one camera, so the front slot gets it (65°,
 where Edge was trained on 120°), the telephoto slot a 30° crop of it, and the other four
 slots black frames (`ALPAMAYO2_EDGE_ABSENT_CAMERAS=black`). Edge's 64 points, 0.1 s apart,
-are scored on their own points at every 0.5 s; its comfort terms read the whole plan.
+are scored on their own points at every 0.5 s, and so are its comfort terms.
 
 | ADE at 1 / 2 / 3 / 4 / 5 s (m) ↓ | FDE at 3 s ↓ | Median ADE at 3 s ↓ | Miss rate at 3 s ↓ | PDMS-style ↑ | Run |
 |---|---:|---:|---:|---:|---|

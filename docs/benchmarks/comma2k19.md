@@ -1151,10 +1151,10 @@ set against OpenPilot's 4.396 at 10 s here.
 
 **Alpamayo 2 Edge plans 64 points 0.1 s apart.** Its ADE and FDE are scored on its
 own points at every 0.5 s, as every other row's are; nothing is interpolated. Its
-comfort terms read the whole 0.1 s plan, as on KITScenes and nuScenes. That is not
-the 0.5 s grid the other rows' comfort is on, but its plan is smooth (longitudinal
-jerk at most 0.36 m/s³ on average, against Qwen-Drive's 11.5), so the finer spacing
-adds none of the quantisation jerk that once blanked Qwen-Drive's cell. Four of its
+comfort terms are on the same 0.5 s grid as every other row's: the shared comfort
+code (`paddock/metrics/comfort.py`) moves any plan finer than 0.5 s onto that grid
+before measuring, and for a 0.1 s plan those are its own points. Only the
+lead-vehicle check reads the whole 0.1 s plan. Four of its
 six slots are black (`ALPAMAYO2_EDGE_ABSENT_CAMERAS=black`, which the leaderboard
 notes under the run). Run `20261112T012152-9b1e09`.
 
