@@ -13,10 +13,18 @@ runtime:
   env:
     VISIONPILOT_WEIGHTS: "{repo}/VisionPilot/modules/models/weights"
     # CPU by default: the recorded closed-loop runs used it, and the renderer
-    # wants the GPU. "cuda" selects CUDAExecutionProvider, but a site that sets
-    # it gets runs stored valid: false. It is not in `tuning_env` below: the two
-    # providers do different arithmetic, and nobody has shown that never moves a
-    # plan. Rows recorded on CUDA before that rule existed stay ranked.
+    # wants the GPU. "cuda" selects CUDAExecutionProvider. It is not in
+    # `tuning_env` below, because the two providers do different arithmetic and
+    # it does move plans: on KITScenes (223 samples, Nov 2026) no CUDA plan was
+    # identical to its CPU plan, the median largest point difference was 2 mm,
+    # 10 of 223 differed by over 0.5 m somewhere (at most 4.66 m), and ADE was
+    # 1.4712 m on CUDA against 1.4746 m on CPU. A site that sets it stays ranked,
+    # with `score_notes` printed beside the run (`ranked_with_note`). Rows
+    # recorded on CUDA before that rule existed stay ranked too.
+    #
+    # onnxruntime falls back to the CPU without a word when it cannot load cuDNN
+    # and cuBLAS: point LD_LIBRARY_PATH at them (e.g. the nvidia-* wheels' lib
+    # directories) and check that the node log names CUDAExecutionProvider.
     VISIONPILOT_PROVIDERS: "cpu"
     # Deliberately unset, so this reproduces the recorded baseline runs.
     #
@@ -92,9 +100,16 @@ capabilities:
 # comma2k19 supplies exactly what `infer` reads -- one front camera, its pinhole
 # and its `camera2ego` -- and `project_to_ground` intersects the road plane
 # analytically, so nothing dataset-specific is needed to feed it. Run it on the
-# declared CPU provider: a site's VISIONPILOT_PROVIDERS stores the run valid:
-# false (see `env` above). 160 history frames x 3 nets x 10,165 samples is a lot
+# declared CPU provider, or a site's VISIONPILOT_PROVIDERS ranks it with a note
+# (see `env` above). 160 history frames x 3 nets x 10,165 samples is a lot
 # of CPU work, so raise `[benchmarks.comma2k19] nodes` and set
 # VISIONPILOT_ORT_THREADS to share the cores between them; both are speed-only,
 # so the run stays ranked.
 benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, nuscenes, comma2k19, nuplan]
+
+# Settings that change what a score means. The leaderboard prints the line under
+# any ranked run that set one to something other than the declared default.
+score_notes:
+  VISIONPILOT_PROVIDERS: "onnxruntime's {value} provider, not the declared CPU one; on KITScenes the two gave ADE 1.4712 and 1.4746 m, and 10 of 223 plans differ by over 0.5 m somewhere"
+# Of those, what a site may set and stay ranked.
+ranked_with_note: [VISIONPILOT_PROVIDERS]
