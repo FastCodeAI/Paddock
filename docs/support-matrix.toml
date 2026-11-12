@@ -240,19 +240,21 @@ alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 # byte-identical checkpoint path as an override; the NAVSIM v1 cells replay those runs' plans (no model process).
 # Their nuScenes runs are not in results/ yet.
 [cells.uniad]
+nuscenes = { run = "nuscenes/uniad/20261109T183938-41eed0", marks = "A", note = "scene order" }
 kitscenes = { run = "kitscenes/uniad/20261109T082536-b881a6" }
 navsim = { run = "navsim/uniad/20261109T082522-c24426", marks = "P" }
 navhard = { run = "navhard/uniad/20261110T092734-19b732", marks = "P" }
 navsim_v1 = { run = "navsim_v1/uniad/20261112T130241-e02e88", marks = "P" }
-neuroncap = { run = "neuroncap/uniad/20261109T092826-5919f1" }
+neuroncap = { run = "neuroncap/uniad/20261109T092826-5919f1", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/uniad/20261110T120651-8ea842" }  # six cameras, re-rendered as nuScenes' rig
 
 [cells.vad]
+nuscenes = { run = "nuscenes/vad/20261110T000020-53cda0", marks = "A", note = "scene order" }
 kitscenes = { run = "kitscenes/vad/20261109T082536-a393ec" }
 navsim = { run = "navsim/vad/20261110T095855-0ebf09", marks = "P" }
 navhard = { run = "navhard/vad/20261110T185531-0cecc0", marks = "P" }
 navsim_v1 = { run = "navsim_v1/vad/20261112T132424-25e0e5", marks = "P" }
-neuroncap = { run = "neuroncap/vad/20261110T033544-7f435b" }
+neuroncap = { run = "neuroncap/vad/20261110T033544-7f435b", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/vad/20261110T153825-72448c" }  # six cameras, re-rendered as nuScenes' rig
 
 [cells.constant_velocity]

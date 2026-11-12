@@ -53,7 +53,9 @@ it differs.
   neuroNCAP (its model card lists two NAVSIM-built and five nuScenes-built public
   training sets), AutoE2E on nuScenes and neuroNCAP (its frozen camera encoder was
   trained on nuScenes train), on NAVSIM (trained on nuPlan's train logs, the
-  source of NAVSIM's scenes) and on KITScenes (fine-tuned on its train split).
+  source of NAVSIM's scenes) and on KITScenes (fine-tuned on its train split). UniAD and VAD on
+  nuScenes and neuroNCAP (both trained on nuScenes train; neuroNCAP's scenes are
+  nuScenes val scenes).
   OpenPilot's KITScenes cell is a configured run, and its
   configuration was chosen by inspecting one scene of the scored split; the stock
   run scores 1.599.
