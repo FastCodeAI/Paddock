@@ -361,8 +361,10 @@ arrays when the rig supplies two.
 
 **What this invalidates: no cell of the support matrix.** The defect needed two
 things at once: the ONNX backend, and a rig that supplies two cameras. With one
-camera, that frame fed both views on either backend, before the fix and after it
-(`test_one_camera_still_feeds_both_views`). Only Bench2Drive supplies two:
+camera, that frame fed both views on either backend, before the fix and after it.
+Today's ONNX path is tested (`test_one_camera_still_feeds_both_views`). The rest
+was read, not run: the tinygrad path in `_bind_cameras`, and both paths before
+the fix in the fix's diff, `cc57005`. Only Bench2Drive supplies two:
 paddock's CARLA rig renders `CAM_OP_ROAD` and `CAM_OP_WIDE`
 ([rig.py](../../src/paddock/adapters/benchmarks/bench2drive/rig.py)), and no
 other benchmark adapter has supplied the pair in any commit. The ONNX path
