@@ -70,9 +70,10 @@ capabilities:
 # navsim and navsim_v1 need VAD_HORIZON_S = "4.0" (above). neuroncap asks every 0.1 s whatever
 # planning_hz says; the policy steps the model every 0.5 s and holds its plan in between
 # (bev_planners.held_plan). alpasim re-renders its six cameras as nuScenes' rig, at nuScenes' own intrinsics and
-# poses, and asks every 0.5 s (alpasim.yaml, paddock_bridge_nuscenes_rig.yaml). Not listed: comma2k19 sends one
-# camera.
-benchmarks: [hugsim, nuscenes, bench2drive, kitscenes, nuplan, neuroncap, navsim, navsim_v1, alpasim]
+# poses, and asks every 0.5 s (alpasim.yaml, paddock_bridge_nuscenes_rig.yaml). comma2k19 sends its forward
+# camera alone: that is CAM_FRONT, and the other five slots are black at nuScenes' own calibration
+# (bev_planners._absent, NUSC_RIG), as Qwen-Drive's and Drive-JEPA's side views are there.
+benchmarks: [hugsim, nuscenes, bench2drive, kitscenes, nuplan, neuroncap, navsim, navsim_v1, alpasim, comma2k19]
 
 # On nuScenes, each keyframe as VAD's own converter and VADCustomNuScenesDataset give it, not the inputs
 # paddock builds for every model: the ego quaternion as stored at canbus 3:7, each camera placed at its own ego

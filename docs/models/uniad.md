@@ -9,7 +9,7 @@
 | Environment | conda, Python 3.9 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_FRONT_LEFT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 3 s ahead |
-| Paddock can run it on | [hugsim](../benchmarks/hugsim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuplan](../benchmarks/nuplan.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [alpasim](../benchmarks/alpasim.md) |
+| Paddock can run it on | [hugsim](../benchmarks/hugsim.md), [nuscenes](../benchmarks/nuscenes.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuplan](../benchmarks/nuplan.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [alpasim](../benchmarks/alpasim.md), [comma2k19](../benchmarks/comma2k19.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -155,7 +155,7 @@ The model needs all six surround cameras (one learned embedding per camera slot)
 | [nuplan](../benchmarks/nuplan.md) | yes | six of its eight cameras (F0, L0, R0, B0, L2, R2; the side views L1 and R1 have no nuScenes slot); command always STRAIGHT; 10 Hz history fed every 0.5 s |
 | [neuroncap](../benchmarks/neuroncap.md) | yes | NeuRAD renders the six cameras and sends the real LIDAR_TOP. It asks every 0.1 s whatever `planning_hz` says, so the model steps every 0.5 s and the plan is held in between (below) |
 | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md) | with `UNIAD_HORIZON_S = "4.0"` | NAVSIM scores 4 s and refuses a 3 s plan; the setting continues the last 0.5 s step (METEOR's rule), set in a pairing for *each* NAVSIM benchmark, since a pairing matches the benchmark name exactly: `[models.uniad.benchmarks.navsim.env]` and `[models.uniad.benchmarks.navsim_v1.env]`, each with `UNIAD_HORIZON_S = "4.0"` (`paddock.toml.example`). Without it every token is refused. Its cameras map as nuPlan's; history is four frames at 2 Hz. Until model.yaml declares the setting's score note (its comment says how), such a run is stored `valid: false` |
-| comma2k19 | no | one camera; the other five slots would have to be invented |
+| [comma2k19](../benchmarks/comma2k19.md) | yes | one camera: the road frame is CAM_FRONT at its own intrinsics and mount; the other five slots are black at nuScenes' own calibration (`NUSC_RIG`, `_absent`), listed as `blank_views`, as Qwen-Drive's and Drive-JEPA's side views are there; the 20 Hz history is fed every 0.5 s |
 | [alpasim](../benchmarks/alpasim.md) | yes (not yet run) | its six cameras re-rendered as nuScenes' rig: 1600×900 undistorted pinholes at scene-0103's calibrated intrinsics and poses, CAM_BACK on the telephoto's id (`paddock_bridge_nuscenes_rig.yaml`), rendered every 0.5 s on the replan grid. Asked every 0.5 s, the 3.0 s warm-up sent to `/observe`; canbus carries ego-frame speed and the simulator's acceleration. The command comes from AlpaSim's route by the datasets' own rule (`route_command`; table above) |
 
 ## Verification
