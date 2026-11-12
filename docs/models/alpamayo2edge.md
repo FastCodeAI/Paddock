@@ -247,14 +247,15 @@ On NAVSIM, measured on an H200 shared with other jobs, with one plan per scenari
 On Bench2Drive, measured on an A100 80GB with one node and one CARLA server, on
 route 2802:
 
-- **GPU memory:** 6.6 GiB for the node as `nvidia-smi` counts it, beside CARLA's
-  7.1 GiB.
-- **Time per plan:** 0.19 s to build the input, which resizes the plan's 6 new
-  frames, and 1.0 to 1.3 s in the model when it writes a rationale, with 4 CPU
-  threads. On an idle card a `<NOMINAL>` plan takes 0.6 s in the model. With torch's
-  default of every core, the same route's plans took 1.5 to 2.4 s in the model.
-- **Wall clock:** a plan every 0.1 s of game time at about 1.4 s each, so the route
-  ran at 0.064 times real time, against 0.04 with torch's default threads.
+- **GPU memory:** 6.5 GiB for the node (6,610 MiB as `nvidia-smi` counts it), beside
+  CARLA's 7.1 to 7.4 GiB.
+- **Time per plan,** over the route's 438 plans, with 4 CPU threads: 0.19 s to build
+  the input, which resizes the plan's 6 new frames, and 1.0 s in the model (median;
+  0.85 to 1.12 s for 90 % of plans). The model's time includes 0.18 s in which
+  NVIDIA's processor packs the 22 frames on the CPU. With torch's default of every
+  core, plans on the same route took 1.5 to 2.4 s in the model.
+- **Wall clock:** a plan every 0.1 s of game time, so the route ran at 0.064 times
+  real time, against 0.04 with torch's default threads.
 
 ## Training exposure
 
