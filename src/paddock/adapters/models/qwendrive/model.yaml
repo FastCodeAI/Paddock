@@ -134,4 +134,4 @@ score_notes:
 # Of those, what a site may set and stay ranked, with the note: `replicate` and `crop`, kept for comparison.
 ranked_with_note: [QWENDRIVE_VIEWS]
 
-benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19, alpasim]
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, neuroncap, comma2k19, alpasim, nuplan]
