@@ -131,7 +131,13 @@ reasons above.
 is a claim the source never made, so a source missing a camera stops the plan unless
 the run says otherwise. comma2k19 records one camera, and the vendor requires all six
 slots: there the front and telephoto slots are real and the other four black. The
-leaderboard prints that under the run, as it prints METEOR's horizon note.
+leaderboard prints that under the run, as it prints METEOR's horizon note. To score
+Edge on comma2k19, set it for that pairing alone in `paddock.toml`:
+
+```toml
+[models.alpamayo2edge.benchmarks.comma2k19.env]
+ALPAMAYO2_EDGE_ABSENT_CAMERAS = "black"
+```
 
 The seed is set before every plan. A plan therefore depends on its input alone, not
 on the node, the order, a retry or a resumed run. It is still one draw: on one
