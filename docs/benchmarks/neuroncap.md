@@ -8,7 +8,7 @@
 | Dataset | `nuscenes` |
 | Primary metric | `ncap_score` |
 | Adapter | [`adapters/benchmarks/neuroncap/`](../../src/paddock/adapters/benchmarks/neuroncap/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [uniad_b2d](../models/uniad_b2d.md), [vad](../models/vad.md), [vad_b2d](../models/vad_b2d.md), [visionpilot](../models/visionpilot.md), [wajepa](../models/wajepa.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [uniad_b2d](../models/uniad_b2d.md), [vad](../models/vad.md), [vad_b2d](../models/vad_b2d.md), [visionpilot](../models/visionpilot.md), [wajepa](../models/wajepa.md) |
 
 <!-- /summary -->
 
@@ -777,6 +777,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
 | AutoE2E | 3.46 ±2.16 | 3.71 ±1.82 | 2.01 ±2.30 | **3.16** | 42.0% |
+| Alpamayo 2 Edge | 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54.0% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
 | VAD ⊡ | 2.83 ±2.23 | 1.15 ±1.75 | 3.23 ±2.22 | **2.51** | 57.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
@@ -795,6 +796,13 @@ while the selection stage was off by default: 5.00 / 2.51 / 4.01, overall 4.13, 
 run. The camera-blind run (`20260905T220225-f11ac0`) scored 4.23 / 2.42 / 3.39, overall 3.57,
 with 45.5% collisions. Paired over the 20 scenario-scene pairs the fix is worth
 +0.56 (SE 0.44, t 1.28), mostly stationary (+0.77, SE 0.30) and side.
+
+**Alpamayo 2 Edge** (run `20261111T231934-33adca`) plans 64 points 0.1 s apart; the engine is sent
+its own points at 0.5 ... 3.0 s, every fifth (`Trajectory.to_wire`), the six it drives
+as 0.5 s apart. It is fed the 10 Hz render at the times it asks for, 2 s of the front
+camera and 1 s of the others. Like Qwen-Drive it does much better open loop than here:
+first on KITScenes and comma2k19 and second on nuScenes, then fifth of eight. The side
+column is where it goes, 1.56 with 76% of those runs ending in a collision.
 
 **Qwen-Drive is the widest open-loop-to-closed-loop gap in the table.** It leads
 KITScenes and is second to Drive-JEPA on NAVSIM (0.840 against 0.870), then places

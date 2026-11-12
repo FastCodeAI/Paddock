@@ -521,9 +521,10 @@ def test_the_onnx_path_feeds_the_wide_camera_to_the_wide_view(monkeypatch) -> No
     `_resolve_backend` picks ONNX by *trying an import*, and `setup.sh` makes a
     failed `scons` non-fatal, so a site that never built tinygrad got the ONNX
     path silently. That path had no two-camera branch: it passed the road frame
-    as both `img` and `big_img`, so on comma2k19 and Bench2Drive openpilot was
-    scored with the narrow camera warped into the wide field, and the wide
-    camera it declares was never read at all.
+    as both `img` and `big_img`, so on Bench2Drive -- the one rig here with two
+    cameras -- openpilot would have been scored with the narrow camera warped
+    into the wide field, and the wide camera it declares would never have been
+    read.
     """
     policy, seen = _onnx_policy(monkeypatch)
     policy.infer(_two_camera_observation())
@@ -545,7 +546,7 @@ def _one_camera_observation():
 
 
 def test_one_camera_still_feeds_both_views(monkeypatch) -> None:
-    """Every dataset here but the comma rigs has one camera; it fills both."""
+    """Every rig here but Bench2Drive's has one camera; it fills both."""
     policy, seen = _onnx_policy(monkeypatch)
     obs = _one_camera_observation()
 
@@ -556,7 +557,7 @@ def test_one_camera_still_feeds_both_views(monkeypatch) -> None:
 
 
 def test_the_two_backends_bind_the_same_cameras(monkeypatch) -> None:
-    """They disagreed for a year, and nothing on the record showed it.
+    """They disagreed, and nothing on the record showed it.
 
     `_bind_cameras` is shared so that "which image reaches big_img" is one
     answer. Only `resample` may differ, because only the warp does: the ONNX
