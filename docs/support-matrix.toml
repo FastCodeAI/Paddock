@@ -51,6 +51,13 @@ header = "EPDMS ↑ (0–1), navtest, stage one"
 decimals = 3
 
 [[benchmark]]
+key = "navhard"
+name = "NAVSIM v2 hard"
+loop = "open"
+header = "EPDMS ↑ (0–1), navhard, two stages"
+decimals = 3
+
+[[benchmark]]
 key = "bench2drive"
 name = "Bench2Drive"
 loop = "closed"
@@ -151,6 +158,7 @@ nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd", marks = "A" }  
 kitscenes = { run = "kitscenes/alpamayo15/legacy-full-nav" }
 comma2k19 = { run = "comma2k19/alpamayo15/20261106T005600-6c52a2" }
 navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
+navhard = { run = "navhard/alpamayo15/20261111T090014-04904f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
 bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", note = "10 Hz" }
 bench2drive220 = { run = "bench2drive/alpamayo15/full220-836dda734659a86c-f81033", note = "10 Hz" }
@@ -171,6 +179,7 @@ nuscenes = { run = "nuscenes/drivejepa/20261111T061849-382fec", note = "streamed
 kitscenes = { run = "kitscenes/drivejepa/20261111T054224-9f8371", note = "0.5 s warm-up" }
 comma2k19 = { run = "comma2k19/drivejepa/20261111T074533-0f26ee", note = "0.5 s warm-up" }  # three of its four views black; it reads only the front
 navsim = { run = "navsim/drivejepa/20261111T052813-8f96dd", marks = "A", note = "streamed" }
+navhard = { run = "navhard/drivejepa/20261110T165434-167fd4", marks = "A", note = "streamed" }
 navsim_v1 = { run = "navsim_v1/drivejepa/20261111T090508-ad88e6", marks = "A", note = "streamed" }
 bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", note = "2 Hz" }
 neuroncap = { run = "neuroncap/drivejepa/20261110T204020-036fb3" }
@@ -181,6 +190,7 @@ nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5", marks = "S" }
 kitscenes = { run = "kitscenes/visionpilot/20261105T191932-c71101" }
 comma2k19 = { run = "comma2k19/visionpilot/20261106T003749-c10a7f" }
 navsim = { run = "navsim/visionpilot/20260902T175642-df5291", marks = "S" }
+navhard = { run = "navhard/visionpilot/20261110T165413-30c0d8" }
 navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583", marks = "S" }
 bench2drive = { run = "bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009", marks = "S" }
 neuroncap = { run = "neuroncap/visionpilot/20260905T121810-155d36", marks = "S" }
@@ -191,6 +201,7 @@ nuscenes = { run = "nuscenes/meteor/20260914T202122-4320bb" }
 kitscenes = { run = "kitscenes/meteor/20260914T215457-ab0586" }
 comma2k19 = { run = "comma2k19/meteor/20261106T064120-226c00" }  # the road camera in 2 of its 8 slots
 navsim = { run = "navsim/meteor/20260914T234307-e56cfc", marks = "P" }
+navhard = { run = "navhard/meteor/20261110T181854-9b4014", marks = "P" }
 navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
@@ -204,6 +215,7 @@ nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e", marks = "A" }  #
 kitscenes = { run = "kitscenes/qwendrive/20260914T220841-5a91fd" }
 comma2k19 = { run = "comma2k19/qwendrive/20261106T030530-7d9fd3" }
 navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
+navhard = { run = "navhard/qwendrive/20261111T060112-5231af", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20261104T205054-df25d5", marks = "A" }
 bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
@@ -214,6 +226,7 @@ nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # c
 kitscenes = { run = "kitscenes/autoe2e/20261020T220509-dee848", marks = "A" }
 comma2k19 = { run = "comma2k19/autoe2e/20261106T073744-1b4fe1" }
 navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A", note = "10 Hz" }
+navhard = { run = "navhard/autoe2e/20261110T192825-24d0b3", marks = "A" }
 navsim_v1 = { run = "navsim_v1/autoe2e/20261104T210206-3022fb", marks = "A", note = "10 Hz" }
 # Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time, each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
@@ -230,6 +243,7 @@ alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 [cells.uniad]
 kitscenes = { run = "kitscenes/uniad/20261109T082536-b881a6" }
 navsim = { run = "navsim/uniad/20261109T082522-c24426", marks = "P" }
+navhard = { run = "navhard/uniad/20261110T092734-19b732", marks = "P" }
 navsim_v1 = { run = "navsim_v1/uniad/20261112T130241-e02e88", marks = "P" }
 neuroncap = { run = "neuroncap/uniad/20261109T092826-5919f1" }
 alpasim = { run = "alpasim/uniad/20261110T120651-8ea842" }  # six cameras, re-rendered as nuScenes' rig
@@ -237,6 +251,7 @@ alpasim = { run = "alpasim/uniad/20261110T120651-8ea842" }  # six cameras, re-re
 [cells.vad]
 kitscenes = { run = "kitscenes/vad/20261109T082536-a393ec" }
 navsim = { run = "navsim/vad/20261110T095855-0ebf09", marks = "P" }
+navhard = { run = "navhard/vad/20261110T185531-0cecc0", marks = "P" }
 navsim_v1 = { run = "navsim_v1/vad/20261112T132424-25e0e5", marks = "P" }
 neuroncap = { run = "neuroncap/vad/20261110T033544-7f435b" }
 alpasim = { run = "alpasim/vad/20261110T153825-72448c" }  # six cameras, re-rendered as nuScenes' rig
@@ -246,6 +261,7 @@ nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
 kitscenes = { value = 1.381, source = "docs/benchmarks/kitscenes.md" }
 comma2k19 = { run = "comma2k19/constant_velocity/20261106T045541-d0cdb5" }
 navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
+navhard = { run = "navhard/constant_velocity/20261110T085953-e122fd" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
 bench2drive = { run = "bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac" }
 neuroncap = { value = 0, source = "docs/benchmarks/neuroncap.md", note = "by construction" }

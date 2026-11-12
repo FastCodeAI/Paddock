@@ -121,13 +121,13 @@ NC is no at-fault collisions and DAC drivable-area compliance.
 
 | Model | EPDMS ↑ | stage one ↑ | stage two ↑ | NC, stage one | DAC, stage one | NC, stage two | DAC, stage two | run | stored `valid` |
 |---|---:|---:|---:|---:|---:|---:|---:|---|---|
-| Drive-JEPA ⟲ | 0.4277 | 0.818 | 0.529 | 0.956 | 0.960 | 0.884 | 0.852 | `20261110T165434-167fd4` | false |
+| Drive-JEPA ⟲ | 0.4277 | 0.818 | 0.529 | 0.956 | 0.960 | 0.884 | 0.852 | `20261110T165434-167fd4` | true |
 | Qwen-Drive 1.0 | 0.3124 | 0.763 | 0.427 | 0.969 | 0.880 | 0.812 | 0.745 | `20261111T060112-5231af` | true |
 | Alpamayo 1.5 | 0.1928 | 0.507 | 0.366 | 0.924 | 0.664 | 0.841 | 0.650 | `20261111T090014-04904f` | true |
 | VisionPilot ∗ | 0.1921 | 0.453 | 0.390 | 0.921 | 0.618 | 0.847 | 0.672 | `20261110T165413-30c0d8` | true |
-| UniAD ⊟ | 0.1234 | 0.386 | 0.300 | 0.890 | 0.527 | 0.806 | 0.535 | `20261110T092734-19b732` | false |
+| UniAD ⊟ | 0.1234 | 0.386 | 0.300 | 0.890 | 0.527 | 0.806 | 0.535 | `20261110T092734-19b732` | true |
 | Baseline (Constant Velocity) | 0.1148 | 0.290 | 0.342 | 0.889 | 0.429 | 0.832 | 0.591 | `20261110T085953-e122fd` | true |
-| VAD ⊟ | 0.0990 | 0.343 | 0.250 | 0.860 | 0.522 | 0.769 | 0.491 | `20261110T185531-0cecc0` | false |
+| VAD ⊟ | 0.0990 | 0.343 | 0.250 | 0.860 | 0.522 | 0.769 | 0.491 | `20261110T185531-0cecc0` | true |
 | METEOR ◊ | 0.0878 | 0.315 | 0.261 | 0.868 | 0.507 | 0.779 | 0.545 | `20261110T181854-9b4014` | true |
 | AutoE2E | 0.0822 | 0.330 | 0.240 | 0.858 | 0.520 | 0.764 | 0.436 | `20261110T192825-24d0b3` | true |
 
@@ -136,15 +136,13 @@ stage columns.
 
 ⟲ **Drive-JEPA is momentum-aware, in streamed mode** (`config.streamed =
 "per_log"`): 225 of the 450 stage-one frames were handed the plan the node made
-0.5 s earlier in the same log, and none of the synthetic follow-ups. It is
-stored `valid: false` for one reason only: the site pointed
-`DRIVEJEPA_CHECKPOINT` at a copy of the released checkpoint on a faster disk,
-and the runner counts any checkpoint override as a different model. The copy's
-sha256 is `740335c800e248598949c2f3c70700da79fe52f5fdc282b887d08fe112d30d05`, the
-same as recorded for the file model.yaml declares, and both are 3,735,352,913
-bytes. `ranked_with_note` never covers a checkpoint and there is no other way
-to re-rank a stored run, so the record keeps its flag; a run from the declared
-path would be ranked.
+0.5 s earlier in the same log, and none of the synthetic follow-ups. The site
+pointed `DRIVEJEPA_CHECKPOINT` at a copy of the released checkpoint on a faster
+disk; the copy's sha256 is
+`740335c800e248598949c2f3c70700da79fe52f5fdc282b887d08fe112d30d05`, the same as
+recorded for the file model.yaml declares, and both are 3,735,352,913 bytes. A
+byte-identical copy is not an override, so the record, written again from its
+stored chunks (`--resume`, nothing scored again), is ranked.
 
 ∗ **VisionPilot's plan is built by paddock around its outputs, and most of it
 is extrapolation.** The stack plans 1.0 s ahead; the adapter extends that to
@@ -154,8 +152,9 @@ continues a controller that never plans that far. See
 
 ⊟ **UniAD and VAD plan 3 s; their plan is held to 4 s by paddock**
 (`UNIAD_HORIZON_S` / `VAD_HORIZON_S` = 4.0), a second the model never planned.
-These runs predate their model.yaml listing that setting as ranked with a note,
-so they are stored `valid: false` (see ⊟ in
+Their model.yaml lists that setting as ranked with a note, as METEOR's is; the
+records, written again from their stored chunks (`--resume`, nothing scored
+again), are ranked with that note (see ⊟ in
 [navsim.md](navsim.md#notes-on-the-matrix-cells)).
 
 ◊ METEOR plans 3 s and is continued to 4 s by `METEOR_HORIZON_S`, which its

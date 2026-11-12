@@ -30,14 +30,13 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 [KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
 [comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
 [NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) ·
+[NAVSIM v2 hard](docs/benchmarks/navhard.md#results) ·
 [NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) ·
 [Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) ·
 [neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
 [AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
 [HUGSIM](docs/benchmarks/hugsim.md) has no column yet: two of these models have driven it.
 [nuPlan](docs/benchmarks/nuplan.md) has no column yet: its runs so far cover 25 of 351 anchors.
-[navhard](docs/benchmarks/navhard.md), NAVSIM v2.2's two-stage protocol, has no column yet: eight models
-and the floor have run it.
 
 <details>
 <summary>Why each cell is marked, and what to check before comparing</summary>
@@ -119,7 +118,9 @@ Before comparing numbers:
   scores.** Bench2Drive's "50 of 220 routes" column covers 14 of its 44 scenario
   types. AlpaSim is 30 of the 913 scenes in `public_2601`. NAVSIM v2 is
   `navtest`, stage one only; its public leaderboard uses `navhard`, two stages,
-  which has [its own page](docs/benchmarks/navhard.md) and no column yet.
+  which is the "NAVSIM v2 hard" column ([its page](docs/benchmarks/navhard.md)).
+  OpenPilot has no navhard cell: it needs 10 Hz input (`min_input_hz`), and
+  navhard is served at 2 Hz (see its page).
 - **Bench2Drive has two columns.** The one headed "216 of 220 routes" is every
   model driven the same way over all 220 routes but the four set aside for every
   model (CARLA crashes on route 11715 whichever model drives, and crashed on 3800,
@@ -277,7 +278,7 @@ Paddock ships no weights and no datasets.
 | [comma2k19](docs/benchmarks/comma2k19.md) | open loop | ADE | [commaai/comma2k19](https://github.com/commaai/comma2k19) | [A Commute in Data](https://arxiv.org/abs/1812.05752) |
 | [nuPlan](docs/benchmarks/nuplan.md) | open loop | ADE | [nuPlan](https://www.nuscenes.org/nuplan) | [nuPlan](https://arxiv.org/abs/2106.11810) |
 | [NAVSIM v2](docs/benchmarks/navsim.md) | open loop, plan simulated for scoring; `navtest`, stage one | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
-| [navhard](docs/benchmarks/navhard.md) | open loop, plan simulated for scoring; `navhard_two_stage`, stage one and synthetic stage two | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
+| [NAVSIM v2 hard](docs/benchmarks/navhard.md) | open loop, plan simulated for scoring; `navhard_two_stage`, stage one and synthetic stage two | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
 | [NAVSIM v1](docs/benchmarks/navsim_v1.md) | open loop, plan simulated for scoring | PDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [NAVSIM](https://arxiv.org/abs/2406.15349) |
 | [Bench2Drive](docs/benchmarks/bench2drive.md) | closed loop, CARLA; 50 of 220 routes | driving score | [Thinklab-SJTU/Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
 | [neuroNCAP](docs/benchmarks/neuroncap.md) | closed loop, NeuRAD | NCAP score | [atonderski/neuro-ncap](https://github.com/atonderski/neuro-ncap) | [NeuroNCAP](https://arxiv.org/abs/2404.07762) |
