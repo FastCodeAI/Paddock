@@ -1,0 +1,110 @@
+{
+  "run_id": "20261028T040412-c7e38e",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "autoe2e",
+  "mode": "open_loop",
+  "started_utc": "2026-10-28T04:04:12+00:00",
+  "duration_s": 1613.6,
+  "repo_sha": "40a75cf8a26b60f6b094125e3924fe0bdb427b02",
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 351,
+    "sequences_sha256": "05efb12a2f3eaf9e",
+    "n_expected": 351
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0",
+    "declared_env": {
+      "AUTOE2E_CHECKPOINT": "{weights}checkpoint.pt",
+      "AUTOE2E_REF_HEIGHT_M": "2.1",
+      "AUTOE2E_REPLAN_S": "0",
+      "AUTOE2E_REPO": "{repo}",
+      "AUTOE2E_ROUTE": "1"
+    },
+    "model_env": {
+      "AUTOE2E_CHECKPOINT": "<site path:5a590cbb>"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "auto_e2e",
+      "sha": "40a75cf8a26b60f6b094125e3924fe0bdb427b02",
+      "pinned_sha": "40a75cf8",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "9671b4996435d238f85937e4ddba30a903831043",
+      "dirty": true
+    },
+    "policy": {
+      "checkpoint": "models/nuplan-epoch-5/checkpoint.pt",
+      "checkpoint_sha256": "ca8b43d7a777d6fd9195bb253d1452f3cd645f7aab3bd0e36b1f74ffb31df29b",
+      "config": {
+        "training_stage": "nuplan_full",
+        "backbone": "res_net_50",
+        "embed_dim": 256,
+        "num_views": 6,
+        "model_architecture_version": "bevformer_v2_t8_split_navigation_v5"
+      },
+      "ref_height_m": 2.1,
+      "route": true,
+      "bf16": true,
+      "replan_s": 0.0,
+      "calls": 351,
+      "map_calls": 0,
+      "route_calls": 0,
+      "last_inference": {
+        "t_us": 1633942926087468,
+        "v0_history": 0.244,
+        "speed_canbus": 0.245,
+        "views": 6,
+        "history_gaps_s": [
+          -0.0,
+          -0.0,
+          -0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "history_repeated": 0,
+        "frames_held": 49,
+        "ego_rows_zero": 16,
+        "ego_rows_filled": 0,
+        "map_valid": false,
+        "route_valid": false,
+        "destination": false,
+        "pack_s": 2.441,
+        "model_s": 1.092,
+        "accel_0": 0.029,
+        "kappa_0": -0.043,
+        "end_6s": [
+          0.35,
+          -0.0
+        ]
+      }
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "superseded_by": "",
+  "notes": "site env override may change what was measured: AUTOE2E_CHECKPOINT (values in config.model_env)",
+  "ingested_from": ""
+}
