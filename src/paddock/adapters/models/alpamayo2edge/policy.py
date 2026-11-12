@@ -19,7 +19,6 @@ Settings, read from the environment; model.yaml declares the defaults:
     ALPAMAYO2_EDGE_SEED            43        set before every plan
     ALPAMAYO2_EDGE_NAV_DISTANCE_M  unset     a distance for turns the source gives none
     ALPAMAYO2_EDGE_SAVE_REASONING  0         1 keeps the rationale in each plan's extras
-    ALPAMAYO2_EDGE_THREADS         4         torch's CPU threads in the node; speed only
 
 The seed is set before every plan, so a plan depends on its input alone -- not on
 the node, the order, a retry or a resumed run. It is still one draw of the model's
@@ -84,11 +83,6 @@ class Settings:
     seed: int = 43
     nav_distance_m: float | None = None
     save_reasoning: bool = False
-    #: torch's CPU threads (`torch.set_num_threads`). Torch takes every core by default,
-    #: and the vendor's processor then spends 1.4 s packing a plan's 22 frames on a
-    #: 48-core box shared with CARLA, where 4 threads take 0.18 s and 16 take 0.07 s.
-    #: The packed pixels and the plan are bit-identical at 2, 4, 8, 16 and 48 threads.
-    threads: int = 4
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -113,9 +107,6 @@ class Settings:
         nav_distance_m = float(nav) if nav is not None else None
         if nav_distance_m is not None and not nav_distance_m >= 0:
             raise ValueError(f"{PREFIX}NAV_DISTANCE_M must be a distance in metres, got {nav!r}")
-        threads = int(get("THREADS") or cls.threads)
-        if threads < 1:
-            raise ValueError(f"{PREFIX}THREADS must be at least 1, got {threads}")
         return cls(
             frames=frames,
             history=history,
@@ -123,7 +114,6 @@ class Settings:
             seed=int(get("SEED") or cls.seed),
             nav_distance_m=nav_distance_m,
             save_reasoning=(get("SAVE_REASONING") or "0") == "1",
-            threads=threads,
         )
 
 
@@ -238,13 +228,8 @@ class Alpamayo2EdgePolicy(Policy):
         if self.model is not None:
             return
         # torch and the vendor package exist only in the model's own environment.
-        import torch
         from alpamayo2_edge.checkpoint import load_model
         from alpamayo2_edge.helper import get_processor
-
-        # Set on the thread that plans: the node calls load() and then serves /infer on the
-        # same thread (policy/server.py), and OpenMP's thread count is per thread.
-        torch.set_num_threads(self.settings.threads)
 
         checkpoint = os.environ.get(CHECKPOINT_ENV)
         if not checkpoint:

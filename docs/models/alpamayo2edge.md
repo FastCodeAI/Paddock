@@ -173,15 +173,19 @@ Each is read from the environment of the node; `model.yaml` declares the default
 | `ALPAMAYO2_EDGE_SEED` | `43` | set before every plan | no |
 | `ALPAMAYO2_EDGE_NAV_DISTANCE_M` | unset | a distance for turns the source gives none ("Turn left in 20m") | no |
 | `ALPAMAYO2_EDGE_SAVE_REASONING` | `0` | `1` keeps the rationale's first 400 characters in each plan's extras | yes |
-| `ALPAMAYO2_EDGE_THREADS` | `4` | torch's CPU threads in the node; the plan is the same at any count | yes |
 
 No default was chosen by scoring navtest. They are the vendor's settings, plus the
 reasons above.
 
-`ALPAMAYO2_EDGE_THREADS` exists because torch takes every core by default. On a
-48-core machine shared with CARLA, the vendor's processor then took 1.4 s to pack one
-plan's 22 frames, where 4 threads take 0.18 s and 16 take 0.07 s. The packed pixels
-and the plan were bit-identical at 2, 4, 8, 16 and 48 threads, on one input.
+`model.yaml` also sets `OMP_NUM_THREADS` to 4, the CPU threads torch and numpy use in
+the node, because torch takes every core by default. On a 48-core machine shared with
+CARLA, the vendor's processor then took 1.4 s to pack one plan's 22 frames, where 4
+threads take 0.18 s and 16 take 0.07 s. The packed pixels and the plan were
+bit-identical at 2, 4, 8, 16 and 48 threads, on one input. The runner counts
+`OMP_NUM_THREADS` as a speed setting for every model, so a site that sets its own keeps
+its run ranked. Edge's Bench2Drive record was driven when the 4 threads came from a
+setting of Edge's own, `ALPAMAYO2_EDGE_THREADS`, which its notes name: it set torch's
+threads alone and left numpy's at every core.
 
 The seed is set before every plan. A plan therefore depends on its input alone, not
 on the node, the order, a retry or a resumed run. It is still one draw: on one
