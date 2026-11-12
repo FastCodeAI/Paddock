@@ -142,6 +142,7 @@ def test_the_route_decides_the_sentence_not_the_follow_reference_command() -> No
     policy = _loaded()
     _plan(policy, _alpasim(route_xy=_left_turn(20.0), route_time_s=0.0))
     assert policy.runs[-1].nav_text == "Turn left in 20m"
+    assert policy.runs[-1].nav_from == "route" == policy.diagnostics()["last"]["nav_from"]
 
 
 def test_a_route_from_an_earlier_frame_is_moved_to_the_newest_one_first() -> None:
@@ -155,6 +156,7 @@ def test_a_route_with_no_usable_point_falls_back_to_the_command() -> None:
     policy = _loaded()
     _plan(policy, _alpasim(route_xy=np.full((5, 2), np.nan), route_time_s=0.0))
     assert policy.runs[-1].nav_text == "Continue straight"
+    assert policy.runs[-1].nav_from == "command"
 
 
 def test_a_route_without_its_time_is_not_read() -> None:

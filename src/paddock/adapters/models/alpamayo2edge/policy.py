@@ -169,6 +169,9 @@ class Sample:
     extrapolated_s: float = 0.0
     #: Camera IDs fed black frames because the source sent no camera for them.
     black_slots: list[int] = field(default_factory=list)
+    #: Where `nav_text` came from: "route" (a route polyline with its time, AlpaSim) or
+    #: "command" (the command or next maneuver, every other source, and AlpaSim with no route).
+    nav_from: str = "command"
 
 
 def vendor_sample(sample: Sample) -> dict[str, Any]:
@@ -416,7 +419,9 @@ class Alpamayo2EdgePolicy(Policy):
         xyz, rot = inputs.ego_history(times, poses, velocities, self.settings.history)
         last = frames[-1]
         text = self._route_text(last, times, poses, velocities)
+        nav_from = "route"
         if text is None:
+            nav_from = "command"
             text = inputs.nav_text(
                 last.command, last.nav_maneuver, last.nav_distance_m, self.settings.nav_distance_m
             )
@@ -434,6 +439,7 @@ class Alpamayo2EdgePolicy(Policy):
             frame_times_s=chosen_times,
             extrapolated_s=inputs.history_before_first_frame_s(times),
             black_slots=black,
+            nav_from=nav_from,
         )
 
     def _route_text(
@@ -516,6 +522,7 @@ class Alpamayo2EdgePolicy(Policy):
         reach = float(np.linalg.norm(plan[-1, :2]))
         self._last = {
             "nav_text": sample.nav_text,
+            "nav_from": sample.nav_from,
             "black_slots": sample.black_slots,
             "frame_times_s": sample.frame_times_s,
             "history_extrapolated_s": sample.extrapolated_s,
@@ -524,10 +531,12 @@ class Alpamayo2EdgePolicy(Policy):
             "seed": self._last_seed,
         }
         _log.info(
-            "plan #%d: inputs %.0f ms, model %.0f ms, rest %.0f ms; nav %r; %s; reaches %.1f m in 6.4 s%s",
+            "plan #%d: inputs %.0f ms, model %.0f ms, rest %.0f ms; nav %r (from %s); %s; "
+            "reaches %.1f m in 6.4 s%s",
             self._plans,
             *ms,
             sample.nav_text,
+            sample.nav_from,
             NOMINAL if nominal else f"rationale {reasoning[:160]!r}",
             reach,
             f"; drawn again, seed {self._last_seed}" if redrawn else "",
