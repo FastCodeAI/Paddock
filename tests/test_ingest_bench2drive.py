@@ -708,7 +708,7 @@ def test_routes_driven_before_the_early_stop_are_counted_out_loud(tmp_path: Path
     assert not run.valid, "with and without the rule are two experiments, as two rules are"
 
 
-def _pooled_with(tmp_path: Path, configs: tuple[dict | None, dict | None]):
+def _pooled_with(tmp_path: Path, configs: tuple[dict | None, dict | None], model_env: dict | None = None):
     """Pool `_tree`'s two contributing source runs, each with these keys in its recorded config;
     None is a run that kept no config at all."""
     root = _tree(tmp_path)
@@ -719,7 +719,7 @@ def _pooled_with(tmp_path: Path, configs: tuple[dict | None, dict | None]):
         else:
             record["config"].update(extra)
         (root / run_id / "run.json").write_text(json.dumps(record))
-    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s")
+    ((run, _, _),) = bench2drive.ingest(root, model="modelx", site="s", model_env=model_env)
     return run
 
 
@@ -791,6 +791,20 @@ def test_frames_handed_between_plans_are_in_the_pool_and_one_mean_never_mixes_th
     mixed = _pooled_with(tmp_path / "c", (dense, {"infer_hz": 2.0}))
     assert sorted(mixed.config["observe_hz"]) == [0.0, 10.0] and not mixed.valid
     assert "handed frames between plans at different rates" in mixed.notes
+
+
+def test_frames_the_host_handed_before_runs_recorded_them_are_read_from_model_env(tmp_path: Path) -> None:
+    """Qwen-Drive's 220-route sweep set PADDOCK_OBSERVE_HZ on the host, before runs recorded `observe_hz`;
+    the ingest config states it. The pool records the rate, so it is not the sparse 2 Hz regime in its
+    config, and it pools with a run that recorded the same rate instead of reading as two histories."""
+    old = {"infer_hz": 2.0}
+    stated = _pooled_with(tmp_path / "a", (old, old), model_env={"PADDOCK_OBSERVE_HZ": "10"})
+    assert stated.config["observe_hz"] == 10.0 and stated.valid, stated.notes
+    sparse = _pooled_with(tmp_path / "b", (old, old))
+    assert "observe_hz" not in sparse.config and sparse.run_id != stated.run_id
+    recorded = {"infer_hz": 2.0, "observe_hz": 10.0}
+    both = _pooled_with(tmp_path / "c", (old, recorded), model_env={"PADDOCK_OBSERVE_HZ": "10"})
+    assert both.config["observe_hz"] == 10.0 and both.valid, both.notes
 
 
 def test_a_pool_at_the_hosts_rate_at_two_rates_or_at_a_rate_not_known_does_not_rank(tmp_path: Path) -> None:

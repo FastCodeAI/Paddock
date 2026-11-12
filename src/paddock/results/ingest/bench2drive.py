@@ -231,6 +231,17 @@ def _read_json(path: Path) -> Any:
         return None
 
 
+def _observed_in_env(model_env: dict[str, Any]) -> float | None:
+    """The between-plan frame rate a run's ``model_env`` sets (PADDOCK_OBSERVE_HZ), for runs made before
+    runs recorded ``observe_hz`` -- the host set it, and the record kept it, if at all, only there."""
+    raw = (model_env or {}).get("PADDOCK_OBSERVE_HZ")
+    try:
+        hz = float(raw) if raw not in (None, "") else 0.0
+    except (TypeError, ValueError):
+        return None
+    return hz if hz > 0 else None
+
+
 def _driven_off_protocol(model_env: dict[str, Any]) -> float | None:
     """The rate this run was driven at, when that is not the benchmark's protocol.
 
@@ -571,7 +582,7 @@ def read_tracked(record_dir: Path, model: str) -> Tracked:
 
 
 def _a_pool_of(record_dir: Path, superseded_by: str, name: str) -> bool:
-    """Whether the run ``superseded_by`` names (beside ``record_dir``, as the store keeps it) pooled ``name``."""
+    """Whether the run ``superseded_by`` names, beside ``record_dir`` in the store, pooled ``name``."""
     if not superseded_by:
         return False
     other, _, run_id = superseded_by.rpartition("/")
@@ -823,7 +834,17 @@ def ingest(
     # Frames handed to the node between plans (`observe_hz`, harness.observe_hz), as the source runs
     # recorded them. In the config only when some run had them, so a pool without keeps its run id.
     # Runs with and without them, or at two rates, read two different histories: one mean, no rank.
-    observed = _agreed([float(c.get("observe_hz") or 0.0) for c in kept])
+    # A run made before that was recorded holds the rate, if anywhere, in `model_env` (the host's
+    # PADDOCK_OBSERVE_HZ, or the ingest config's statement of it): read there, so it pools with runs that
+    # recorded the same rate and its record says what was fed.
+    observed = _agreed(
+        [
+            float(c.get("observe_hz") or 0.0)
+            if "observe_hz" in c
+            else (_observed_in_env({**(c.get("model_env") or {}), **dict(model_env or {})}) or 0.0)
+            for c in kept
+        ]
+    )
     if observed not in (None, 0.0):
         config["observe_hz"] = observed
     mixed_observe = isinstance(observed, list)
