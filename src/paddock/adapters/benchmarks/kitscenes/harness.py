@@ -20,6 +20,7 @@ drive a route is matched to (`map`, `route`): inputs only a policy that reads
 
 from __future__ import annotations
 
+import csv
 import os
 import pickle
 from collections.abc import Container, Iterator
@@ -111,6 +112,48 @@ COMMAND_SOURCES = ("straight", "gt")
 #: as the protocol's commands. `unknown`, or anything not one-hot, is no hint
 #: and reads as STRAIGHT, the same as `command_source = "straight"`.
 LIST_COMMANDS = (Command.LEFT, Command.STRAIGHT, Command.RIGHT)
+
+#: The names a .csv sample list gives `driving_command`, in the one-hot's order.
+ONE_HOT_COMMANDS = ("left", "straight", "right", "unknown")
+
+#: The shared list of 223 keyframes every KITScenes run is scored on, tracked so
+#: a site that downloads the data can score it. Its rows are the `scene_id`,
+#: `keyframe_index`, `split` and `driving_command` of `kitscenes_e2e_final.pkl`,
+#: the output of the first Drive-JEPA run, which was the list before this file
+#: existed; both give every stored run's `sequences_sha256`, 80665529bea7f500.
+#: `[benchmarks.kitscenes] sample_list` replaces it; see `_sample_list`.
+SAMPLE_LIST = Path(__file__).with_name("sample_list.csv")
+
+
+def read_sample_list(path: Path) -> list[dict]:
+    """The rows of a sample list: a .csv like `SAMPLE_LIST`, or Drive-JEPA's .pkl.
+
+    A .csv row comes back in the .pkl's shape -- an int `keyframe_index`, a
+    one-hot `driving_command` -- so the rest of the harness reads one form. An
+    empty command is left out, as it is from a .pkl row without one; a name
+    that is not a command stops here, rather than reading as no hint.
+    """
+    if path.suffix != ".csv":
+        return pickle.loads(path.read_bytes())
+    rows: list[dict] = []
+    with path.open(newline="") as fh:
+        for line, raw in enumerate(csv.DictReader(fh), start=2):
+            row = {
+                "scene_id": raw["scene_id"],
+                "keyframe_index": int(raw["keyframe_index"]),
+                "split": raw["split"],
+            }
+            command = (raw.get("driving_command") or "").strip().lower()
+            if command and command not in ONE_HOT_COMMANDS:
+                raise ValueError(
+                    f"{path}:{line}: driving_command = {command!r}, expected one of "
+                    f"{', '.join(ONE_HOT_COMMANDS)}"
+                )
+            if command:
+                row["driving_command"] = [int(name == command) for name in ONE_HOT_COMMANDS]
+            rows.append(row)
+    return rows
+
 
 #: Which of the rig's two forward cameras is the protocol's CAM_FRONT:
 #: `[benchmarks.kitscenes] front_camera`.
@@ -216,7 +259,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         """
         if self._command_source() != "gt":
             return []
-        rows = pickle.loads(self._sample_list().read_bytes())
+        rows = read_sample_list(self._sample_list())
         missing = sum(1 for row in rows if "driving_command" not in row)
         if not missing:
             return []
@@ -227,22 +270,19 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         ]
 
     def _sample_list(self) -> Path:
-        """The shared keyframe list every KITScenes run is scored on.
+        """The shared keyframe list every KITScenes run is scored on: `SAMPLE_LIST`.
 
         A benchmark-level setting, not a model one: the list *is* the benchmark.
         Two models scored on different lists are not comparable, so it cannot be
-        something an individual model supplies.
+        something an individual model supplies. A site can name another list, a
+        .csv or a .pkl; `sequences_sha256` says whether a run scored the same one.
 
             [benchmarks.kitscenes]
             sample_list = "/path/to/kitscenes_e2e_final.pkl"
         """
         raw = self.setting("sample_list")
         if not raw:
-            raise RuntimeError(
-                "[benchmarks.kitscenes] sample_list is not set in paddock.toml. "
-                "It is the shared keyframe list every model is scored on "
-                "(kitscenes_e2e_final.pkl). See docs/benchmarks/kitscenes.md."
-            )
+            return SAMPLE_LIST
         path = Path(raw)
         if not path.exists():
             raise RuntimeError(f"[benchmarks.kitscenes] sample_list does not exist: {path}")
@@ -256,7 +296,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         question at every site. Reported rather than silently truncated: a run
         over 180 of the 223 is not comparable with one over all of them.
         """
-        rows = pickle.loads(self._sample_list().read_bytes())
+        rows = read_sample_list(self._sample_list())
         on_disk: dict[str, str] = {}
         for root in self.dataset.roots:
             for split in ("val", "overlap_train_val", "train", "test"):

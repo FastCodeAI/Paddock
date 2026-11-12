@@ -24,30 +24,36 @@ paddock run --bench kitscenes --model openpilot             # full n=223
 
 ## The sample list is the benchmark
 
-All models are scored on one shared keyframe list, configured per site:
-
-```toml
-[benchmarks.kitscenes]
-sample_list = "/path/to/kitscenes_e2e_final.pkl"
-```
+All models are scored on one shared keyframe list,
+[`sample_list.csv`](../../src/paddock/adapters/benchmarks/kitscenes/sample_list.csv)
+in the adapter: one row per keyframe, with its `scene_id`, `keyframe_index`,
+`split` and `driving_command` (`left`, `straight` or `right`). A site that
+downloads KITScenes with `paddock data fetch kitscenes` has nothing to set.
 
 Benchmark-level, not model-level, deliberately: two models scored on different
 keyframes are not comparable however close the counts look. `paddock run
 --dry-run` reports how many of the list this site's tiers can serve, and
 `samples()` refuses to run a partial set rather than silently scoring fewer.
 
-That file is not a hand-written list. It is the output of the Drive-JEPA run
-that went first, kept because whichever 223 keyframes it happened to score
-became the set every later model had to match. Reading it as a sample list uses
-`scene_id`, `keyframe_index` and `split` -- and, only under `command_source =
-"gt"`, `driving_command` ([The route hint](#the-route-hint)) -- and ignores the
-predictions sitting beside them; `paddock ingest` reads the same file for the
-predictions, which is how Drive-JEPA has a row on this benchmark without a
-paddock run.
+The list is not hand-written. It is copied from `kitscenes_e2e_final.pkl`, the
+output of the Drive-JEPA run that went first, kept because whichever 223
+keyframes it happened to score became the set every later model had to match.
+The copy keeps the four columns the harness reads -- `driving_command` only
+under `command_source = "gt"` ([The route hint](#the-route-hint)) -- and drops
+the predictions sitting beside them; `paddock ingest` reads the original file
+for those, which is how Drive-JEPA has a row on this benchmark without a
+paddock run. Both give the `sequences_sha256` every stored run carries,
+`80665529bea7f500`, and a test checks the tracked file against those runs.
 
-The list is not in this repository yet, so a site that downloads KITScenes
-with `paddock data fetch kitscenes` still cannot score a model on it; issue
-[#178](https://github.com/FastCodeAI/Paddock/issues/178) tracks publishing it.
+A site can still name another list, a `.csv` like this one or that `.pkl`:
+
+```toml
+[benchmarks.kitscenes]
+sample_list = "/path/to/kitscenes_e2e_final.pkl"   # optional
+```
+
+A run over any other list carries a different `sequences_sha256` in its
+`run.json`, which is how to tell it from a run over these 223.
 
 ### The seven rows, and where each came from
 
