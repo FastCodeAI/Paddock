@@ -219,7 +219,7 @@ time, and the node turns the route into the right / left / forward command by
 the rule the nuScenes datasets labelled with (where the lidar would be 3 s along
 the route, ±2 m sideways; `bev_planners.route_command`), logged with each plan
 in the per-replan log. Same warm-up, control step and 30 pinned scenes as
-Drive-JEPA's; not yet run. What the models then read is in
+Drive-JEPA's (rows below). What the models then read is in
 [docs/models/uniad.md](../models/uniad.md#benchmarks).
 
 ## Configuration

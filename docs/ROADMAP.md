@@ -76,3 +76,7 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - Alpamayo 2 Edge on NAVSIM with nuPlan's 10 Hz frames, which it is built for. Its
   NAVSIM cells are 2 Hz: the site that ran it holds no nuPlan 10 Hz data.
 - Failure-mode analysis, the same for every model and dataset.
+- navhard's scorer pinned and recorded: the NAVSIM v2.2 devkit is in no `repos.yaml` entry, and a navhard
+  run records neither its commit nor any setting that tells two devkits apart (the stored runs used
+  `0a380a9`, docs/benchmarks/navhard.md). Pin it, and record the sha the way AlpaSim records
+  `scorer_repo_sha` (it changes a navhard run's config and so its id, which is why it is a separate step).

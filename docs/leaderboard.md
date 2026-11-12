@@ -83,8 +83,10 @@
 | constant_velocity | 20261106T045541-d0cdb5 | 10165 | 1.135 | 0.370 | 1.211 | 2.546 | 3.000 | 0.252 | 0.611 |
 | autoe2e | 20261106T073744-1b4fe1 | 10165 | 1.350 | 0.826 | 1.371 | 2.396 | 6.000 | 0.734 | 0.977 |
 | visionpilot | 20261106T003749-c10a7f | 10165 | 3.592 | 1.372 | 4.010 | 7.415 | 4.000 | 0.964 | 2.126 |
-| drivejepa | 20261111T074533-0f26ee | 10165 | 18.740 | 10.322 | 21.631 | 32.869 | 4.000 | 7.469 | 13.070 |
+| drivejepa [1] | 20261111T074533-0f26ee | 10165 | 18.740 | 10.322 | 21.631 | 32.869 | 4.000 | 7.469 | 13.070 |
 | meteor | 20261106T064120-226c00 | 10165 | 30.167 | 16.702 | 35.804 | 51.507 | 3.000 | 11.841 | 21.621 |
+
+- [1] drivejepa: streamed (warmup_0.5s): samples fed in order to one node that keeps its state, not one at a time
 
 ## hugsim
 
@@ -112,7 +114,7 @@
 | openpilot [1] | 20260930T014333-d329a6 | 223 | 1.649 | 0.826 | 1.848 | 3.070 | - | - | - |
 | meteor | 20260914T215457-ab0586 | 223 | 1.879 | 0.695 | 2.040 | 4.034 | - | - | - |
 | uniad | 20261109T082536-b881a6 | 223 | 2.073 | 1.122 | 2.253 | 3.845 | - | - | - |
-| drivejepa | 20261111T054224-9f8371 | 223 | 2.188 | 1.242 | 2.453 | 3.867 | - | - | - |
+| drivejepa [5] | 20261111T054224-9f8371 | 223 | 2.188 | 1.242 | 2.453 | 3.867 | - | - | - |
 | vad | 20261109T082536-a393ec | 223 | 2.374 | 1.158 | 2.614 | 4.562 | - | - | - |
 | meteor | 20260914T185351-5e5223 | 223 | 4.784 | 2.334 | 5.542 | 9.011 | - | - | - |
 
@@ -120,6 +122,7 @@
 - [2] openpilot: camera height taken as 1.22x openpilot's to fit this dataset's rig
 - [3] openpilot: view tilted -1.7 degrees to fit this dataset's rig
 - [4] openpilot: frame cut to a 55 degree field of view to fit this dataset's rig
+- [5] drivejepa: streamed (warmup_0.5s): samples fed in order to one node that keeps its state, not one at a time
 
 ## navhard
 
@@ -138,7 +141,7 @@
 
 | model | run | n | epdms ↑ | no_at_fault_collisions ↑ | drivable_area_compliance ↑ | driving_direction_compliance ↑ | traffic_light_compliance ↑ | ego_progress ↑ | time_to_collision_within_bound ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| drivejepa | 20261111T052813-8f96dd | 12146 | 0.870 | 0.984 | 0.984 | 0.991 | 0.998 | 0.882 | 0.978 |
+| drivejepa [1] | 20261111T052813-8f96dd | 12146 | 0.870 | 0.984 | 0.984 | 0.991 | 0.998 | 0.882 | 0.978 |
 | qwendrive | 20260914T221802-80457c | 12146 | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 |
 | openpilot | 20260911T161513-3a4c90 | 12146 | 0.747 | 0.970 | 0.913 | 0.954 | 0.998 | 0.712 | 0.965 |
 | alpamayo15 | 20260912T040211-a9562c | 12146 | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 |
@@ -146,16 +149,17 @@
 | alpamayo15 | 20260903T183818-5879c1 | 12146 | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 |
 | autoe2e | 20261009T055926-3ceb18 | 12146 | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 |
 | visionpilot | 20260902T175642-df5291 | 12146 | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 |
-| meteor [1] | 20260914T234307-e56cfc | 12146 | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
+| meteor [2] | 20260914T234307-e56cfc | 12146 | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
 | constant_velocity | 20260902T175923-feba73 | 12146 | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 |
 
-- [1] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [1] drivejepa: streamed (per_log): samples fed in order to one node that keeps its state, not one at a time
+- [2] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
 
 ## navsim_v1
 
 | model | run | n | pdms ↑ | no_at_fault_collisions ↑ | drivable_area_compliance ↑ | ego_progress ↑ | time_to_collision_within_bound ↑ | comfort ↑ | driving_direction_compliance ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| drivejepa | 20261111T090508-ad88e6 | 12146 | 0.894 | 0.984 | 0.984 | 0.879 | 0.893 | 0.999 | 0.988 |
+| drivejepa [1] | 20261111T090508-ad88e6 | 12146 | 0.894 | 0.984 | 0.984 | 0.879 | 0.893 | 0.999 | 0.988 |
 | qwendrive | 20261104T205054-df25d5 | 12146 | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | openpilot | 20260914T181009-dbcef4 | 12146 | 0.807 | 0.969 | 0.913 | 0.719 | 0.936 | 1.000 | 0.948 |
 | alpamayo15 | 20260914T175447-89a9ca | 12146 | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
@@ -163,10 +167,11 @@
 | alpamayo15 | 20260911T044805-0aea35 | 12146 | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | autoe2e | 20261104T210206-3022fb | 12146 | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
 | visionpilot | 20260911T083323-c07583 | 12146 | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
-| meteor [1] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
+| meteor [2] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | constant_velocity | 20260911T034553-8f28ac | 12146 | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
-- [1] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [1] drivejepa: streamed (per_log): samples fed in order to one node that keeps its state, not one at a time
+- [2] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
 
 ## neuroncap
 
@@ -200,10 +205,12 @@
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
 | autoe2e | 20261023T004711-eedbe2 | 5119 | 1.565 | 0.553 | 0.398 | 0.008 | 0.008 | 1.444 | 0.798 |
 | meteor | 20260914T202122-4320bb | 5119 | 1.885 | 0.616 | 0.447 | 0.030 | 0.023 | 1.683 | 0.914 |
-| drivejepa | 20261111T061849-382fec | 5119 | 1.995 | 0.819 | 0.613 | 0.008 | 0.010 | 1.806 | 1.077 |
+| drivejepa [1] | 20261111T061849-382fec | 5119 | 1.995 | 0.819 | 0.613 | 0.008 | 0.010 | 1.806 | 1.077 |
 | visionpilot | 20260905T093333-319ef5 | 5119 | 2.360 | 1.031 | 0.883 | 0.025 | 0.033 | 2.213 | 1.382 |
 | openpilot | 20260929T174538-b479ee | 5119 | 4.029 | 1.897 | 1.403 | 0.012 | 0.011 | 4.018 | 2.442 |
 | openpilot | 20260908T110028-b71f4f | 5119 | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
+
+- [1] drivejepa: streamed (per_scene): samples fed in order to one node that keeps its state, not one at a time
 
 ## Excluded runs
 

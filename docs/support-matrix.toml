@@ -167,11 +167,11 @@ navsim_v1 = { run = "navsim_v1/alpamayo2edge/20261111T070439-f19e8f", note = "2 
 # Open loop resets the node every sample, so the open-loop cells are streamed runs (docs/models/drivejepa.md):
 # NAVSIM per log, nuScenes per scene, KITScenes and comma2k19 after a 0.5 s warm-up, a Paddock choice.
 [cells.drivejepa]
-nuscenes = { run = "nuscenes/drivejepa/20261111T061849-382fec" }
-kitscenes = { run = "kitscenes/drivejepa/20261111T054224-9f8371" }
-comma2k19 = { run = "comma2k19/drivejepa/20261111T074533-0f26ee" }  # three of its four views black; it reads only the front
-navsim = { run = "navsim/drivejepa/20261111T052813-8f96dd", marks = "A" }
-navsim_v1 = { run = "navsim_v1/drivejepa/20261111T090508-ad88e6", marks = "A" }
+nuscenes = { run = "nuscenes/drivejepa/20261111T061849-382fec", note = "streamed" }
+kitscenes = { run = "kitscenes/drivejepa/20261111T054224-9f8371", note = "0.5 s warm-up" }
+comma2k19 = { run = "comma2k19/drivejepa/20261111T074533-0f26ee", note = "0.5 s warm-up" }  # three of its four views black; it reads only the front
+navsim = { run = "navsim/drivejepa/20261111T052813-8f96dd", marks = "A", note = "streamed" }
+navsim_v1 = { run = "navsim_v1/drivejepa/20261111T090508-ad88e6", marks = "A", note = "streamed" }
 bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", note = "2 Hz" }
 neuroncap = { run = "neuroncap/drivejepa/20261110T204020-036fb3" }
 alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
