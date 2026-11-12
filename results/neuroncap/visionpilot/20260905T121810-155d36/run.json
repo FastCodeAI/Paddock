@@ -25,8 +25,10 @@
   "hardware": {
     "gpu_free_gb_at_start": null
   },
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "resumed: 17 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "valid": false,
+  "superseded_by": "20261111T204212-854d8b",
+  "notes": "resumed: 17 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261111T204212-854d8b: Re-run on 11-12 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 (the September 2026 fix), default protocol, 14 scenes x 10 runs; this run used 1.0.",
   "ingested_from": ""
 }

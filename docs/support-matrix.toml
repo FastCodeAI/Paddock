@@ -100,7 +100,7 @@ name = "Drive-JEPA"
 [[model]]
 key = "visionpilot"
 name = "VisionPilot"
-marks = "P"  # every cell in the row; S is on each cell but comma2k19, the one re-run since the CURV_SCALE fix
+marks = "P"  # every cell in the row; S only where a cell predates the CURV_SCALE fix
 
 [[model]]
 key = "meteor"
@@ -158,14 +158,14 @@ neuroncap = { run = "neuroncap/drivejepa/20261012T224707-f11ac0" }
 alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
 
 [cells.visionpilot]
-nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5", marks = "S" }
+nuscenes = { run = "nuscenes/visionpilot/20261111T173725-c793ce" }
 kitscenes = { run = "kitscenes/visionpilot/20261105T191932-c71101" }
 comma2k19 = { run = "comma2k19/visionpilot/20261106T003749-c10a7f" }
-navsim = { run = "navsim/visionpilot/20260902T175642-df5291", marks = "S" }
-navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583", marks = "S" }
+navsim = { run = "navsim/visionpilot/20261111T173726-ff827e" }
+navsim_v1 = { run = "navsim_v1/visionpilot/20261111T194001-cc5073" }
 bench2drive = { run = "bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009", marks = "S" }
-neuroncap = { run = "neuroncap/visionpilot/20260905T121810-155d36", marks = "S" }
-alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes", marks = "S" }
+neuroncap = { run = "neuroncap/visionpilot/20261111T204212-854d8b", note = "CUDA" }  # ranked with its score_notes line: model.yaml ranked_with_note
+alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes" }  # AlpaSim's own driver, AD_CURVATURE_SCALE 0.21: never stale
 
 [cells.meteor]
 nuscenes = { run = "nuscenes/meteor/20260914T202122-4320bb" }

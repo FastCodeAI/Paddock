@@ -177,6 +177,9 @@ regenerate with the tracked code.
 | Alpamayo 1.5 (nav text) | 0.51 / 1.35 / 2.60 | 1.49 | 0.79 | 1.58 / 1.03 |
 | VisionPilot | 1.03 / 2.21 / 3.84 | 2.36 | 1.44 | 3.82 / 3.35 |
 
+VisionPilot's row here predates the `CURV_SCALE` fix; re-run on 11 Nov 2026 its point L2 avg is
+1.612 m (the table of recorded results below).
+
 Caveat: the first keyframe of each scene has one pose of history. Alpamayo,
 which differences its history for speed, plans badly there (L2 avg 9.47 m on
 those 150 keyframes vs 1.23 m with a full 2 s); Drive-JEPA and VisionPilot are
@@ -271,7 +274,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
 | Drive-JEPA | 0.957 | 2.158 | 3.917 | 2.344 | 1.328 | 1.996 | 1.628 |
-| VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
+| VisionPilot | 0.748 | 1.463 | 2.625 | 1.612 | 1.029 | 1.419 | 2.579 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
 | AutoE2E ⧗ | 0.553 | 1.444 | 2.697 | 1.565 | 0.839 | 1.319 | 1.862 |

@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
 98 runs across 9 benchmarks.
-58 run(s) excluded as invalid — shown at the end, never averaged in.
+62 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -46,23 +46,24 @@
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | drivejepa | native50-2hz-40c29d24c37d542a-447e23 | 50 | 57.604 | 70.965 | 0.848 | 0.200 | 1.000 | 0.000 | 354.308 |
 | constant_velocity [1] | pooled50-3mps-40c29d24c37d542a-02b6ac | 50 | 48.308 | 74.651 | 0.615 | 0.540 | 1.000 | 0.000 | 194.900 |
-| visionpilot | pooled50-40c29d24c37d542a-d94009 | 50 | 47.821 | 71.191 | 0.622 | 0.580 | 1.000 | 0.000 | 257.252 |
+| visionpilot [2] | pooled50-40c29d24c37d542a-d94009 | 50 | 47.821 | 71.191 | 0.622 | 0.580 | 1.000 | 0.000 | 257.252 |
 | openpilot | pooled50-40c29d24c37d542a-c7d2b2 | 50 | 47.520 | 62.441 | 0.783 | 0.260 | 1.000 | 0.000 | 374.050 |
-| constant_velocity [2] | pooled50-9mps-40c29d24c37d542a-13c440 | 50 | 43.574 | 72.699 | 0.577 | 0.580 | 1.000 | 0.000 | 123.802 |
+| constant_velocity [3] | pooled50-9mps-40c29d24c37d542a-13c440 | 50 | 43.574 | 72.699 | 0.577 | 0.580 | 1.000 | 0.000 | 123.802 |
 | alpamayo15 | pooled50-40c29d24c37d542a-36d2d0 | 50 | 43.043 | 72.317 | 0.655 | 0.540 | 1.000 | 0.000 | 3555.930 |
-| constant_velocity [3] | pooled50-12mps-40c29d24c37d542a-0c11b2 | 50 | 42.193 | 72.125 | 0.558 | 0.560 | 1.000 | 0.000 | 108.372 |
-| constant_velocity [4] | pooled50-15mps-40c29d24c37d542a-06f021 | 50 | 41.448 | 73.684 | 0.546 | 0.560 | 1.000 | 0.000 | 107.988 |
-| constant_velocity [5] | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
+| constant_velocity [4] | pooled50-12mps-40c29d24c37d542a-0c11b2 | 50 | 42.193 | 72.125 | 0.558 | 0.560 | 1.000 | 0.000 | 108.372 |
+| constant_velocity [5] | pooled50-15mps-40c29d24c37d542a-06f021 | 50 | 41.448 | 73.684 | 0.546 | 0.560 | 1.000 | 0.000 | 107.988 |
+| constant_velocity [6] | pooled50-6mps-40c29d24c37d542a-35a5cb | 50 | 40.388 | 73.075 | 0.539 | 0.620 | 1.000 | 0.000 | 157.368 |
 | drivejepa | pooled50-40c29d24c37d542a-1de367 | 50 | 31.706 | 39.101 | 0.862 | 0.160 | 1.000 | 0.000 | 1068.316 |
 | autoe2e | pooled50-40c29d24c37d542a-cc7a9c | 50 | 15.297 | 26.371 | 0.596 | 0.720 | 1.000 | 0.000 | 2441.672 |
 | qwendrive | pooled50-40c29d24c37d542a-f250e0 | 50 | 12.921 | 50.191 | 0.300 | 0.900 | 1.000 | 0.000 | 3457.266 |
 | meteor | pooled50-40c29d24c37d542a-867d57 | 50 | 1.051 | 6.295 | 0.899 | 0.140 | 1.000 | 0.000 | 237.998 |
 
 - [1] constant_velocity: driven at a fixed 3 m/s, not the measured ego speed
-- [2] constant_velocity: driven at a fixed 9 m/s, not the measured ego speed
-- [3] constant_velocity: driven at a fixed 12 m/s, not the measured ego speed
-- [4] constant_velocity: driven at a fixed 15 m/s, not the measured ego speed
-- [5] constant_velocity: driven at a fixed 6 m/s, not the measured ego speed
+- [2] visionpilot: onnxruntime's cuda provider, not the declared CPU one; on KITScenes the two gave ADE 1.4712 and 1.4746 m, and 10 of 223 plans differ by over 0.5 m somewhere
+- [3] constant_velocity: driven at a fixed 9 m/s, not the measured ego speed
+- [4] constant_velocity: driven at a fixed 12 m/s, not the measured ego speed
+- [5] constant_velocity: driven at a fixed 15 m/s, not the measured ego speed
+- [6] constant_velocity: driven at a fixed 6 m/s, not the measured ego speed
 
 ### n = 49, scene set 08441825
 
@@ -128,7 +129,7 @@
 | alpamayo2edge | 20261111T052918-f9f90a | 12146 | 0.626 | 0.924 | 0.801 | 0.879 | 0.996 | 0.654 | 0.908 |
 | alpamayo15 | 20260903T183818-5879c1 | 12146 | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 |
 | autoe2e | 20261009T055926-3ceb18 | 12146 | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 |
-| visionpilot | 20260902T175642-df5291 | 12146 | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 |
+| visionpilot | 20261111T173726-ff827e | 12146 | 0.454 | 0.757 | 0.802 | 0.907 | 0.981 | 0.441 | 0.729 |
 | meteor [1] | 20260914T234307-e56cfc | 12146 | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
 | constant_velocity | 20260902T175923-feba73 | 12146 | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 |
 
@@ -145,7 +146,7 @@
 | alpamayo2edge | 20261111T070439-f19e8f | 12146 | 0.699 | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 |
 | alpamayo15 | 20260911T044805-0aea35 | 12146 | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | autoe2e | 20261104T210206-3022fb | 12146 | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
-| visionpilot | 20260911T083323-c07583 | 12146 | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| visionpilot | 20261111T194001-cc5073 | 12146 | 0.472 | 0.756 | 0.802 | 0.442 | 0.605 | 0.997 | 0.902 |
 | meteor [1] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | constant_velocity | 20260911T034553-8f28ac | 12146 | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
@@ -155,22 +156,24 @@
 
 ### n = 200, scene set ef927e96
 
-| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ |
-|---|---|---:|---:|---:|---:|---:|
-| drivejepa | 20261012T224707-f11ac0 | 200 | 4.130 | 2.199 | 8.604 | 0.245 |
-| alpamayo15 | 20260906T034647-bc409f | 200 | 3.727 | 2.346 | 8.604 | 0.325 |
-| openpilot | 20260905T055713-11ac59 | 200 | 3.604 | 2.698 | 8.604 | 0.380 |
-| drivejepa | 20260905T220225-f11ac0 | 200 | 3.568 | 2.229 | 8.604 | 0.455 |
-| autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 |
-| meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 |
-| qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 |
-| visionpilot | 20260905T121810-155d36 | 200 | 1.576 | 6.218 | 8.604 | 0.855 |
+| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ | pdm_nc ↑ | pdm_dac ↑ | pdm_ttc ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| drivejepa | 20261012T224707-f11ac0 | 200 | 4.130 | 2.199 | 8.604 | 0.245 | - | - | - |
+| alpamayo15 | 20260906T034647-bc409f | 200 | 3.727 | 2.346 | 8.604 | 0.325 | - | - | - |
+| openpilot | 20260905T055713-11ac59 | 200 | 3.604 | 2.698 | 8.604 | 0.380 | - | - | - |
+| drivejepa | 20260905T220225-f11ac0 | 200 | 3.568 | 2.229 | 8.604 | 0.455 | - | - | - |
+| autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 | - | - | - |
+| meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 | - | - | - |
+| qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 | - | - | - |
+| visionpilot [1] | 20261111T204212-854d8b | 200 | 1.487 | 6.407 | 8.604 | 0.860 | 0.391 | 0.914 | 0.283 |
+
+- [1] visionpilot: onnxruntime's cuda provider, not the declared CPU one; on KITScenes the two gave ADE 1.4712 and 1.4746 m, and 10 of 223 plans differ by over 0.5 m somewhere
 
 ### n = 15, scene set 5312d788
 
-| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ |
-|---|---|---:|---:|---:|---:|---:|
-| alpamayo | runs5 | 15 | 2.458 | 4.731 | 11.226 | 0.667 |
+| model | run | n | ncap_score ↑ | impact_speed ↓ | reference_speed ↑ | collision_rate ↓ | pdm_nc ↑ | pdm_dac ↑ | pdm_ttc ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo | runs5 | 15 | 2.458 | 4.731 | 11.226 | 0.667 | - | - | - |
 
 ## nuscenes
 
@@ -181,9 +184,9 @@
 | constant_velocity | 20260907T093007-9697fe | 5119 | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
 | autoe2e | 20261023T004711-eedbe2 | 5119 | 1.565 | 0.553 | 0.398 | 0.008 | 0.008 | 1.444 | 0.798 |
+| visionpilot | 20261111T173725-c793ce | 5119 | 1.612 | 0.748 | 0.696 | 0.024 | 0.031 | 1.463 | 0.973 |
 | meteor | 20260914T202122-4320bb | 5119 | 1.885 | 0.616 | 0.447 | 0.030 | 0.023 | 1.683 | 0.914 |
 | drivejepa | 20261105T201953-308dc5 | 5119 | 2.344 | 0.957 | 0.714 | 0.009 | 0.011 | 2.158 | 1.275 |
-| visionpilot | 20260905T093333-319ef5 | 5119 | 2.360 | 1.031 | 0.883 | 0.025 | 0.033 | 2.213 | 1.382 |
 | openpilot | 20260929T174538-b479ee | 5119 | 4.029 | 1.897 | 1.403 | 0.012 | 0.011 | 4.018 | 2.442 |
 | openpilot | 20260908T110028-b71f4f | 5119 | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
 
@@ -193,10 +196,10 @@
 - **bench2drive/openpilot/native50-20hz-40c29d24c37d542a-f68000** — OpenPilot on the 50 routes, 29 Oct 2026, one RTX PRO 6000 (shared), CARLA 0.9.15, six lanes. Driven at 20 Hz, which is openpilot's own rate and the benchmark protocol. One setup on every route: the tinygrad backend (PADDOCK_OPENPILOT_BACKEND=tinygrad), openpilot's own longitudinal plan (PADDOCK_OPENPILOT_NATIVE_LONG=1) and no driver-resume assistance (PADDOCK_OPENPILOT_RESUME_S=0). Driven from 9671b49 plus the TINYGRAD_ACTION_T fallback this commit adds to policy.py: the tinygrad ModelState has no long_action_t, so the native longitudinal planner raised AttributeError without it; the value is the 0.5 s the tinygrad path already feeds the model. Seven attempts failed on infrastructure and were re-run; their directories were moved out of this root, to _failed_infra beside it: node or CARLA start-up on 24795 (20261029T080029-0ffa0a), 3800 (20261029T080140-f99ef2), 2509 (20261029T080951-e076b4) and 26990 (20261029T095341-ac924f); the 2 h wall cap on the first attempts of 2084 (20261029T103048-d4e0c1), 2086 (20261029T104135-c8ba52) and 2050 (20261029T104914-1d3202), which ran at 3-4 s per tick under full CPU. It was driven to replace the 30.09 typed in from docs/benchmarks/bench2drive.md (24 routes, unassisted estimate) as OpenPilot's Bench2Drive cell; that cell is now #79's 50-route run of the setup openpilot/model.yaml declares (pooled50-40c29d24c37d542a-c7d2b2). 50 of 50 source runs kept no run.json, so their routes are attributed to openpilot on the tree they were found in; config.model_env and the rest of config are what 50/50 source runs recorded. source runs set DEV, PADDOCK_OPENPILOT_BACKEND, which the model's model.yaml declares, to other values (config.model_env), so this run does not rank, as a paddock run of them would not.
 - **neuroncap/drivejepa/legacy-runs5** — Superseded by 20261012T224707-f11ac0: a small early run of 15 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
 - **neuroncap/openpilot/legacy-runs5** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
-- **neuroncap/visionpilot/legacy-runs5** — Superseded by 20260905T121810-155d36: a small early run of 15 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
-- **neuroncap/visionpilot/legacy-runs1_fixed** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
+- **neuroncap/visionpilot/legacy-runs5** — Superseded by 20260905T121810-155d36: a small early run of 15 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one. Superseded by 20261111T204212-854d8b: 20260905T121810-155d36, which replaced it, is itself replaced by the post-CURV_SCALE re-run.
+- **neuroncap/visionpilot/legacy-runs1_fixed** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one. Superseded by 20261111T204212-854d8b: 20260905T121810-155d36, which replaced it, is itself replaced by the post-CURV_SCALE re-run.
 - **neuroncap/drivejepa/legacy-runs1** — Superseded by 20261012T224707-f11ac0: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
-- **neuroncap/visionpilot/legacy-runs1** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
+- **neuroncap/visionpilot/legacy-runs1** — Superseded by 20260905T121810-155d36: a small early run of 3 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one. Superseded by 20261111T204212-854d8b: 20260905T121810-155d36, which replaced it, is itself replaced by the post-CURV_SCALE re-run.
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
@@ -224,12 +227,16 @@
 - **comma2k19/alpamayo15/20260913T072437-b058c2** — Superseded by 20261106T005600-6c52a2: Re-run on 6 Nov 2026 with the clone at its pinned 7a8f1c7 and its past path in the car's frame (#143), and scored against the ground truth in the car's frame (issue #141); this row was shown its past path and scored in the camera's frame. The model samples its plan, so the re-run is also a new draw.
 - **comma2k19/openpilot/20260912T053225-2a91ca** — Superseded by 20260916T051616-2a91ca: that is the row the docs cite. The two are bit-identical on all 65 shared metrics -- same 10,165 samples, same sequences_sha256 -- and the later one additionally carries the nine proxy and miss-rate metrics added after this ran. Kept rather than deleted so the record of it having happened survives. Superseded by 20261106T003719-5cde54: the row it pointed at, 20260916T051616-2a91ca, is itself superseded by the re-run at the pinned 555f48c5d (issue #141), so this one points at the ranked row.
 - **comma2k19/constant_velocity/20260911T231819-736a8a** — Reference baseline: straight ahead at the recorded speed, no model. Produced by tools/benchmarks/comma2k19/constant_velocity.py against the benchmark's own harness and scoring; video decoding skipped, since the policy reads no pixels. Stored under the pseudo-model 'constant_velocity' because it is not a registered model. Superseded by 20260916T162837-b89038: that is the row the docs cite. This one predates measuring comfort on a common 0.5 s grid, so its comfort and far-horizon columns are not comparable with the rows beside it. Kept rather than deleted so the record of it having happened survives. Superseded by 20261106T045541-d0cdb5: the row it pointed at, 20260916T162837-b89038, is itself superseded by the re-run of 6 Nov 2026 (issue #141), so this one points at the ranked row.
+- **navsim_v1/visionpilot/20260911T083323-c07583** — Plan dump has 12,589 lines for 12,146 scenarios: 342 scenarios were planned twice, which looks like the devkit's worker pool re-running a log; the CSV and n are clean, the model is deterministic, and a replay keys plans by token, so the duplicates resolve to one plan each. Noted after the run (2026-09-15, review of PR #32); not investigated. Superseded by 20261111T194001-cc5073: Re-run on 11 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 (the September 2026 fix) on the declared CPU provider; this run used 1.0.
 - **navsim_v1/human/20260911T041230-67c4f3** — privileged: the human agent returns the recorded future the scorer measures against; an anchor for the scoring path, not a model; no model process ran: the recorded human future through the devkit scorer
 - **navsim/alpamayo15/20260911T024038-d518fc** — 1 scenario(s) failed in the scorer and are excluded
 - **kitscenes/visionpilot/20260909T202724-153b04** — Superseded by 20261105T191932-c71101: Re-run on 5 Nov 2026 with CURV_SCALE 0.21; this run predates the September 2026 fix, when the planner was handed a curvature 4.8x too large.
 - **bench2drive/constant_velocity/20260908T084921-804913** — Four independent CARLA workers; 4 completed route checkpoints reused. Duration covers this attempt. Superseded by pooled50-3mps-40c29d24c37d542a-02b6ac: Its 24 routes are already inside the 50-route run at the same 3 m/s target, so the same drives ranked twice.
+- **neuroncap/visionpilot/20260905T121810-155d36** — resumed: 17 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261111T204212-854d8b: Re-run on 11-12 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 (the September 2026 fix), default protocol, 14 scenes x 10 runs; this run used 1.0.
 - **nuscenes/drivejepa/20260905T093335-4513d4** — Superseded by 20261105T201953-308dc5: Re-run on 5 Nov 2026 with the camera-frame fix of 13 Oct 2026; this run was camera-blind, so the model planned from ego status alone.
+- **nuscenes/visionpilot/20260905T093333-319ef5** — Superseded by 20261111T173725-c793ce: Re-run on 11 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 (the September 2026 fix) on the declared CPU provider; this run used 1.0.
 - **navsim/alpamayo15/20260903T183459-753b33** — --limit 12: a subset of the benchmark, run to test the pipeline
+- **navsim/visionpilot/20260902T175642-df5291** — Re-derived from the scorer CSV with the reviewing.md §4 parser (the run predates it; n was 12146). Superseded by 20261111T173726-ff827e: Re-run on 11 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 (the September 2026 fix) on the declared CPU provider; this run used 1.0.
 - **navsim/alpamayo15/20260901T213227-d6117e** — 242-scenario subset (5 of navtest's 136 logs had sensor blobs), run under PADDOCK_NAVSIM_ALLOW_PARTIAL=1 before the runner recorded that switch; marked valid=false and config.allow_partial added retroactively on 2026-09-03 under the rule that nothing below the full split is ranked against a full run. alpamayo15; this is the current headline for alpamayo15 until its full-navtest run lands, and it is a subset figure.
 - **navsim/alpamayo15/20260901T212250-b5daf0** — EXPERIMENT, not a result: the 'distinct' arm of the same paired A/B. 0.709 EPDMS over the same 60 scenarios, +0.207 over 'grid' (better on 36, worse on 19, sign test p=0.03), almost all of it collisions avoided (no_at_fault_collisions 0.708 -> 0.992). This selection is now the default via `auto`; the full 242-scenario run supersedes this.
 - **navsim/visionpilot/20260901T211745-df5291** — 242-scenario subset (5 of navtest's 136 logs had sensor blobs), run under PADDOCK_NAVSIM_ALLOW_PARTIAL=1 before the runner recorded that switch; marked valid=false and config.allow_partial added retroactively on 2026-09-03 under the rule that nothing below the full split is ranked against a full run. visionpilot; the comparable figure is the full-navtest row 20260902T175642-df5291 (0.43122).
@@ -245,7 +252,7 @@
 - **neuroncap/openpilot/20260901T004005-88a4e0** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
 - **neuroncap/alpamayo15/20260901T002333-6dae70** — Superseded by 20260906T034647-bc409f: a small early run of 2 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
 - **neuroncap/drivejepa/20260901T001634-44b6bb** — Superseded by 20261012T224707-f11ac0: a small early run of 2 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.
-- **neuroncap/visionpilot/20260901T000037-c950bd** — Superseded by 20260905T121810-155d36: a single-episode check; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md and docs/ROADMAP.md still quote this one.
+- **neuroncap/visionpilot/20260901T000037-c950bd** — Superseded by 20260905T121810-155d36: a single-episode check; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md and docs/ROADMAP.md still quote this one. Superseded by 20261111T204212-854d8b: 20260905T121810-155d36, which replaced it, is itself replaced by the post-CURV_SCALE re-run.
 - **neuroncap/openpilot/20260831T235716-88a4e0** — openpilot closed-loop scores recorded before 12f3250 fixed the traffic_convention one-hot: the node passed [0, 1], telling supercombo it was a right-hand-drive car in a left-hand-drive city. Superseded; re-measure rather than compare. See docs/benchmarks/neuroncap.md.
 
 ---
