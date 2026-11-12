@@ -55,6 +55,16 @@ ASSIGNED: dict[str, str] = {
     # of the candidates tried: under colour blindness it stays 20.0 from
     # visionpilot's #e7298a, its nearest, and 25.1 from alpamayo15 (OKLab x100).
     "alpamayo2edge": "#3f007d",
+    # The hash gave uniad #9467bd, the purple METEOR left because it could not be
+    # told from alpamayo15's, and vad #e377c2, two steps from visionpilot's pink;
+    # vad_b2d drew as wajepa's #8c564b. Picked by the same measure as above, each
+    # at least 1.8:1 against both chart surfaces and 20 from ground truth's blue
+    # under colour blindness: uniad's dark red is 10.1 from wajepa's brown, its
+    # nearest; vad's mint 10.0 from autoe2e's cyan; vad_b2d's violet 10.5 from
+    # alpamayo2edge (OKLab x100). uniad_b2d's hashed #bcbd22 collides with nothing.
+    "uniad": "#900000",
+    "vad": "#70d0a0",
+    "vad_b2d": "#5e3c99",
 }
 
 #: Drawn from for models with no assigned colour.
