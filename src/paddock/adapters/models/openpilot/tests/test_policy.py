@@ -521,9 +521,9 @@ def test_the_onnx_path_feeds_the_wide_camera_to_the_wide_view(monkeypatch) -> No
     `_resolve_backend` picks ONNX by *trying an import*, and `setup.sh` makes a
     failed `scons` non-fatal, so a site that never built tinygrad got the ONNX
     path silently. That path had no two-camera branch: it passed the road frame
-    as both `img` and `big_img`, so on comma2k19 and Bench2Drive openpilot was
-    scored with the narrow camera warped into the wide field, and the wide
-    camera it declares was never read at all.
+    as both `img` and `big_img`, so on Bench2Drive -- the one rig here with two
+    cameras -- openpilot was scored with the narrow camera warped into the wide
+    field, and the wide camera it declares was never read at all.
     """
     policy, seen = _onnx_policy(monkeypatch)
     policy.infer(_two_camera_observation())

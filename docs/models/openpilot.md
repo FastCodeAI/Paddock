@@ -359,13 +359,35 @@ what is beside the car — received a crop of the road camera. Both paths now bi
 cameras through one function, and a test asserts the two views receive different
 arrays when the rig supplies two.
 
-**What this invalidates.** Any recorded openpilot row produced on the ONNX
-backend is no longer bit-reproducible from this tree; the same run today will
-plan from a different wide input. Which rows those are is not fully answerable
-from the record, because `/diagnostics` was not being fetched when they were
-made — that is the same gap as the revision one above, and it is closed the same
-way: `run.json` now carries `provenance.policy.backend`. The comma2k19 openpilot
-row was the known case, and its re-run at the pin on 6 Nov 2026 shows the fix
-does not touch that benchmark: comma2k19 has one camera, so its frame feeds both
-views either way
-([docs/benchmarks/comma2k19.md](../benchmarks/comma2k19.md#recorded-results)).
+**What this invalidates: no cell of the support matrix.** The defect needed two
+things at once: the ONNX backend, and a rig that supplies two cameras. With one
+camera, that frame fed both views on either backend, before the fix and after it
+(`test_one_camera_still_feeds_both_views`). Only Bench2Drive supplies two:
+paddock's CARLA rig renders `CAM_OP_ROAD` and `CAM_OP_WIDE`
+([rig.py](../../src/paddock/adapters/benchmarks/bench2drive/rig.py)), and no
+other benchmark adapter has supplied the pair in any commit. The ONNX path
+itself reached `main` together with its fix, in #44 (merged 19 Sep 2026, UTC);
+until then `main` ran openpilot through tinygrad alone. Each cell, as its own
+`run.json` records it (checked for issue #194):
+
+| Cell | Run | Cameras | Why the defect does not reach it |
+|---|---|---|---|
+| nuScenes | [`20260908T110028-b71f4f`](../../results/nuscenes/openpilot/20260908T110028-b71f4f/run.json) | 1 | One camera, and it ran on tinygrad's CUDA build, not ONNX (`config.model_env`) |
+| KITScenes | [`20261008T004723-a369d1`](../../results/kitscenes/openpilot/20261008T004723-a369d1/run.json) | 1 | `config.cameras_supplied` is `CAM_FRONT` alone |
+| comma2k19 | [`20261106T003719-5cde54`](../../results/comma2k19/openpilot/20261106T003719-5cde54/run.json) | 1 | One camera ([comma2k19.md](../benchmarks/comma2k19.md#recorded-results)), and driven after the fix |
+| NAVSIM v2 | [`20260911T161513-3a4c90`](../../results/navsim/openpilot/20260911T161513-3a4c90/run.json) | 1 | NAVSIM's camera map (`CAMERA_SLOTS`) has never held a comma camera, so it supplies `CAM_FRONT` alone |
+| NAVSIM v1 | [`20260914T181009-dbcef4`](../../results/navsim_v1/openpilot/20260914T181009-dbcef4/run.json) | — | No model ran: it rescores NAVSIM v2's plans |
+| Bench2Drive, 50 routes | [`pooled50-40c29d24c37d542a-c7d2b2`](../../results/bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2/run.json) | 2 | Driven 31 Oct 2026 on Paddock `9ae08a7`, which contains the fix |
+| Bench2Drive, 220 routes | [`full220-836dda734659a86c-2803bd`](../../results/bench2drive/openpilot/full220-836dda734659a86c-2803bd/run.json) | 2 | Driven 6–7 Nov 2026 on Paddock `0f0b9ef`, which contains the fix |
+| neuroNCAP | [`20260905T055713-11ac59`](../../results/neuroncap/openpilot/20260905T055713-11ac59/run.json) | 1 | `config.cameras` is `CAM_FRONT` alone |
+| AlpaSim | [`legacy-openpilot_020_30scenes`](../../results/alpasim/openpilot/legacy-openpilot_020_30scenes/run.json) | 1 | `config.cameras` is 1 |
+
+So no cell needs a re-run. Two limits on what the records show:
+
+- The two Bench2Drive records give their Paddock commit and their backend only
+  in `notes`, because they were pooled from source runs that kept no
+  `run.json`. A run that `paddock run` writes records its backend in
+  `provenance.policy.backend`.
+- The historical 24- and 26-route Bench2Drive figures on
+  [bench2drive.md](../benchmarks/bench2drive.md) are not in `results/`, so they
+  cannot be checked this way. No cell shows them.
