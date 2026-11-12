@@ -23,9 +23,13 @@ runtime:
     ALPAMAYO2_EDGE_HISTORY: "hermite"
     ALPAMAYO2_EDGE_SAMPLES: "1"
     ALPAMAYO2_EDGE_SEED: "43"
+    # torch's CPU threads. Torch takes every core by default, and on a 48-core box
+    # shared with CARLA the vendor's processor then spends 1.4 s packing one plan's
+    # frames, against 0.18 s with 4 threads; the plan is the same at any count.
+    ALPAMAYO2_EDGE_THREADS: "4"
   # Read from the shell that launches `paddock run`, so `ALPAMAYO2_EDGE_HISTORY=linear
   # paddock run ...` reaches the node. Any of these set to something other than
-  # the declared value stores the run valid: false, except SAVE_REASONING.
+  # the declared value stores the run valid: false, except SAVE_REASONING and THREADS.
   env_passthrough:
     - ALPAMAYO2_EDGE_FRAMES
     - ALPAMAYO2_EDGE_HISTORY
@@ -33,8 +37,10 @@ runtime:
     - ALPAMAYO2_EDGE_SEED
     - ALPAMAYO2_EDGE_NAV_DISTANCE_M
     - ALPAMAYO2_EDGE_SAVE_REASONING
-  # Only adds the rationale to each plan's extras; the plan is the same.
-  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING]
+    - ALPAMAYO2_EDGE_THREADS
+  # SAVE_REASONING only adds the rationale to each plan's extras, and THREADS only
+  # changes how fast the CPU packs the input; the plan is the same.
+  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING, ALPAMAYO2_EDGE_THREADS]
 
 capabilities:
   # CAM_FRONT first: NAVSIM's 10 Hz path keys its history on the first camera.

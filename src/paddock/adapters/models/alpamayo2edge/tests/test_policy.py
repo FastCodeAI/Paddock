@@ -272,7 +272,7 @@ def test_diagnostics_answer_before_load_and_report_the_last_plan(tmp_path: Path)
 
 
 def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
-    assert Settings.from_env({}) == Settings() == Settings("nearest", "hermite", 1, 43, None, False)
+    assert Settings.from_env({}) == Settings() == Settings("nearest", "hermite", 1, 43, None, False, 4)
     env = {
         "ALPAMAYO2_EDGE_FRAMES": "distinct",
         "ALPAMAYO2_EDGE_HISTORY": "linear",
@@ -280,13 +280,21 @@ def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
         "ALPAMAYO2_EDGE_SEED": "7",
         "ALPAMAYO2_EDGE_NAV_DISTANCE_M": "25",
         "ALPAMAYO2_EDGE_SAVE_REASONING": "1",
+        "ALPAMAYO2_EDGE_THREADS": "16",
     }
-    assert Settings.from_env(env) == Settings("distinct", "linear", 6, 7, 25.0, True)
+    assert Settings.from_env(env) == Settings("distinct", "linear", 6, 7, 25.0, True, 16)
 
 
 @pytest.mark.parametrize(
     "name,value",
-    [("FRAMES", "grid"), ("HISTORY", "clamp"), ("SAMPLES", "0"), ("NAV_DISTANCE_M", "-5"), ("SEED", "x")],
+    [
+        ("FRAMES", "grid"),
+        ("HISTORY", "clamp"),
+        ("SAMPLES", "0"),
+        ("NAV_DISTANCE_M", "-5"),
+        ("SEED", "x"),
+        ("THREADS", "0"),
+    ],
 )
 def test_a_bad_setting_stops_the_node(name: str, value: str) -> None:
     with pytest.raises(ValueError):
@@ -406,7 +414,7 @@ def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_throu
     assert Settings.from_env(declared) == Settings()
     knobs = {f"ALPAMAYO2_EDGE_{name.upper()}" for name in Settings.__dataclass_fields__}
     assert knobs == set(spec.runtime.env_passthrough)
-    assert set(spec.runtime.tuning_env) == {"ALPAMAYO2_EDGE_SAVE_REASONING"}
+    assert set(spec.runtime.tuning_env) == {"ALPAMAYO2_EDGE_SAVE_REASONING", "ALPAMAYO2_EDGE_THREADS"}
 
 
 # -- a rationale that never reaches the trajectory ------------------------------------
