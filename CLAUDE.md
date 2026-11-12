@@ -112,7 +112,8 @@ models and benchmarks are found by walking `adapters/models/*/model.yaml` and
 file and one new directory — never `src/paddock/` outside the new adapter** — plus
 its docs page and a README row, which `make check` requires. If
 you cannot, that is a framework bug worth raising rather than working around.
-Copy from the `_template/` directory in each.
+Start with `paddock new model NAME` (or `benchmark`): it copies `_template/`
+and renames it in all five places a hand copy has to.
 
 **Runtime** ([runtime/](src/paddock/runtime/)): `env.py` builds the per-model
 environment (`PASSTHROUGH` is the one definition of what a subprocess inherits),
