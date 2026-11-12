@@ -1203,8 +1203,8 @@ class OpenpilotPolicy(Policy):
 
         Returns whether the rig has two. supercombo takes a narrow `img` and a
         wide `big_img`; a comma rig has a camera for each, and every dataset
-        here but Bench2Drive and comma2k19 has one, in which case the single
-        frame feeds both views.
+        here but Bench2Drive has one -- comma2k19 too, recorded on a one-camera
+        EON -- in which case the single frame feeds both views.
 
         Shared by both backends deliberately. Which image reaches `big_img` is a
         fact about the rig, not about whether this machine built tinygrad, and

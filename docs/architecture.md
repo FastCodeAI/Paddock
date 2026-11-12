@@ -94,7 +94,8 @@ Two details that look like off-by-ones and are not:
   `{"waypoints": [[x, y], ...] or [[x, y, yaw], ...], "dt": 0.5}`, every row
   the model returned, with yaw only when the model predicts one (the same
   shape `/infer_sequence` returns). NeuroNCAP reads only `trajectory` and
-  `aux_outputs`; AlpaSim's bridge reads `plan`.
+  `aux_outputs`; AlpaSim's bridge reads `plan`, and so does Bench2Drive's
+  client, at the plan's own points every 0.5 s.
 - **An all-zero trajectory is a commanded emergency stop**, not "no plan". A
   model that has not warmed up must return `constant_velocity(obs.speed)`.
   Returning zeros scores as a deliberate brake, which for a collision-avoidance

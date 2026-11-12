@@ -387,3 +387,7 @@ and being listed here does not mean they endorse Paddock.
 ## License
 
 Apache License 2.0 ([LICENSE](LICENSE)). Copyright 2026 Renesas Electronics Corporation.
+
+A few files hold material from other projects under their own licences.
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists them, with the licences of the
+datasets behind the results.
