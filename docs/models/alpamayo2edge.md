@@ -331,3 +331,25 @@ its claimed training data.
 Made at `8c5ed2f` with no local changes: four nodes, while a neuroNCAP sweep shared
 the site's two H200s, 5.6 hours. No plan was drawn again.
 
+### neuroNCAP
+
+The full official set: 20 scenario–scene pairs over 14 scenes, 10 runs each, 200 runs. The
+simulator renders at 10 Hz, so every frame is the one at the time Edge asks for, once a run
+is 2 s old; before that, its earliest frames repeat and its past path is continued, as for
+every model at the start of a run. The engine drives six points 0.5 s apart, and is sent
+Edge's own points at 0.5 ... 3.0 s, every fifth of its 64 (`Trajectory.to_wire`). The route
+is the scenario's command, so a turn has no distance ("Turn right").
+
+| Stationary ↑ | Frontal ↑ | Side ↑ | Overall ↑ (0–5) | Collision rate ↓ | Run |
+|---:|---:|---:|---:|---:|---|
+| 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54 % | `neuroncap/alpamayo2edge/20261111T231934-33adca` |
+
+Fifth of the eight model rows on the full set: below Drive-JEPA (4.13), Alpamayo 1.5 (3.73), OpenPilot
+(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.58). Side impacts are
+its weak column: 38 of 50 side runs collided, every run in `side-0103` and `side-0921`. It
+avoided every collision in four pairs: `stationary-0106`, `stationary-0108`, `side-0108` and
+`frontal-0346`.
+
+Made at `e931fbf` with no local changes on the site's two H200s, 10.3 hours. The model
+wrote `<NOMINAL>` on 4,559 of its 12,917 plans (35 %), and no plan was drawn again.
+
