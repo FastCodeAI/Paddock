@@ -1,0 +1,69 @@
+# How the AlpaSim benchmark drives Alpamayo 2 Edge through paddock's bridge.
+#
+# Read by adapters/benchmarks/alpasim/harness.py (profile_for). The four keys
+# below are required; an unknown or missing key fails the run with this file's
+# name. See docs/adding-a-model.md, "AlpaSim settings".
+#
+# AlpaSim has no Edge driver of its own, so these are Alpamayo 1.5's settings --
+# the shared 20 Hz referee, 3.0 s warm-up with the driver called, 400 steps, the
+# same 30 pinned scenes -- with Edge's six cameras rendered
+# (driver/paddock_bridge_alpamayo2edge.yaml). The node is asked every 100 ms, the
+# 0.1 s grid its frames and poses are on, and hears every other tick through
+# /observe. The route and its time ride along for its route sentence, which
+# AlpaSim's command (FOLLOW_REFERENCE) cannot give. Plans come back as all 64
+# poses, 0.1 s apart, with the model's own headings.
+
+# Under driver/ in this folder.
+driver: paddock_bridge_alpamayo2edge
+
+# Extra bridge.py flags.
+bridge_args:
+  # AlpaSim's ids for Edge's six cameras, renamed to the node's names: the five
+  # model.yaml declares, and CAM_FRONT_TELE, which policy.py puts in camera 6
+  # instead of a crop of CAM_FRONT.
+  - --camera-name
+  - camera_cross_left_120fov=CAM_FRONT_LEFT
+  - --camera-name
+  - camera_front_wide_120fov=CAM_FRONT
+  - --camera-name
+  - camera_cross_right_120fov=CAM_FRONT_RIGHT
+  - --camera-name
+  - camera_rear_left_70fov=CAM_BACK_LEFT
+  - --camera-name
+  - camera_rear_right_70fov=CAM_BACK_RIGHT
+  - --camera-name
+  - camera_front_tele_30fov=CAM_FRONT_TELE
+  # Nothing else is decoded or sent.
+  - --named-cameras-only
+  # One plan every 100 ms, two control steps. The tick between answers from the
+  # last plan, re-timed and re-anchored to the car.
+  - --replan-every-us
+  - "100000"
+  # Both must equal the driver config's control step and force_gt_duration_us.
+  - --frame-interval-us
+  - "50000"
+  - --force-gt-us
+  - "3000000"
+  # The ticks between replans still reach the node, so its frames and poses at
+  # every step exist.
+  - --observe-between-replans
+  # Edge reads the car's velocity from canbus[13:16] in its own frame, to rebuild
+  # its pose history; this sends forward and sideways speed there, and replaces
+  # the zeros AlpaSim reports while it replays the warm-up with speeds from poses.
+  - --canbus-ego-frame
+  # The route, for the route sentence, and the time of the rig frame it is in,
+  # so the node moves it into its newest pose's frame as AlpaSim's own Alpamayo
+  # driver does.
+  - --send-route
+  - --send-route-time
+  # The node returns all 64 poses, 0.1 s apart, and is told so.
+  - --waypoint-dt
+  - "0.1"
+  - --send-plan-dt
+
+# Under adapters/benchmarks/alpasim/scenes/: each scene pinned to one artifact,
+# the same 30 as alpamayo15, drivejepa, autoe2e and qwendrive.
+scenes_csv: public_2601_30scenes_26p01.csv
+
+# Write the bridge's per-replan log next to the run's samples.jsonl.
+replan_log: true

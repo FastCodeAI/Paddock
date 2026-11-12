@@ -420,7 +420,12 @@ def _spec():
 
 def test_model_yaml_declares_the_cameras_and_spacing_the_policy_uses() -> None:
     spec = _spec()
-    assert tuple(spec.cameras) == POLICY.cameras
+    # model.yaml says what a simulator renders; the node also decodes a real telephoto,
+    # which only AlpaSim sends and its profile renders. Asking neuroNCAP or CARLA for one
+    # would ask for a camera they do not have.
+    assert tuple(spec.cameras) == inputs.CAMERAS
+    assert POLICY.cameras == (*inputs.CAMERAS, inputs.TELE_CAMERA)
+    assert inputs.TELE_CAMERA not in spec.cameras
     assert spec.waypoint_dt == POLICY.waypoint_dt == inputs.PLAN_DT_S
     assert spec.horizon_s == pytest.approx(inputs.PLAN_STEPS * inputs.PLAN_DT_S)
     assert spec.ego_history_steps == inputs.HISTORY_STEPS

@@ -29,6 +29,19 @@ sampling: another seed gives another plan.
 
 The plan goes back whole: 64 poses at 0.1 s with the model's own heading, which
 NAVSIM resamples to its eight 0.5 s poses. Nothing here is fitted to a benchmark.
+
+*AlpaSim.* AlpaSim's scenes are recordings of Edge's own camera rig, so there the
+input is built from the cameras Edge was trained on rather than adapted to it. Each
+part is switched on by the input that calls for it, never by which simulator is
+asking, so a source that sends none of them gets exactly what it got before:
+
+- a camera named `CAM_FRONT_TELE` fills ID 6 itself, instead of a crop of CAM_FRONT;
+- a camera sent with no pinhole intrinsics (AlpaSim's f-theta lenses) is not cropped,
+  only resized to the vendor's frame size if it is not already that size;
+- a route sent with the time of the frame it is in (`route_xy`, `route_timestamp_us`)
+  is moved into the newest pose's frame and classified as AlpaSim's own Alpamayo driver
+  classifies it, instead of the sentence being read from the command, which AlpaSim
+  sends as FOLLOW_REFERENCE whatever the route does.
 """
 
 from __future__ import annotations
@@ -226,7 +239,10 @@ def _has(obs: Observation, camera: str) -> bool:
 
 
 class Alpamayo2EdgePolicy(Policy):
-    cameras = inputs.CAMERAS
+    # The cameras a node decodes from a request. TELE_CAMERA is decoded only when a source
+    # sends one (AlpaSim); model.yaml's `cameras`, what a simulator is asked to render,
+    # keeps the five every source has, and AlpaSim's profile renders the telephoto itself.
+    cameras = (*inputs.CAMERAS, inputs.TELE_CAMERA)
     waypoint_dt = inputs.PLAN_DT_S
 
     def __init__(self, settings: Settings | None = None) -> None:
@@ -244,6 +260,8 @@ class Alpamayo2EdgePolicy(Policy):
         self._last_seed: int | None = None
         self._ms = np.zeros(3)
         self._last: dict[str, Any] = {}
+        #: The slots the last plan was built from: SLOTS, or with ID 6 from a real telephoto.
+        self._slots = inputs.SLOTS
         self.reset()
 
     def load(self) -> None:
@@ -296,9 +314,19 @@ class Alpamayo2EdgePolicy(Policy):
         closed-loop client) are known by the time they were taken, which `_record`
         keeps strictly increasing within a sequence: at 10 Hz a plan reads 22 frames,
         16 of them read by an earlier plan, and resizing one is 30-40 ms.
+
+        A camera sent without intrinsics is an f-theta lens (AlpaSim's): it is resized
+        whole (`inputs.fit`), never cropped, so it may fill only a slot that is not a crop.
         """
-        intrinsics = np.asarray(frame.camera2image[camera], dtype=np.float64)
-        fx, cx, cy = float(intrinsics[0, 0]), float(intrinsics[0, 2]), float(intrinsics[1, 2])
+        fx = cx = cy = None
+        if camera in frame.camera2image:
+            intrinsics = np.asarray(frame.camera2image[camera], dtype=np.float64)
+            fx, cx, cy = float(intrinsics[0, 0]), float(intrinsics[0, 2]), float(intrinsics[1, 2])
+        elif hfov is not None:
+            raise ValueError(
+                f"{camera} came without pinhole intrinsics, so it cannot be cropped to {hfov:g} deg "
+                f"for its slot; send {inputs.TELE_CAMERA} for the telephoto, or a pinhole K"
+            )
         path = frame.image_paths.get(camera)
         cache = self._warped if path else self._held
         key = (path, hfov, fx, cx, cy) if path else (frame.timestamp_us, camera, hfov, fx, cx, cy)
@@ -309,7 +337,7 @@ class Alpamayo2EdgePolicy(Policy):
             return cache[key]
         self._warp_misses += 1
         image = frame.image(camera)
-        cache[key] = inputs.warp(image, fx, cx, cy, hfov)
+        cache[key] = inputs.fit(image) if fx is None else inputs.warp(image, fx, cx, cy, hfov)
         while len(self._warped) > MAX_WARPED:
             self._warped.popitem(last=False)
         return cache[key]
@@ -319,17 +347,17 @@ class Alpamayo2EdgePolicy(Policy):
         if camera_id in self._geometry or camera not in frame.camera2ego:
             return
         axis = np.asarray(frame.camera2ego[camera], dtype=np.float64)[:3, 2]
-        intrinsics = np.asarray(frame.camera2image[camera], dtype=np.float64)
-        height, width = frame.image(camera).shape[:2]
-        self._geometry[camera_id] = {
-            "bearing_deg": round(float(np.degrees(np.arctan2(axis[1], axis[0]))), 1),
-            "hfov_deg": round(
-                inputs.crop_hfov_deg(
-                    width, height, intrinsics[0, 0], intrinsics[0, 2], intrinsics[1, 2], hfov
-                ),
-                1,
-            ),
-        }
+        geometry: dict[str, Any] = {"bearing_deg": round(float(np.degrees(np.arctan2(axis[1], axis[0]))), 1)}
+        if camera in frame.camera2image:
+            k = np.asarray(frame.camera2image[camera], dtype=np.float64)
+            height, width = frame.image(camera).shape[:2]
+            geometry["hfov_deg"] = round(
+                inputs.crop_hfov_deg(width, height, k[0, 0], k[0, 2], k[1, 2], hfov), 1
+            )
+        else:
+            # An f-theta lens, sent whole: its field of view is the camera's own.
+            geometry["hfov_deg"] = "as rendered"
+        self._geometry[camera_id] = geometry
 
     def build_sample(self) -> Sample:
         """The recorded sequence as Edge's input. Raises if a camera Edge needs never arrived:
@@ -341,7 +369,8 @@ class Alpamayo2EdgePolicy(Policy):
         frames = self._frames
         now_us = frames[-1].timestamp_us
         images, ids, stamps, chosen_times, black = [], [], [], {}, []
-        for camera_id, camera, hfov in inputs.SLOTS:
+        self._slots = inputs.slots(any(_has(frame, inputs.TELE_CAMERA) for frame in frames))
+        for camera_id, camera, hfov in self._slots:
             carrying = [frame for frame in frames if _has(frame, camera)]
             if not carrying:
                 if self.settings.absent_cameras != "black":
@@ -386,9 +415,11 @@ class Alpamayo2EdgePolicy(Policy):
         )
         xyz, rot = inputs.ego_history(times, poses, velocities, self.settings.history)
         last = frames[-1]
-        text = inputs.nav_text(
-            last.command, last.nav_maneuver, last.nav_distance_m, self.settings.nav_distance_m
-        )
+        text = self._route_text(last, times, poses, velocities)
+        if text is None:
+            text = inputs.nav_text(
+                last.command, last.nav_maneuver, last.nav_distance_m, self.settings.nav_distance_m
+            )
         # The resized frames are what is kept; the decoded originals can go.
         for frame in frames:
             for camera in [c for c in frame.images if c in frame.image_paths]:
@@ -404,6 +435,36 @@ class Alpamayo2EdgePolicy(Policy):
             extrapolated_s=inputs.history_before_first_frame_s(times),
             black_slots=black,
         )
+
+    def _route_text(
+        self, last: Observation, times: list[float], poses: np.ndarray, velocities: np.ndarray
+    ) -> str | None:
+        """The route sentence from a route polyline, when the source sends one with its time.
+
+        None when it does not, or when the route has no usable point; the command then
+        decides, as on every other source. The route is in the rig frame at its own time,
+        which can trail the newest pose: it is moved into the newest pose's frame through
+        the pose at that time, rebuilt as the history is, as AlpaSim's driver does.
+        """
+        if last.route_xy is None or last.route_timestamp_us is None:
+            return None
+        route_s = int(last.route_timestamp_us) / 1e6
+        if not times[0] - 1e-6 <= route_s <= times[-1] + 1e-6:
+            # Resampling would hold or continue the history, which places the route in the
+            # wrong frame and still gives a sentence.
+            raise ValueError(
+                f"route_timestamp_us {last.route_timestamp_us} is outside the kept history "
+                f"[{int(round(times[0] * 1e6))}, {int(round(times[-1] * 1e6))}]"
+            )
+        route_xyz, route_rot = inputs.resample_poses(
+            times, poses, [route_s], velocities, self.settings.history
+        )
+        route_pose = np.eye(4)
+        route_pose[:3, :3], route_pose[:3, 3] = route_rot[0], route_xyz[0]
+        xy = np.asarray(last.route_xy, dtype=np.float64).reshape(-1, 2)
+        # The bridge sends the route in two dimensions; it sits at the rig's height.
+        route = np.column_stack([xy, np.zeros(len(xy))])
+        return inputs.route_to_nav_text(inputs.route_in_frame(route, poses[-1], route_pose))
 
     # -- the model ----------------------------------------------------------------
 
@@ -481,7 +542,7 @@ class Alpamayo2EdgePolicy(Policy):
             "checkpoint": self.checkpoint,
             "slots": [
                 f"{camera_id}: {camera}" + (f", {hfov:g} deg crop" if hfov else "")
-                for camera_id, camera, hfov in inputs.SLOTS
+                for camera_id, camera, hfov in self._slots
             ],
             "slot_geometry": dict(self._geometry),
             "plans": self._plans,

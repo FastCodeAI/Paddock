@@ -8,7 +8,7 @@
 | Dataset | rendered by the simulator |
 | Primary metric | `scene_score` |
 | Adapter | [`adapters/benchmarks/alpasim/`](../../src/paddock/adapters/benchmarks/alpasim/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md) |
 
 <!-- /summary -->
 
@@ -133,7 +133,7 @@ driven on the default records exactly what it did before profiles existed.
 How to write one is in
 [adding-a-model.md](../adding-a-model.md#alpasim-settings).
 
-Four models have a profile. Drive-JEPA's reproduces the settings of
+Five models have a profile. Drive-JEPA's reproduces the settings of
 Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) so a run through paddock
 can be checked against that driver's runs: one front camera at 20 Hz, a 3.0 s
 replayed warm-up, the shared 20 Hz scoring config and the 30 scenes pinned to
@@ -201,6 +201,16 @@ from the table above, and two more switches, also off for every other profile:
 Qwen-Drive profiles send, so these two switches are checked to change none of
 them. What the node does with them, and what still differs from the native
 runs, is in [docs/models/alpamayo15.md](../models/alpamayo15.md#on-alpasim-through-the-bridge).
+
+Alpamayo 2 Edge's has no native driver to match: AlpaSim ships none for Edge. It
+keeps Alpamayo 1.5's settings (the 20 Hz clock, the 3.0 s warm-up with the node
+called, 400 steps, the same 30 pinned scenes) and renders the six cameras Edge was
+trained on, each through its own f-theta lens at 1920×1080: the three 120° front
+and cross cameras, the 70° rear left and right, and the real 30° telephoto
+(`adapters/models/alpamayo2edge/driver/paddock_bridge_alpamayo2edge.yaml`). Its
+bridge flags are Alpamayo 1.5's plus `--canbus-ego-frame`, which Edge reads to
+rebuild its pose history. What the node does with them is in
+[docs/models/alpamayo2edge.md](../models/alpamayo2edge.md#on-alpasim-through-the-bridge).
 
 ## Configuration
 
