@@ -325,6 +325,26 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
     return [video_path, poster]
 
 
+INSET_M = (12.0, 30.0)  # the inset's half-width and forward reach, metres
+
+
+def _inset(draw, plan: np.ndarray | None, box: tuple[int, int, int, int]) -> None:
+    """The plan from above, ego at the bottom centre, forward up: a camera 1.5 m up does not see
+    the first few metres of road, so a short plan (a slow or stopping car) falls below the image."""
+    x0, y0, x1, y1 = box
+    draw.rectangle(box, fill=(10, 12, 14), outline=(90, 92, 98))
+    w, h = x1 - x0, y1 - y0
+    sx, sy = w / (2 * INSET_M[0]), h / INSET_M[1]
+    cx, cy = x0 + w / 2, y1 - 6
+    draw.rectangle([cx - 4, cy - 9, cx + 4, cy + 4], fill=(240, 240, 240))
+    if plan is None or not len(plan):
+        return
+    # ego frame: x forward, y left -> inset: up, left
+    pts = [(cx - sx * float(yl), cy - sy * float(xf)) for xf, yl in plan]
+    pts = [(min(max(u, x0), x1), min(max(v, y0), y1)) for u, v in [(cx, cy - 4), *pts]]
+    draw.line(pts, fill=PLAN, width=3)
+
+
 def _compose(tiles, i, cols, tile_w, tile_h, height, title) -> np.ndarray:
     from PIL import Image, ImageDraw, ImageFont
 
@@ -360,6 +380,12 @@ def _compose(tiles, i, cols, tile_w, tile_h, height, title) -> np.ndarray:
             for u, v in seg[1:]:
                 fd.ellipse([u - 5, v - 5, u + 5, v + 5], fill=PLAN, outline=(0, 0, 0))
         frame = frame.resize((tile_w, tile_h))
+        side = round(tile_h * 0.36)
+        _inset(
+            ImageDraw.Draw(frame),
+            plan,
+            (tile_w - side - 8, tile_h - round(side * 1.25) - 8, tile_w - 8, tile_h - 8),
+        )
         if ended:
             frame = Image.blend(frame, Image.new("RGB", frame.size, (0, 0, 0)), 0.55)
         canvas.paste(frame, (x, y + BAR))
@@ -372,6 +398,6 @@ def _compose(tiles, i, cols, tile_w, tile_h, height, title) -> np.ndarray:
     draw.rectangle([0, height - STRIP, WIDTH, height], fill=(0, 0, 0))
     draw.text((18, mid), f"t = {i * STEP * TICK_S:5.1f} s", font=font, fill=(255, 255, 255), anchor="lm")
     draw.text((220, mid), title, font=small, fill=(190, 192, 200), anchor="lm")
-    note = "green: the model's plan · a dimmed tile: that drive is over"
+    note = "green: the model's plan (inset: from above) · a dimmed tile: that drive is over"
     draw.text((WIDTH - 18, mid), note, font=small, fill=(150, 152, 160), anchor="rm")
     return np.asarray(canvas)
