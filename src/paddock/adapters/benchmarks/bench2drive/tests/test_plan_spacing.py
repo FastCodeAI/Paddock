@@ -1,12 +1,13 @@
 """A plan whose points are not 0.5 s apart is driven on its own points at every 0.5 s.
 
 The controller reads six points 0.5 s apart. The node's reply carries them twice
-over for a plan 0.5 s apart: ``trajectory`` is the plan's first six points and
-``plan`` the whole plan with its spacing. For alpamayo2edge, 0.1 s apart, the first
-six points are 0.6 s of plan; read as 3 s, the car would follow it at a fifth of
-the planned speed. So the client reads ``plan`` at its own points every 0.5 s
-(``pid.on_grid``), the harness refuses a spacing with none before anything
-launches, and the record keeps what the car followed. The client imports carla and
+over: ``trajectory`` is the plan's own points at 0.5, 1.0, ... 3.0 s
+(``Trajectory.to_wire``) and ``plan`` the whole plan with its spacing. For
+alpamayo2edge, 0.1 s apart, the plan's first six points would be 0.6 s of plan;
+read as 3 s, the car would follow it at a fifth of the planned speed. So the client
+reads ``plan`` at its own points every 0.5 s (``pid.on_grid``), the harness refuses
+a spacing with none before anything launches, and the record keeps what the car
+followed. The client imports carla and
 the leaderboard; conftest.py stands in for them (``agent_module``).
 """
 
@@ -50,9 +51,10 @@ def test_the_client_drives_a_fine_plan_on_its_own_points_every_half_second(agent
     assert desired == pytest.approx(6.0, rel=1e-3), "the planned speed, not a fifth of it"
     assert native is None
     assert control.brake == 0.0
-    # What the reply's `trajectory` holds for this plan, and what the client used to drive:
-    assert np.array_equal(np.asarray(reply["trajectory"]), whole[:6, :2])
-    assert WaypointTracker(0.5).control(reply["trajectory"], 6.0)[3] == pytest.approx(6.0 / 5, rel=1e-3)
+    # The reply's `trajectory` holds the same six points, so a client that reads it
+    # instead drives the planned speed too, not the fifth of it the first six gave.
+    assert np.array_equal(np.asarray(reply["trajectory"]), whole[4:30:5, :2])
+    assert WaypointTracker(0.5).control(reply["trajectory"], 6.0)[3] == pytest.approx(6.0, rel=1e-3)
 
 
 def test_a_plan_half_a_second_apart_is_driven_exactly_as_before(agent_module) -> None:
@@ -68,8 +70,12 @@ def test_a_plan_half_a_second_apart_is_driven_exactly_as_before(agent_module) ->
 
 
 def test_a_reply_whose_plan_has_no_points_on_the_grid_is_refused(agent_module) -> None:
-    """A NaN-free plan the controller cannot read is an error on the route, not a slow drive."""
-    reply = Trajectory(np.stack([np.arange(1.0, 21.0), np.zeros(20)], axis=1), dt=0.2).to_wire()
+    """A NaN-free plan the controller cannot read is an error on the route, not a slow drive.
+
+    `to_wire` refuses to send such a plan, so the reply is built by hand, as a node
+    that predates that check would send it."""
+    waypoints = np.stack([np.arange(1.0, 21.0), np.zeros(20)], axis=1)
+    reply = {"trajectory": waypoints[:6].tolist(), "plan": {"waypoints": waypoints.tolist(), "dt": 0.2}}
     with pytest.raises(ValueError, match="no points on the 0.5 s grid"):
         _agent(agent_module).decide(reply, speed=0.0)
 

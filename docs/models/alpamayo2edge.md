@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -173,9 +173,22 @@ Each is read from the environment of the node; `model.yaml` declares the default
 | `ALPAMAYO2_EDGE_SEED` | `43` | set before every plan | no |
 | `ALPAMAYO2_EDGE_NAV_DISTANCE_M` | unset | a distance for turns the source gives none ("Turn left in 20m") | no |
 | `ALPAMAYO2_EDGE_SAVE_REASONING` | `0` | `1` keeps the rationale's first 400 characters in each plan's extras | yes |
+| `ALPAMAYO2_EDGE_ABSENT_CAMERAS` | `refuse` | `black`: a slot whose camera the source never sends gets a black frame at each time it asks for, and is named in `black_slots`. comma2k19 needs it | yes, with a note |
 
 No default was chosen by scoring navtest. They are the vendor's settings, plus the
 reasons above.
+
+`ALPAMAYO2_EDGE_ABSENT_CAMERAS` stays `refuse` everywhere but comma2k19. A black frame
+is a claim the source never made, so a source missing a camera stops the plan unless
+the run says otherwise. comma2k19 records one camera, and the vendor requires all six
+slots: there the front and telephoto slots are real and the other four black. The
+leaderboard prints that under the run, as it prints METEOR's horizon note. To score
+Edge on comma2k19, set it for that pairing alone in `paddock.toml`:
+
+```toml
+[models.alpamayo2edge.benchmarks.comma2k19.env]
+ALPAMAYO2_EDGE_ABSENT_CAMERAS = "black"
+```
 
 `model.yaml` also sets `OMP_NUM_THREADS` to 4, the CPU threads torch and numpy use in
 the node, because torch takes every core by default. On a 48-core machine shared with
@@ -279,7 +292,10 @@ nuPlan data is claimed.
   history is continued, not recorded. With `[benchmarks.navsim] nuplan` set, the
   harness feeds nuPlan's 10 Hz frames instead; nobody has run Edge on them yet.
 - **Field of view.** The front and cross slots get 62° on NAVSIM and 70° on
-  Bench2Drive, where the model saw 120°.
+  Bench2Drive, where the model saw 120°. On KITScenes every ring camera is about 87°:
+  narrower than 120° in the front and cross slots, wider than 70° in the rear ones
+  (`slot_geometry` in the run record). On nuScenes every ring slot is about 60°: half
+  the front and cross slots' 120°, and narrower than the rear slots' 70°.
 - **Lens.** The crop treats every camera as a pinhole; the training rig's lens model
   is not taken into account.
 - **No route distance on NAVSIM**, as above.
@@ -290,12 +306,14 @@ nuPlan data is claimed.
   800-pixel front view, which the vendor's processor then reads at 576×320.
 - **CARLA is not what Edge was trained on.** Its training drives are real camera
   video; Bench2Drive's frames are rendered.
-- **Closed loop on Bench2Drive only.** The wire's `trajectory` field carries a plan's
-  first six poses, 0.6 s of Edge's plan. Bench2Drive's client reads the whole plan at
-  its own 0.5 s points instead. neuroNCAP's engine and HUGSIM's bridge read
-  `trajectory`, so `benchmarks` does not list them.
+- **Closed loop on Bench2Drive and neuroNCAP only.** Both drive Edge's own points at
+  0.5, 1.0, … 3.0 s: neuroNCAP's engine from the wire's `trajectory` field
+  (`Trajectory.to_wire`), Bench2Drive's client from the whole plan. Edge has not been
+  run on HUGSIM, so `benchmarks` does not list it.
 
 ## Results
+
+### NAVSIM
 
 NAVSIM navtest, all 12,146 scenarios, on OpenScene's 2 Hz frames, with no failed
 scenario. The v1 score replays the v2 run's plans through the v1 devkit, so the two
@@ -336,3 +354,103 @@ What the plans look like, from the run's plan dump and node logs:
 - **The model wrote `<NOMINAL>` in 37 % of scenarios** (4,488 of 12,146) and a
   rationale in the rest.
 - **Two plans were drawn again**, the two the first run lost, both at seed 44.
+
+### KITScenes
+
+All 223 keyframes of the list every KITScenes row uses, at its recorded 10 Hz, so each
+frame is the one at the time Edge asks for and no pose history is extrapolated. Edge's
+64 points, 0.1 s apart, are scored on their own points at 0.5, 1.0, ... s.
+
+| Route | ADE@3s ↓ (m) | FDE@3s ↓ (m) | Run |
+|---|---:|---:|---|
+| as text, `command_source = "gt"` | **0.752** | 1.393 | `kitscenes/alpamayo2edge/20261111T230906-22b8a7` |
+| "Continue straight" on every keyframe | 0.762 | 1.423 | `kitscenes/alpamayo2edge/20261111T223048-778679` |
+
+The first is the support-matrix cell. It is given the route the way Alpamayo 1.5's
+cell (`legacy-full-nav`, 1.002 m) is: a turn on 39 of the 223 keyframes, from the
+recorded future ([kitscenes.md](../benchmarks/kitscenes.md#the-eight-rows-and-where-each-came-from)
+says how that column was made here). The second shows what the route is worth. The 184
+keyframes told to go straight give identical plans in both runs; on the 39 turns ADE
+moves from 1.068 to 1.012 m, a paired bootstrap 95% interval of −0.172 to +0.014 m.
+
+Both runs were made with no local changes, one per H200, about 13 minutes each: the
+second at `f8a51e6`, the first at `30b616e`. The first was made again at that later
+commit so that its record lists the turn commands it was given, and every number came
+out the same as the first time. In each, the model wrote `<NOMINAL>` on 74 of the 223
+keyframes, and no plan was drawn again.
+
+### nuScenes
+
+All 5,119 keyframes of the 150 validation scenes, at nuScenes' 2 Hz. A frame 0.1 s old
+does not exist at 2 Hz, so each slot's −0.1 s frame is the −0.5 s one (`ALPAMAYO2_EDGE_FRAMES
+= nearest`), and the pose history between keyframes is rebuilt from their measured speeds.
+Edge's 64 points, 0.1 s apart, are read at every 0.5 s, which lands on its own points. The
+route is a sentence built from the recorded future, as for every model here: "Turn left in
+25m" on 257 keyframes, "Turn right in …" on 361, "Continue straight" on the rest.
+
+| L2 at 1 / 2 / 3 s (m) ↓ | Point L2 avg ↓ | Cumulative L2 avg ↓ | ADE at 3 s ↓ | Point collision avg ↓ | Run |
+|---|---:|---:|---:|---:|---|
+| 0.455 / 1.058 / 1.870 | **1.128** | 0.630 | 0.957 | 0.92 % | `nuscenes/alpamayo2edge/20261111T231928-e4e2d6` |
+
+Second on point L2 of the full-split rows, behind Qwen-Drive 1.0 (1.128 against 0.800), and
+below the constant-velocity baseline (1.288), which only Qwen-Drive had beaten. Alpamayo
+1.5's row is 1.487. Its point collision rate, 0.92 %, is the lowest after Qwen-Drive's
+0.77 %. nuScenes is not in Edge's claimed training data.
+
+Made at `e931fbf` with no local changes on one H200, 64 minutes. That commit is on the
+branch `alpamayo2edge/nuscenes-neuroncap`; its Edge adapter and nuScenes code are this
+branch's, and the one other file it differs in, `policy/protocol.py`, changes only what a
+closed-loop simulator is sent. The model wrote
+`<NOMINAL>` on 1,967 of the 5,119 keyframes (38 %), and no plan was drawn again.
+
+### comma2k19
+
+All 10,165 samples, five keyframes in each of 2,033 one-minute segments of I-280 highway
+driving, at the recorded 20 Hz, so every frame is the one at the time Edge asks for and
+no pose history is extrapolated. comma2k19 has one camera, so the front slot gets it (65°,
+where Edge was trained on 120°), the telephoto slot a 30° crop of it, and the other four
+slots black frames (`ALPAMAYO2_EDGE_ABSENT_CAMERAS=black`). Edge's 64 points, 0.1 s apart,
+are scored on their own points at every 0.5 s, and so are its comfort terms.
+
+| ADE at 1 / 2 / 3 / 4 / 5 s (m) ↓ | FDE at 3 s ↓ | Median ADE at 3 s ↓ | Miss rate at 3 s ↓ | PDMS-style ↑ | Run |
+|---|---:|---:|---:|---:|---|
+| 0.086 / 0.225 / **0.438** / 0.713 / 1.043 | 1.013 | 0.356 | 8.9 % | 0.949 | `comma2k19/alpamayo2edge/20261112T012152-9b1e09` |
+
+The lowest ADE of every comma2k19 row at every horizon from 1 s to 5 s, on the mean
+and the median: Qwen-Drive 1.0 is next, at 0.589 m at 3 s, and Alpamayo 1.5 at 0.819.
+Its plans reach as far as the car went (path length 99.7 % of the recorded), and its
+PDMS-style score is the highest here (0.949; OpenPilot's 0.816). comma2k19 is not in
+its claimed training data.
+
+Made at `8c5ed2f` with no local changes: four nodes, while a neuroNCAP sweep shared
+the site's two H200s, 5.6 hours. No plan was drawn again. That commit is on the branch
+`alpamayo2edge/nuscenes-neuroncap`; its Edge adapter and comma2k19 code are this
+branch's, except that its harness imported the same 0.5 s stride rule from
+`policy/protocol.py`, which there also changes what a closed-loop simulator is sent.
+
+### neuroNCAP
+
+The full official set: 20 scenario–scene pairs over 14 scenes, 10 runs each, 200 runs. The
+simulator renders at 10 Hz, so every frame is the one at the time Edge asks for, once a run
+is 2 s old; before that, its earliest frames repeat and its past path is continued, as for
+every model at the start of a run. The engine drives six points 0.5 s apart, and is sent
+Edge's own points at 0.5 ... 3.0 s, every fifth of its 64 (`Trajectory.to_wire`). The route
+is the scenario's command, so a turn has no distance ("Turn right").
+
+| Stationary ↑ | Frontal ↑ | Side ↑ | Overall ↑ (0–5) | Collision rate ↓ | Run |
+|---:|---:|---:|---:|---:|---|
+| 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54 % | `neuroncap/alpamayo2edge/20261111T231934-33adca` |
+
+Fifth of the eight model rows on the full set: below Drive-JEPA (4.13), Alpamayo 1.5 (3.73), OpenPilot
+(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.58). Side impacts are
+its weak column: 38 of 50 side runs collided, every run in `side-0103` and `side-0921`. It
+avoided every collision in four pairs: `stationary-0106`, `stationary-0108`, `side-0108` and
+`frontal-0346`.
+
+Made at `e931fbf` with no local changes on the site's two H200s, 10.3 hours. The model
+wrote `<NOMINAL>` on 4,559 of its 12,917 plans (35 %), and no plan was drawn again.
+That commit is on the branch `alpamayo2edge/nuscenes-neuroncap`. Its Edge adapter,
+closed-loop wire and neuroNCAP code are this branch's, but for two things that change
+nothing here: the stride helper was named `wire_stride`, and the adapter did not yet have
+`ALPAMAYO2_EDGE_ABSENT_CAMERAS`, whose default refuses a missing camera as it did then;
+neuroNCAP sends all five.
