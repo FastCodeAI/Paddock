@@ -14,9 +14,9 @@ from paddock.adapters.benchmarks.bench2drive.pid import (
     CONTROL_HORIZON_S,
     MAX_THROTTLE,
     WaypointTracker,
-    grid_stride,
     on_grid,
 )
+from paddock.policy.protocol import grid_stride
 
 
 def _plan(speed_mps: float, curve: float = 0.0, n: int = 6, dt: float = 0.5) -> np.ndarray:

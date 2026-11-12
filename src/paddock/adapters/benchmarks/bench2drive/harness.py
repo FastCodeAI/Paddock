@@ -50,9 +50,9 @@ from pathlib import Path
 from typing import Any
 
 from paddock.adapters.benchmarks.bench2drive import early_stop, rig
-from paddock.adapters.benchmarks.bench2drive.pid import grid_stride
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.config import REPO_ROOT
+from paddock.policy.protocol import grid_stride
 from paddock.runtime import ports
 from paddock.runtime.env import PASSTHROUGH
 from paddock.runtime.proc import tail as _tail
