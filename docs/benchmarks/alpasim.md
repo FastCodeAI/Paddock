@@ -596,6 +596,48 @@ reference.
 `e2e_challenge` scorer: `open_loop_collision` does not exist there, so a number
 quoted from that scorer is not this one.
 
+## Watching a scene, every model side by side
+
+With `video = "true"` in `[benchmarks.alpasim]`, AlpaSim writes one video per
+scene: the wide front camera (`camera_front_wide_120fov`) with the model's plan
+(pink or orange) and the route (green) drawn on, under a map and a metrics table.
+`paddock render --bench alpasim --sample alpasim/clipgt-<scene id>` cuts the
+camera picture out of each run's video of that scene and lays the models side
+by side on one clock (`render_sample` in
+[render.py](../../src/paddock/adapters/benchmarks/alpasim/render.py)). It needs
+ffmpeg, from `PADDOCK_FFMPEG` or the PATH, and nothing from AlpaSim's own
+environment.
+
+AlpaSim stops scoring at the first collision, when the car leaves the road, or
+4 m from the route, and lets the drive run on to 20 s. So a tile freezes,
+dimmed, from the moment its scoring stopped, and its bar says how the scored
+part ended. The stop is read from `duration_frac_20s`: the scored time is
+counted from the hand-over at 3 s, and the event that ends it is one step
+later. That was checked step for step against `metrics.parquet` on 40 drives
+(eight models, five scenes). A speed in a bar is the car's own, from the
+controller's log; AlpaSim records no impact speed.
+
+The picture after the stop can smear, which the dimmed tile hides. The picture
+can also smear while a car is still scored, when it drifts from the recorded
+drive; nothing hides that, and the line under the website's videos says so.
+
+Every tile is the same front camera. Some models are also sent side and rear
+cameras, which are not shown. A run made by a model's own driver, outside
+Paddock, can be drawn too once its scene folders are reachable in the run
+store as `<run>/<scene>/rollouts/<scene>/<id>/`, the layout a run made through
+Paddock has.
+
+The website's AlpaSim videos are made the same way, by
+`python -m tools.site.videos alpasim`, from the runs the results table shows.
+Which scenes it shows is decided by `showcase` in the same file, never by hand:
+the two hardest scenes, then the two where the models split most. Hardest means
+the lowest scene score averaged over every model. Split means the largest
+spread (standard deviation) of the models' scores. A scene is skipped when no
+model is scored for a full second, or fewer than three models are scored for 5
+seconds or more. No scene is shown twice. Ties go to the harder scene, then the
+lower scene id. Only scenes every run scored are considered. Each model drives
+a scene once, so there is no most typical run to choose.
+
 ## Support-matrix results
 
 The per-metric results behind this benchmark's column in the
