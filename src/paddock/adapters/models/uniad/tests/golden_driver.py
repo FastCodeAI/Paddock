@@ -1,4 +1,4 @@
-"""Drive one of the four adapters over a golden fixture's frames, inside the model's own environment.
+"""Drive the UniAD or VAD adapter over a golden fixture's frames, inside the model's own environment.
 
 Started by `test_golden.py` with the interpreter, environment and working directory the model's
 ``model.yaml`` declares -- what a policy node gets -- so it also proves the declared runtime. It builds
@@ -26,8 +26,6 @@ from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Obse
 VARIANTS = {
     "uniad": {"stored_quaternion": True, "canonical_quaternion": False},
     "vad": {"stored_quaternion": True, "canonical_quaternion": False},
-    "uniad_b2d": {"dataset_colour": False},
-    "vad_b2d": {"dataset_colour": False},
 }
 
 

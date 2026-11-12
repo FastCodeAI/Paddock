@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the environment UniAD, VAD and their Bench2Drive checkpoints share.
+# Build the environment UniAD and VAD share.
 #
-#   paddock setup --model uniad        # then: paddock setup --model uniad_b2d
+#   paddock setup --model uniad
 #
 # One conda env, Python 3.9, torch 2.7.1+cu128 and the OpenMMLab 1.x stack compiled for this machine's GPU:
 # mmcv-full 1.7.2, mmdet 2.28.2, mmsegmentation 0.29.1, mmdet3d 0.17.1. The older pins in the repos'
@@ -13,15 +13,15 @@
 # for your card before running; a build for another card will not load on this one. The mmcv-full build
 # compiles ~130 CUDA units and peaks near 6 GB of RAM with MAX_JOBS=4: ~45 minutes.
 #
-# If your site keeps conda envs elsewhere, set [models.uniad] venv (and the same for vad, uniad_b2d and
-# vad_b2d) in paddock.toml; the env is created at PADDOCK_VENV, not by name.
+# If your site keeps conda envs elsewhere, set [models.uniad] venv (and the same for vad) in paddock.toml;
+# the env is created at PADDOCK_VENV, not by name.
 
 set -euo pipefail
 : "${PADDOCK_REPO:?run via 'paddock setup --model uniad', which sets PADDOCK_REPO}"
 : "${PADDOCK_VENV:?run via 'paddock setup --model uniad', which sets PADDOCK_VENV}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# `conda create -p` replaces whatever is at the path, and four models share this env.
+# `conda create -p` replaces whatever is at the path, and two models share this env.
 if [ -e "${PADDOCK_VENV}" ]; then
   echo "${PADDOCK_VENV} already exists, so nothing was changed." >&2
   echo "To rebuild it, delete that folder and run this again." >&2
@@ -109,5 +109,5 @@ cp "${ZOO}"/mmcv/ops/roiaware_pool3d/src/{roiaware_pool3d_kernel.cu,points_in_bo
 pip install "fastapi<0.129" "uvicorn<0.40"
 
 echo
-echo "done. Weights go under <weights>/uniad, <weights>/vad and <weights>/bench2drivezoo (docs/models/uniad.md)."
-echo "Then: paddock setup --model uniad_b2d (Bench2DriveZoo's own ops), and paddock doctor --model uniad"
+echo "done. Weights go under <weights>/uniad and <weights>/vad (docs/models/uniad.md)."
+echo "Then: paddock doctor --model uniad"

@@ -366,6 +366,18 @@ serialize = true
 # v1.0-trainval tables directly -- no devkit -- using [datasets.nuscenes] above.
 # The 150-scene val index is cached here; optional, defaults to <repo>/.cache/.
 # index_cache = "/path/to/cache/nuscenes_val_index.pkl"
+# The datasets' own inputs for the models that declare inputs.nuscenes (UniAD, VAD:
+# docs/benchmarks/nuscenes.md, "The datasets' own inputs"), built from the tables the
+# first time one runs; optional, defaults to beside index_cache's file.
+# infos_cache = "/path/to/cache/nuscenes_val_infos.pkl"
+
+# How the scored keyframes are fed. "window" (the default): each keyframe its own
+# episode, a reset and the 2 s before it. "scene": each val scene one episode, a reset
+# at its first keyframe and a plan from every keyframe in order, the way UniAD's and
+# VAD's own test loops run the val set (docs/benchmarks/nuscenes.md, "Scene order").
+# Offered to the models in scene_models only; preflight refuses any other.
+# sequence = "scene"
+# scene_models = "uniad, vad"   # the default list
 
 # For Openpilot only: real front-camera exposures between the scored keyframes.
 # camera_history = "CAM_FRONT"
@@ -373,20 +385,16 @@ serialize = true
 # history_index_cache = "/path/to/cache/nuscenes_front_exposures.pkl"
 # history_seconds = 5.0
 
-# UniAD, VAD and their Bench2Drive checkpoints share one conda env, built by
+# UniAD and VAD share one conda env, built by
 # adapters/models/uniad/setup.sh at {repos}/.conda-envs/uniad-vad. A site that keeps it
-# elsewhere points all four at it (docs/models/uniad.md):
+# elsewhere points both at it (docs/models/uniad.md):
 # [models.uniad]
 # venv = "/path/to/envs/uniad-vad"
 # [models.vad]
 # venv = "/path/to/envs/uniad-vad"
-# [models.uniad_b2d]
-# venv = "/path/to/envs/uniad-vad"
-# [models.vad_b2d]
-# venv = "/path/to/envs/uniad-vad"
 # NAVSIM scores 4 s and refuses their 3 s plans on every token, so each NAVSIM benchmark needs its own
 # pairing (a pairing matches the benchmark name exactly: navsim's does not reach navsim_v1 or navhard). Same for vad
-# (VAD_HORIZON_S), uniad_b2d (UNIAD_B2D_HORIZON_S) and vad_b2d (VAD_B2D_HORIZON_S).
+# (VAD_HORIZON_S).
 # [models.uniad.benchmarks.navsim.env]
 # UNIAD_HORIZON_S = "4.0"
 # [models.uniad.benchmarks.navsim_v1.env]

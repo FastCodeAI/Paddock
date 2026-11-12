@@ -8,7 +8,7 @@
 | Dataset | rendered by the simulator |
 | Primary metric | `driving_score` |
 | Adapter | [`adapters/benchmarks/bench2drive/`](../../src/paddock/adapters/benchmarks/bench2drive/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [uniad](../models/uniad.md), [uniad_b2d](../models/uniad_b2d.md), [vad](../models/vad.md), [vad_b2d](../models/vad_b2d.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 

@@ -1,23 +1,19 @@
-"""Inputs and outputs of the BEVFormer-based planners: UniAD and VAD, nuScenes and Bench2Drive checkpoints.
+"""Inputs and outputs of the BEVFormer-based planners UniAD and VAD (their nuScenes checkpoints).
 
-Four models share one shape. Six surround cameras are lifted into a bird's-eye-view grid laid out in a
+The two models share one shape. Six surround cameras are lifted into a bird's-eye-view grid laid out in a
 *lidar* frame (x right, y forward, z up); the previous grid is warped onto the current one with the ego
 motion read from an 18-float CAN-bus vector; and the plan is six (x, y) waypoints 0.5 s apart in that same
-lidar frame. What differs is the code base (OpenMMLab's mmdet3d for the nuScenes checkpoints,
-Bench2DriveZoo's vendored copy for the Bench2Drive ones) and three conventions, each of which is a silent
+lidar frame. Both run on OpenMMLab's mmdet3d, and three conventions of their datasets are each a silent
 failure when crossed:
 
 * **The CAN-bus layout.** nuScenes puts acceleration at 7:10, rotation rate at 10:13 and velocity at 13:16
-  (the order of the CAN-bus expansion's ``pose`` message); Bench2DriveZoo puts velocity at 7:10,
-  acceleration at 10:13 and rotation rate at 13:16 (``prepare_B2D.py``). Both keep translation at 0:3 and
-  the heading, in radians then degrees, at 16:18; at 3:7 Bench2DriveZoo has the heading's quaternion and the
-  nuScenes datasets the ego quaternion's w four times (`nuscenes_can_bus`). Paddock's own canbus is the
-  nuScenes layout, so for Bench2Drive it is re-ordered here.
+  (the order of the CAN-bus expansion's ``pose`` message), translation at 0:3 and the heading, in radians
+  then degrees, at 16:18; at 3:7 the datasets hold the ego quaternion's w four times (`nuscenes_can_bus`).
+  Paddock's own canbus is the nuScenes layout.
 * **``l2g_r_mat``.** The nuScenes datasets store the *transpose* of the lidar-to-global rotation (their
-  tracker multiplies row vectors); Bench2DriveZoo stores the rotation itself. Each model is fed its own.
+  tracker multiplies row vectors).
 * **The lidar.** Every model's grid and plan live in the lidar frame it was trained with. nuScenes'
-  LIDAR_TOP sits ~0.94-0.99 m ahead of the rear axle and 1.84 m up, yawed -90 degrees; Bench2DriveZoo's
-  virtual lidar sits 0.39 m behind the CARLA vehicle origin and 1.84 m up, with the same axes. Paddock's
+  LIDAR_TOP sits ~0.94-0.99 m ahead of the rear axle and 1.84 m up, yawed -90 degrees. Paddock's
   closed-loop clients send ``lidar2ego`` as the identity ("lidar = ego"), which is the wrong axes for these
   models -- a grid turned a quarter turn, as Drive-JEPA's adapter once found -- so a lidar is used only where
   the source sends one in LIDAR_TOP's axes, and the model's training mount is used everywhere else
@@ -25,8 +21,8 @@ failure when crossed:
 
 The plan comes back as the *lidar's* future positions in the current lidar frame -- both code bases build
 the planning target from the lidar origin's future poses (UniAD ``get_sdc_planning_label``, VAD
-``vad_nuscenes_converter``, Bench2DriveZoo ``get_ego_future_xy``) -- so `lidar_plan_to_ego` turns it into
-the ego origin's path, lever arm included (``paddock.policy.protocol.Trajectory`` is the ego origin's).
+``vad_nuscenes_converter``) -- so `lidar_plan_to_ego` turns it into the ego origin's path, lever arm
+included (``paddock.policy.protocol.Trajectory`` is the ego origin's).
 
 Everything in this module above `BevPlannerPolicy` is numpy only, so paddock's own tests check it without
 the models. The policy itself imports the model's code base inside `load()`.
@@ -55,7 +51,7 @@ from paddock.policy.protocol import (
 )
 
 #: Spacing and count of the plan's waypoints: UniAD ``planning_steps = 6``, VAD ``fut_ts = 6``, both 0.5 s
-#: apart (nuScenes keyframes; Bench2DriveZoo samples its 10 Hz logs every 5th frame, ``sample_interval=5``).
+#: apart (nuScenes keyframes).
 PLAN_DT = 0.5
 PLAN_STEPS = 6
 
@@ -65,15 +61,6 @@ NUSC_CAMERAS = (
     "CAM_FRONT",
     "CAM_FRONT_RIGHT",
     "CAM_FRONT_LEFT",
-    "CAM_BACK",
-    "CAM_BACK_LEFT",
-    "CAM_BACK_RIGHT",
-)
-#: Camera order of Bench2DriveZoo (``CAMERAS`` in ``mmcv/datasets/prepare_B2D.py``, and its agents).
-B2D_CAMERAS = (
-    "CAM_FRONT",
-    "CAM_FRONT_LEFT",
-    "CAM_FRONT_RIGHT",
     "CAM_BACK",
     "CAM_BACK_LEFT",
     "CAM_BACK_RIGHT",
@@ -159,18 +146,6 @@ NUSC_LIDAR2EGO = pose_matrix(
     [0.706749235646644, -0.015300993788500868, 0.01739745181256607, -0.7070846669051719],
 )
 
-#: Bench2DriveZoo's lidar in the CARLA vehicle frame (right-handed), as both of its agents hard-code it
-#: (``self.lidar2ego`` in ``team_code/uniad_b2d_agent.py`` and ``vad_b2d_agent.py``) and its converter
-#: builds it (``lidar_to_righthand_ego``): 0.39 m behind the vehicle origin, 1.84 m up, x right, y forward.
-B2D_LIDAR2EGO = np.array(
-    [
-        [0.0, 1.0, 0.0, -0.39],
-        [-1.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 1.84],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
-)
-
 #: How far a source's lidar axes may sit from LIDAR_TOP's (x right, y forward, z up) and still be read as
 #: one, degrees. nuScenes' own calibrations are within 2.5.
 LIDAR_AXES_TOLERANCE_DEG = 10.0
@@ -201,10 +176,9 @@ def model_lidar2ego(source_lidar2ego, nominal: np.ndarray) -> tuple[np.ndarray, 
 def lidar2img(camera2image, camera2ego, lidar2ego) -> np.ndarray:
     """4x4 lidar -> pixel projection: the padded intrinsics times lidar -> camera.
 
-    The nuScenes datasets build it from ``sensor2lidar`` and Bench2DriveZoo's from ``cam2ego`` and
-    ``lidar2ego``; both are ``K @ inv(camera2ego) @ lidar2ego`` once the camera's pose and the lidar's are
-    in one ego frame. Paddock's camera frame is the optical one (x right, y down, z forward), the same as
-    both datasets'.
+    The nuScenes datasets build it from ``sensor2lidar``, which is ``K @ inv(camera2ego) @ lidar2ego`` once
+    the camera's pose and the lidar's are in one ego frame. Paddock's camera frame is the optical one
+    (x right, y down, z forward), the same as the datasets'.
     """
     pad = np.eye(4)
     pad[:3, :3] = np.asarray(camera2image, dtype=np.float64)
@@ -245,8 +219,8 @@ def to_load_size(image: np.ndarray, camera2image, size=LOAD_SIZE) -> tuple[np.nd
 def accel_with_gravity(accel) -> tuple[np.ndarray, bool]:
     """(ax, ay, az) as an accelerometer reads it, and whether gravity had to be added.
 
-    Both training sets hold specific force, gravity included: nuScenes' CAN-bus ``accel`` reads z ~ +9.6 to
-    9.8, and Bench2Drive's comes from CARLA's IMU, z +9.81 at rest. Most paddock sources send the kinematic
+    The training set holds specific force, gravity included: nuScenes' CAN-bus ``accel`` reads z ~ +9.6 to
+    9.8. Most paddock sources send the kinematic
     acceleration, z = 0, which no accelerometer on a car reports (it would be free fall). So a z within
     g/2 of zero is taken to be one without gravity, and g is added.
     """
@@ -260,10 +234,11 @@ def accel_with_gravity(accel) -> tuple[np.ndarray, bool]:
 def continuous_quaternion(rotation, previous=None) -> np.ndarray:
     """A quaternion for `rotation` on the same sign branch as `previous`, w >= 0 on the first.
 
-    q and -q are one rotation, and nuScenes stores either (57% of the ego poses in paddock's nuScenes
-    subset have w < 0), but the CAN-bus MLP reads numbers, not the rotation -- w, for the nuScenes
-    checkpoints (`nuscenes_can_bus`). A pose source gives a smooth quaternion within a log, so the sign is
-    held continuous across an episode rather than flipped wherever w crosses zero.
+    q and -q are one rotation, and nuScenes stores either (w < 0 on 41.7% of the val keyframes' ego poses),
+    but the CAN-bus MLP reads numbers, not the rotation -- w, for the nuScenes checkpoints
+    (`nuscenes_can_bus`). A pose source gives a smooth quaternion within a log, so the sign is held continuous
+    across an episode rather than flipped wherever w crosses zero. The nuScenes harness sends these models
+    the stored one (`source_quaternion`), so this is for every other source.
     """
     q = matrix_quaternion(rotation)
     if previous is not None and float(q @ np.asarray(previous, dtype=np.float64)) < 0:
@@ -275,7 +250,9 @@ def source_quaternion(canbus, rotation) -> np.ndarray | None:
     """The source's own quaternion at canbus 3:7, if it is a unit quaternion of exactly `rotation`, else None.
 
     A source that fills the slot the way the nuScenes info files do (the ego pose's quaternion) keeps its
-    sign; HUGSIM and Bench2Drive leave it zero, and nuScenes' CAN-bus orientation is not the ego pose's.
+    sign: paddock's nuScenes harness does, for the models that declare ``inputs: {nuscenes: ...}``
+    (`benchmarks/nuscenes/infos`). HUGSIM and Bench2Drive leave it zero, and the CAN-bus message's own
+    orientation, which nuScenes sends every other model there, is not the ego pose's.
     """
     q = np.asarray(canbus, dtype=np.float64)[3:7]
     if abs(float(np.linalg.norm(q)) - 1.0) > 1e-6:
@@ -295,7 +272,7 @@ def nuscenes_can_bus(ego2world, canbus, quaternion) -> tuple[np.ndarray, bool]:
     3:7 holds the quaternion's *w four times*, not the quaternion. The datasets write
     ``can_bus[3:7] = Quaternion(...)``, and a pyquaternion ``Quaternion`` has ``__float__`` (its w) but no
     ``__len__``, so numpy assigns it as a scalar and broadcasts it. Every checkpoint trained on that, so it
-    is fed that. (Bench2DriveZoo wraps the quaternion in ``list()`` and gets all four.)
+    is fed that.
     """
     pose = np.asarray(ego2world, dtype=np.float64)
     source = np.asarray(canbus, dtype=np.float64)
@@ -326,58 +303,6 @@ def nuscenes_l2g(ego2world, lidar2ego) -> tuple[np.ndarray, np.ndarray]:
     rotation = lidar[:3, :3].T @ pose[:3, :3].T
     translation = lidar[:3, 3] @ pose[:3, :3].T + pose[:3, 3]
     return rotation.astype(np.float32), translation.astype(np.float32)
-
-
-def b2d_yaw(ego2world) -> float:
-    """The heading in Bench2Drive's ``ego_yaw`` range, (-3pi/2, pi/2] radians.
-
-    Bench2Drive computes it as pi/2 - compass from CARLA's IMU, compass in [0, 2pi); paddock's right-handed
-    heading is the same angle, in (-pi, pi]. The range matters because the quaternion at 3:7 is built from
-    it unwrapped.
-    """
-    yaw = yaw_of(np.asarray(ego2world, dtype=np.float64))
-    return yaw - 2 * np.pi if yaw > np.pi / 2 else yaw
-
-
-def b2d_can_bus(ego2world, canbus) -> tuple[np.ndarray, bool]:
-    """The 18 floats Bench2DriveZoo's datasets put in ``can_bus`` (``B2D_E2E_Dataset.get_data_info``).
-
-    0:3 ego translation with z = 0; 3:7 ``Quaternion(axis=z, radians=ego_yaw)``; 7:10 ``ego_vel`` =
-    (speed, 0, 0); 10:13 ``ego_accel``, CARLA's IMU accelerometer y-flipped to right-handed (gravity in z);
-    13:16 ``ego_rotation_rate`` = -gyroscope, which in right-handed terms is (roll rate, -pitch rate, yaw
-    rate); 16:18 the heading wrapped to [0, 2pi), radians then degrees.
-
-    Two places where the dataset and Bench2DriveZoo's own agents disagree follow the dataset the checkpoints
-    were trained on: the agents put the *unwrapped* heading at 16, which differs by 2pi for three quarters
-    of all headings, and they never wrap it.
-    """
-    source = np.asarray(canbus, dtype=np.float64)
-    yaw = b2d_yaw(ego2world)
-    out = np.zeros(18)
-    out[0:2] = np.asarray(ego2world, dtype=np.float64)[0:2, 3]
-    out[3:7] = [math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2)]
-    out[7] = source[CANBUS_VELOCITY]
-    out[10:13], added = accel_with_gravity(source[CANBUS_ACCEL : CANBUS_ACCEL + 3])
-    roll_rate, pitch_rate, yaw_rate = source[CANBUS_YAW_RATE - 2 : CANBUS_YAW_RATE + 1]
-    out[13:16] = [roll_rate, -pitch_rate, yaw_rate]
-    wrapped = yaw + 2 * np.pi if yaw < 0 else yaw
-    out[16] = wrapped
-    out[17] = wrapped / np.pi * 180
-    return out, added
-
-
-def b2d_l2g(ego2world) -> tuple[np.ndarray, np.ndarray]:
-    """(``l2g_r_mat``, ``l2g_t``) as Bench2DriveZoo computes them: the rotation *not* transposed.
-
-    ``ego2world`` is rebuilt from the heading alone with z = 0, as the dataset and the agents build it
-    (``Quaternion(axis=z, radians=ego_yaw)``, ``ego_translation`` with z = 0), and the lidar placed on it.
-    """
-    yaw = b2d_yaw(ego2world)
-    pose = np.eye(4)
-    pose[:2, :2] = [[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]]
-    pose[0:2, 3] = np.asarray(ego2world, dtype=np.float64)[0:2, 3]
-    lidar2global = pose @ B2D_LIDAR2EGO
-    return lidar2global[:3, :3], lidar2global[:3, 3]
 
 
 # --------------------------------------------------------------------------
@@ -412,21 +337,6 @@ COMMAND_LATERAL_M = 2.0
 #: turn; the label code tells a car that pulls away into a turn within 3 s that turn. Short enough that a car
 #: stopped on a straight lane is still told FORWARD.
 COMMAND_MIN_LOOKAHEAD_M = 6.75
-
-#: Bench2DriveZoo's six commands: CARLA's RoadOption minus one (``command_near``; VOID reads as LANEFOLLOW).
-B2D_LEFT, B2D_RIGHT, B2D_STRAIGHT, B2D_LANEFOLLOW, B2D_CHANGELANELEFT, B2D_CHANGELANERIGHT = range(6)
-
-#: paddock Command -> Bench2DriveZoo's, before the lane-change refinement in `b2d_command`.
-B2D_COMMAND = {
-    Command.RIGHT: B2D_RIGHT,
-    Command.LEFT: B2D_LEFT,
-    Command.STRAIGHT: B2D_STRAIGHT,
-    Command.FOLLOW_REFERENCE: B2D_LANEFOLLOW,
-}
-
-#: Metres ahead within which a lane change on the route becomes the command. Bench2DriveZoo's agents
-#: take the command of the first route node beyond ``RoutePlanner(4.0, 50.0)``'s 4 m.
-B2D_ROUTE_LOOKAHEAD_M = 4.0
 
 
 def route_command(route_xy, speed_m_s: float, lidar2ego) -> dict[str, Any] | None:
@@ -515,31 +425,6 @@ def command_record(obs: Observation, lidar2ego=NUSC_LIDAR2EGO) -> dict[str, Any]
 
 def nuscenes_command(obs: Observation, lidar2ego=NUSC_LIDAR2EGO) -> int:
     return int(command_record(obs, lidar2ego)["command"])
-
-
-def b2d_command(obs: Observation) -> int:
-    """Bench2DriveZoo's command for this observation.
-
-    Paddock's Bench2Drive client sends CARLA's road option at the route point nearest the ego, with lane
-    changes folded into STRAIGHT, and the next lane change separately (``nav_lane_change``). Bench2Drive's
-    models were trained with the lane changes as commands of their own, so a lane change within
-    `B2D_ROUTE_LOOKAHEAD_M` is restored as one -- unless the ego is mid-turn, where the turn is kept.
-
-    A source without a route (HUGSIM, nuScenes, NAVSIM: ``route_xy`` is None) speaks the three-way
-    vocabulary, where STRAIGHT means "not turning". Bench2Drive's STRAIGHT is the junction command; keeping
-    along the road is LANEFOLLOW in its training data, so that is what STRAIGHT becomes there. Bench2Drive's
-    own client sends a route, and its STRAIGHT is CARLA's.
-    """
-    command = Command(int(obs.command))
-    near = obs.nav_lane_change_m is not None and obs.nav_lane_change_m <= B2D_ROUTE_LOOKAHEAD_M
-    if near and command in (Command.STRAIGHT, Command.FOLLOW_REFERENCE):
-        if obs.nav_lane_change == "LEFT":
-            return B2D_CHANGELANELEFT
-        if obs.nav_lane_change == "RIGHT":
-            return B2D_CHANGELANERIGHT
-    if command == Command.STRAIGHT and obs.route_xy is None:
-        return B2D_LANEFOLLOW
-    return B2D_COMMAND[command]
 
 
 # --------------------------------------------------------------------------
@@ -659,7 +544,7 @@ def extend_horizon(waypoints, dt: float, horizon_s: float) -> np.ndarray:
 
 
 class BevPlannerPolicy(Policy):
-    """What the four adapters share: settings, the history grid, the temporal reset, the frame of the plan.
+    """What the two adapters share: settings, the history grid, the temporal reset, the frame of the plan.
 
     A subclass names its cameras, its two settings and how its code base builds, feeds and reads the model
     (`_build`, `_results`, `_forward`, `_reset_model`). One `infer` is one model step on the current
@@ -674,8 +559,6 @@ class BevPlannerPolicy(Policy):
     checkpoint_env = ""
     #: The lidar mount used when the source has no lidar in LIDAR_TOP's axes (`model_lidar2ego`).
     nominal_lidar2ego = NUSC_LIDAR2EGO
-    #: Whether a source's own lidar may stand in for the model's (only on nuScenes-trained models).
-    lidar_from_observation = True
     #: The environment variable that continues the plan past its own 3 s (`extend_horizon`); unset, the plan
     #: is the model's. NAVSIM scores 4 s and refuses a shorter plan; nothing else needs it.
     horizon_env = ""
@@ -783,6 +666,31 @@ class BevPlannerPolicy(Policy):
         extras = {"route_command": record} if record is not None and record["source"] == "route" else None
         return Trajectory(extend_horizon(xy, PLAN_DT, self.horizon_s), dt=PLAN_DT, extras=extras)
 
+    def infer_each(self, observations: list[Observation]) -> list[Trajectory]:
+        """Scene order: one reset, then a model step on every frame, as the repos' test loops step.
+
+        `infer` answers a call less than a plan step after the last one from the held plan, for clients
+        that ask faster than 2 Hz. nuScenes keyframes are 0.40-0.65 s apart -- 462 of val's 5,869 intervals
+        are 0.40 or 0.45 s -- and UniAD's and VAD's own test loops step on every one, so here no frame is
+        held, and the next frame is prepared while the model runs on this one (`_step_through`).
+        """
+        if not observations:
+            raise ValueError("infer_each needs at least one observation")
+        previous, self.self_prime = self.self_prime, False
+        try:
+            self.reset()
+            out = []
+            steps = self._step_through(list(observations))
+            for plan, lidar2ego in steps:
+                xy = lidar_plan_to_ego(plan, lidar2ego)
+                out.append(Trajectory(extend_horizon(xy, PLAN_DT, self.horizon_s), dt=PLAN_DT))
+            last = observations[-1]
+            self._held = (xy, np.asarray(last.ego2world, dtype=np.float64).copy(), int(last.timestamp_us))
+            self.last["frames_fed"] = 1
+            return out
+        finally:
+            self.self_prime = previous
+
     def _step(self, obs: Observation) -> tuple[np.ndarray, np.ndarray]:
         """One model step on `obs`: (the plan in the model's lidar frame, that lidar in the ego frame)."""
         return self._step_through([obs])[-1]
@@ -818,10 +726,7 @@ class BevPlannerPolicy(Policy):
 
     def _prepare_frame(self, obs: Observation) -> tuple[np.ndarray, str, dict[str, Any], Any]:
         """All a step needs before the model: (lidar2ego, where it came from, results, prepared input)."""
-        if self.lidar_from_observation:
-            lidar2ego, lidar_source = model_lidar2ego(obs.lidar2ego, self.nominal_lidar2ego)
-        else:
-            lidar2ego, lidar_source = np.asarray(self.nominal_lidar2ego, dtype=np.float64), "nominal"
+        lidar2ego, lidar_source = model_lidar2ego(obs.lidar2ego, self.nominal_lidar2ego)
         missing = [
             camera for camera in self.cameras if camera not in obs.images and camera not in obs.image_paths
         ]
@@ -922,7 +827,7 @@ def without_loaders(pipeline: list, drop: tuple[str, ...], keys: list[str] | Non
 
     The steps dropped load images or annotations from disk; the adapter hands over the images the loader
     would have produced and stubs the evaluation-only annotations itself. ``keys`` replaces the inner
-    ``CustomCollect3D``'s, as Bench2DriveZoo's own ``inference_only_pipeline`` does for the same models.
+    ``CustomCollect3D``'s.
     """
     import copy
 
@@ -1118,134 +1023,3 @@ def to_one_gpu(batch):
         return obj
 
     return move(batch)
-
-
-#: Image quality Bench2Drive's dataset was written at (``tools/data_collect.py``: ``cv2.imwrite`` of
-#: CARLA's BGR frames with IMWRITE_JPEG_QUALITY 20). Bench2DriveZoo's agents put every frame through the same
-#: round trip before the model sees it.
-B2D_JPEG_QUALITY = 20
-
-#: Bench2DriveZoo's file loaders, dropped from ``inference_only_pipeline`` as its agents drop them.
-B2D_LOADERS = ("LoadMultiViewImageFromFilesInCeph", "LoadMultiViewImageFromFiles")
-
-
-class B2DPlannerPolicy(BevPlannerPolicy):
-    """The Bench2Drive checkpoints, on Bench2DriveZoo's code, fed as its CARLA agents feed them.
-
-    ``team_code/{uniad,vad}_b2d_agent.py`` build the model (``build_model``, strict ``load_checkpoint``,
-    ``.cuda().eval()``), run the config's ``inference_only_pipeline`` without its file loader, collate,
-    move tensors to the GPU and call ``model(batch, return_loss=False, rescale=True)``. This does the same.
-    Where the agents and the dataset the checkpoints trained on disagree, the dataset wins, and each case is
-    named where it is handled: the colour order (`_results`), the heading at canbus 16 (`b2d_can_bus`).
-    """
-
-    cameras = B2D_CAMERAS
-    nominal_lidar2ego = B2D_LIDAR2EGO
-    #: The lidar is Bench2DriveZoo's virtual one, wherever the source's is.
-    lidar_from_observation = False
-
-    def _build(self) -> None:  # pragma: no cover - model environment only
-        import mmcv
-        import torch
-
-        # Bench2DriveZoo ships its own `mmcv` (mmcv + mmdet + mmdet3d 0.17.1 in one package), built in place,
-        # and it must shadow the env's mmcv-full: model.yaml puts the checkout first on PYTHONPATH.
-        vendored = Path(mmcv.__file__).resolve().parent.parent
-        if not (vendored / "adzoo").is_dir():
-            raise RuntimeError(
-                f"imported mmcv from {mmcv.__file__}, not Bench2DriveZoo's vendored package: the "
-                f"Bench2DriveZoo checkout must come first on PYTHONPATH (model.yaml runtime.pythonpath)"
-            )
-        from mmcv import Config
-        from mmcv.core.bbox import get_box_type
-        from mmcv.datasets.pipelines import Compose
-        from mmcv.models import build_model
-        from mmcv.parallel.collate import collate
-        from mmcv.utils import load_checkpoint
-
-        cfg = Config.fromfile(self.config)
-        anchors = cfg.model.get("motion_head", {}).get("anchor_info_path")
-        if anchors and not Path(anchors).is_file():
-            raise FileNotFoundError(
-                f"{anchors} not found from {os.getcwd()}: Bench2DriveZoo's config names it relative to the "
-                f"checkout, so the node must start there (model.yaml runtime.cwd)"
-            )
-        model = build_model(cfg.model, train_cfg=cfg.get("train_cfg"), test_cfg=cfg.get("test_cfg"))
-        load_checkpoint(model, self.checkpoint, map_location="cpu", strict=True)
-        model.cuda()
-        model.eval()
-        self.model = model
-        self.pipeline = Compose([p for p in cfg.inference_only_pipeline if p["type"] not in B2D_LOADERS])
-        self._torch, self._collate = torch, collate
-        self._box_type, _ = get_box_type("LiDAR")
-
-    def _results(self, obs: Observation, lidar2ego: np.ndarray) -> dict[str, Any]:
-        """The ``results`` dict of the agents' ``run_step``, from an observation instead of CARLA's sensors.
-
-        Colour: the dataset's frames were CARLA's BGR written by ``cv2.imwrite`` at JPEG quality 20 and read
-        back by ``mmcv.imread`` -- BGR -- and the configs normalise accordingly (UniAD's caffe mean expects
-        BGR; VAD's ``to_rgb=True`` converts from it). Bench2DriveZoo's agents convert CARLA's frames to RGB
-        before the same JPEG round trip, so they hand the model red and blue swapped. Here each frame goes
-        through the dataset's own round trip, in BGR.
-        """
-        import cv2
-
-        def dataset_round_trip(rgb: np.ndarray, k: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-            bgr = np.ascontiguousarray(rgb[:, :, ::-1])
-            ok, encoded = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), B2D_JPEG_QUALITY])
-            if not ok:
-                raise RuntimeError("JPEG encoding failed")
-            return cv2.imdecode(encoded, cv2.IMREAD_COLOR), k
-
-        images, projections, lidar2cams = [], [], []
-        views = self._views(obs, dataset_round_trip)
-        for camera, (image, k) in zip(self.cameras, views):  # noqa: B905 - runs on Python 3.9, no strict=
-            images.append(image)
-            projections.append(lidar2img(k, obs.camera2ego[camera], lidar2ego))
-            lidar2cams.append(np.linalg.inv(obs.camera2ego[camera]) @ lidar2ego)
-        can_bus, gravity = b2d_can_bus(obs.ego2world, obs.canbus)
-        l2g_r_mat, l2g_t = b2d_l2g(obs.ego2world)
-        command = b2d_command(obs)
-        self.last.update(command=command, gravity_added=gravity)
-        stacked_shape = np.stack(images, axis=-1).shape
-        results: dict[str, Any] = {
-            "lidar2img": np.stack(projections, axis=0),
-            "lidar2cam": np.stack(lidar2cams, axis=0),
-            "img": images,
-            "folder": " ",
-            "scene_token": self.scene_token,
-            "frame_idx": 0,
-            "timestamp": int(obs.timestamp_us) / 1e6,
-            "box_type_3d": self._box_type,
-            "can_bus": can_bus,
-            "command": command,
-            "l2g_r_mat": l2g_r_mat,
-            "l2g_t": l2g_t,
-            "img_shape": stacked_shape,
-            "ori_shape": stacked_shape,
-            "pad_shape": stacked_shape,
-        }
-        results.update(self._extra_results(command))
-        return results
-
-    def _extra_results(self, command: int) -> dict[str, Any]:
-        return {}
-
-    def _prepare(self, results: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover - model env only
-        """The agents' ``inference_only_pipeline`` and collate: the batch, still on the CPU."""
-        return self._collate([self.pipeline(results)], samples_per_gpu=1)
-
-    def _run(self, batch: dict[str, Any], results: dict[str, Any]) -> np.ndarray:  # pragma: no cover
-        torch = self._torch
-        for key, data in batch.items():
-            if key != "img_metas" and torch.is_tensor(data[0]):
-                data[0] = data[0].to("cuda")
-        with torch.no_grad():
-            output = self.model(batch, return_loss=False, rescale=True)
-        return self._plan(output, results)
-
-    def _forward(self, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover - model environment only
-        return self._run(self._prepare(results), results)
-
-    def _plan(self, output, results: dict[str, Any]) -> np.ndarray:  # pragma: no cover
-        raise NotImplementedError

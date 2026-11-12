@@ -247,6 +247,24 @@ class Sample:
 
 
 @dataclass
+class SampleSequence:
+    """Several samples scored from one in-order pass over a sequence of frames.
+
+    The alternative to one `Sample` each, for models whose own evaluation ran a scene once, in order,
+    carrying state from frame to frame (UniAD's and VAD's test loops keep the previous BEV grid and the
+    tracks). The node resets once, plans from every frame in turn (`Policy.infer_each`), and each sample
+    is scored from the plan made at its own frame. Each frame is one model step, where a window per
+    sample steps the model once per frame of every window.
+    """
+
+    sequence_id: str
+    #: Every frame fed, oldest first, from the start of the sequence to the last frame scored.
+    observations: list[Observation]
+    #: `(index into observations of the frame it is scored from, the sample)`, in frame order.
+    scored: list[tuple[int, Sample]]
+
+
+@dataclass
 class Episode:
     """One scoreable unit of a closed-loop benchmark."""
 
@@ -485,6 +503,30 @@ class OpenLoopBenchmark(Benchmark):
         harness -- a calibration table, a decoded segment, a counter -- is
         shared mutable state the moment a benchmark asks for a second node.
         """
+
+    def in_sequence(self) -> bool:
+        """Whether this run scores whole sequences in order (`sequences`) rather than one window per sample.
+
+        Asked by the runner before it starts a node. A benchmark that offers it says so in `run_config`
+        and refuses it in preflight for a model it would feed inputs the model was not built for.
+        Default: no.
+        """
+        return False
+
+    def sequences(
+        self,
+        limit: int | None = None,
+        split: str | None = None,
+        skip: Container[str] = (),
+    ) -> Iterator[SampleSequence]:
+        """The same samples as `samples`, grouped into the sequences they are scored from, in order.
+
+        Every frame from the start of a sequence to the last one scored is fed, so a sample's plan is
+        the same whatever else is skipped. `limit` and `skip` mean what they mean for `samples`: a cap on
+        the samples yielded, and ids already scored, which are left out of `scored` (a sequence with
+        none left is not yielded). Only called when `in_sequence` is true.
+        """
+        raise NotImplementedError(f"{type(self).__name__} scores one window per sample only")
 
     @abstractmethod
     def score(self, sample: Sample, prediction: Trajectory) -> dict[str, float]:

@@ -75,3 +75,10 @@ ranked_with_note: [VAD_HORIZON_S]
 # poses, and asks every 0.5 s (alpasim.yaml, paddock_bridge_nuscenes_rig.yaml). Not listed: comma2k19 sends one
 # camera.
 benchmarks: [hugsim, nuscenes, bench2drive, kitscenes, nuplan, neuroncap, navsim, navsim_v1, navhard, alpasim]
+
+# On nuScenes, each keyframe as VAD's own converter and VADCustomNuScenesDataset give it, not the inputs
+# paddock builds for every model: the ego quaternion as stored at canbus 3:7, each camera placed at its own ego
+# pose, the CAN-bus message after the keyframe, and VAD's command rule (benchmarks/nuscenes/infos.py,
+# docs/benchmarks/nuscenes.md "The datasets' own inputs"). The run records it.
+inputs:
+  nuscenes: vad
