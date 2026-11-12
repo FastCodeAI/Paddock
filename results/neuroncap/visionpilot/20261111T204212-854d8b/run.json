@@ -4,8 +4,8 @@
   "benchmark": "neuroncap",
   "model": "visionpilot",
   "mode": "closed_loop",
-  "started_utc": "2026-11-12T10:46:43+00:00",
-  "duration_s": 249.6,
+  "started_utc": "2026-11-12T11:59:37+00:00",
+  "duration_s": 298.0,
   "repo_sha": null,
   "dataset": {
     "name": "nuscenes",
@@ -41,8 +41,8 @@
       "pinned_sha": "e93eceaa"
     },
     "paddock": {
-      "sha": "e28ad8567847523d21d510b189d38c0ca98909fa",
-      "dirty": true
+      "sha": "9c43d50ec9591773a288b0669ecdeccbbe31acc8",
+      "dirty": false
     }
   },
   "status": "complete",
