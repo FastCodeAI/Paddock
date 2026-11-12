@@ -16,7 +16,7 @@
 # poster = "neuroncap/hero.jpg"
 # alt = "Every model driving the same neuroNCAP scene, side by side"
 
-base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/6a61b2b5a618a4fe60ede5a9a7ce9d3bf8e2f078/"
+base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/2496aa7b187f6fd7c6aa127fb62873c516224317/"
 
 # One line under a benchmark's videos, for what a viewer would otherwise misread. In
 # neuroNCAP scene 0108, OpenPilot and METEOR end 36 m and 51 m from the recorded path and
