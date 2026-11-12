@@ -435,7 +435,10 @@ collision definitions). So this column measures it at home, the way NAVSIM measu
 while OpenPilot, VisionPilot and METEOR meet nuScenes zero-shot. Its stage 1 also starts from BEVFormer's
 nuScenes detector, so the backbone saw nuScenes `train` twice. One protocol difference remains: UniAD's own
 evaluation runs each val scene front to back, carrying its tracks and BEV state from the scene's first
-frame; paddock feeds two seconds of keyframes before each scored one.
+frame; paddock feeds two seconds of keyframes before each scored one. And two input differences: paddock
+places every camera with the frame's one ego pose, where the converter uses each camera's own (up to 0.23 m
+at 3 s on the golden keyframes), and the ego quaternion's sign follows paddock's rule when the source sends
+none (up to 0.50 m); `test_golden.py` holds the adapter to the original pipeline given those inputs.
 
 ### VAD × nuscenes — trained on nuScenes train, scored on val
 

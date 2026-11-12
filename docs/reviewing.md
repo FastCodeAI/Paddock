@@ -61,8 +61,9 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   the review.
 - A PR that touches the UniAD / VAD adapters (`src/paddock/adapters/models/{uniad,vad,uniad_b2d,vad_b2d}/`)
   needs `make check-uniad-vad UNIAD_VAD_DATA=<dir>` too: each adapter, in its own env on the GPU, must plan
-  what the model's original data path plans on four nuScenes keyframes (`<dir>` holds scene-0103's camera
-  JPEGs). `make check` runs their paddock-env tests only. If your site has no such env, say so in the review.
+  what the model's own pipeline and forward plan on four nuScenes keyframes, given the inputs paddock's wire
+  carries (one ego pose per frame, the source's quaternion sign; the gaps that leaves are in
+  `test_golden.py`'s docstring). `<dir>` holds scene-0103's camera JPEGs. `make check` runs their paddock-env tests only. If your site has no such env, say so in the review.
 - If the site has a checkout of the upstream tool the PR shells out to (CARLA,
   neuro-ncap, NAVSIM's devkit), open it and verify the flags, file layouts and
   output schema the PR assumes. "Matches the 0.0.4 checkout" is a verified

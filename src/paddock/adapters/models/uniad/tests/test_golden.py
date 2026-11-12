@@ -1,4 +1,11 @@
-"""Each adapter plans exactly what its model's own data path plans, on the same four nuScenes keyframes.
+"""Each adapter plans what its model's own pipeline and forward plan, on the same four nuScenes keyframes.
+
+Exact, for the inputs paddock's wire can carry: every camera placed with the frame's one ego pose, and the
+quaternion sign the source sends (or paddock's continuous rule when it sends none); for the Bench2Drive
+checkpoints, the frames in BGR as the dataset was read in training. Three departures from the original path
+are measured in each fixture and not asserted (docs/models/uniad.md, vad.md, uniad_b2d.md): each camera's own
+ego pose (up to 0.23 m at 3 s for uniad, 0.04 m for vad), the stored quaternion sign against paddock's rule
+(up to 0.50 m and 0.71 m), and the Bench2Drive agents' RGB (up to 2.3 m for uniad_b2d, 1.2 m for vad_b2d).
 
 The claim pinned: fed through paddock -- an Observation of image paths, calibration, the LIDAR_TOP ego pose
 and the CAN-bus values, the adapter's own `infer` -- each model makes the plan its original tools make from
