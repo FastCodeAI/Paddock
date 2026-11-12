@@ -15,9 +15,9 @@ from paddock.policy.protocol import (
     Policy,
     Trajectory,
     constant_velocity,
+    grid_stride,
     load_frame,
     validate_extras,
-    wire_stride,
 )
 
 
@@ -286,8 +286,8 @@ def test_a_fine_plan_too_short_to_reach_three_seconds_is_refused() -> None:
 @pytest.mark.parametrize(
     ("dt", "stride"), [(0.5, 1), (0.25, 2), (0.1, 5), (0.05, 10), (0.2, None), (0.0, None)]
 )
-def test_wire_stride(dt: float, stride: int | None) -> None:
-    assert wire_stride(dt) == stride
+def test_grid_stride(dt: float, stride: int | None) -> None:
+    assert grid_stride(dt) == stride
 
 
 @pytest.mark.parametrize("columns", [2, 3])

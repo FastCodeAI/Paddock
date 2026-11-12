@@ -36,7 +36,7 @@ from typing import Any
 from paddock.adapters.benchmarks.neuroncap import nuscenes_subset, pdm_terms
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.metrics import pdm
-from paddock.policy.protocol import wire_stride
+from paddock.policy.protocol import grid_stride
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios_10hz"
 WAYPOINT_DT = 0.5
@@ -252,7 +252,7 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
         that does not divide 0.5 s has none to send, and `to_wire` would refuse the
         first plan -- an hour into a sweep, after the renderer and the checkpoint.
         """
-        if wire_stride(model.waypoint_dt) is None:
+        if grid_stride(model.waypoint_dt) is None:
             return [
                 f"{model.name} plans {model.waypoint_dt:g} s apart; neuroNCAP drives a plan's own "
                 f"points at every {WAYPOINT_DT:g} s and does not interpolate one, so the spacing "

@@ -82,17 +82,18 @@ N_WAYPOINTS = 6
 WIRE_DT = 0.5
 
 
-def wire_stride(dt: float) -> int | None:
-    """How many of a plan's points make one `WIRE_DT` step, or None if they never land on it.
+def grid_stride(dt: float, step_s: float = WIRE_DT) -> int | None:
+    """How many of a plan's points make one *step_s* step, or None if they never land on it.
 
-    A plan 0.5 s apart is sent point for point (stride 1); one 0.1 s apart has a point
-    at every 0.5 s time, every fifth (stride 5). Any other spacing would have to be
-    interpolated, which would send a smoothed plan, not the one the model gave.
+    A plan 0.5 s apart is read point for point on a 0.5 s grid (stride 1); one 0.1 s
+    apart has a point at every 0.5 s time, every fifth (stride 5). Any other spacing
+    would have to be interpolated, which would send or score a smoothed plan, not the
+    one the model gave. Used by `to_wire` and by harnesses scoring on a 0.5 s grid.
     """
     if dt <= 0:
         return None
-    stride = round(WIRE_DT / dt)
-    return stride if stride >= 1 and abs(stride * dt - WIRE_DT) < 1e-6 else None
+    stride = round(step_s / dt)
+    return stride if stride >= 1 and abs(stride * dt - step_s) < 1e-6 else None
 
 
 class Command(IntEnum):
@@ -588,7 +589,7 @@ class Trajectory:
         that steers a full pose (AlpaSim) reads this key; one that does not
         never sees it.
         """
-        stride = wire_stride(self.dt)
+        stride = grid_stride(self.dt)
         if stride is None:
             raise ValueError(
                 f"a plan {self.dt:g} s apart has no points on the {WIRE_DT:g} s grid closed-loop "
