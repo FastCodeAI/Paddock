@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -276,7 +276,8 @@ nuPlan data is claimed.
 - **Field of view.** The front and cross slots get 62° on NAVSIM and 70° on
   Bench2Drive, where the model saw 120°. On KITScenes every ring camera is about 87°:
   narrower than 120° in the front and cross slots, wider than 70° in the rear ones
-  (`slot_geometry` in the run record).
+  (`slot_geometry` in the run record). On nuScenes every ring slot is about 60°: half
+  the front and cross slots' 120°, and narrower than the rear slots' 70°.
 - **Lens.** The crop treats every camera as a pinhole; the training rig's lens model
   is not taken into account.
 - **No route distance on NAVSIM**, as above.
@@ -359,3 +360,27 @@ second at `f8a51e6`, the first at `30b616e`. The first was made again at that la
 commit so that its record lists the turn commands it was given, and every number came
 out the same as the first time. In each, the model wrote `<NOMINAL>` on 74 of the 223
 keyframes, and no plan was drawn again.
+
+### nuScenes
+
+All 5,119 keyframes of the 150 validation scenes, at nuScenes' 2 Hz. A frame 0.1 s old
+does not exist at 2 Hz, so each slot's −0.1 s frame is the −0.5 s one (`ALPAMAYO2_EDGE_FRAMES
+= nearest`), and the pose history between keyframes is rebuilt from their measured speeds.
+Edge's 64 points, 0.1 s apart, are read at every 0.5 s, which lands on its own points. The
+route is a sentence built from the recorded future, as for every model here: "Turn left in
+25m" on 257 keyframes, "Turn right in …" on 361, "Continue straight" on the rest.
+
+| L2 at 1 / 2 / 3 s (m) ↓ | Point L2 avg ↓ | Cumulative L2 avg ↓ | ADE at 3 s ↓ | Point collision avg ↓ | Run |
+|---|---:|---:|---:|---:|---|
+| 0.455 / 1.058 / 1.870 | **1.128** | 0.630 | 0.957 | 0.92 % | `nuscenes/alpamayo2edge/20261111T231928-e4e2d6` |
+
+Second on point L2 of the full-split rows, behind Qwen-Drive 1.0 (1.128 against 0.800), and
+below the constant-velocity baseline (1.288), which only Qwen-Drive had beaten. Alpamayo
+1.5's row is 1.487. Its point collision rate, 0.92 %, is the lowest after Qwen-Drive's
+0.77 %. nuScenes is not in Edge's claimed training data.
+
+Made at `e931fbf` with no local changes on one H200, 64 minutes. That commit is on the
+branch `alpamayo2edge/nuscenes-neuroncap`; its Edge adapter and nuScenes code are this
+branch's, and the one other file it differs in, `policy/protocol.py`, changes only what a
+closed-loop simulator is sent. The model wrote
+`<NOMINAL>` on 1,967 of the 5,119 keyframes (38 %), and no plan was drawn again.
