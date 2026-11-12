@@ -264,7 +264,9 @@ serialize = true
 
 # [benchmarks.kitscenes]
 # The shared keyframe list every model is scored on. It *is* the benchmark:
-# two models scored on different lists are not comparable.
+# two models scored on different lists are not comparable. Leave it unset to
+# score the 223 keyframes in adapters/benchmarks/kitscenes/sample_list.csv,
+# which every stored run scored; name another .csv or .pkl only on purpose.
 # sample_list = "/path/to/kitscenes_e2e_final.pkl"
 #
 # Height of the KITScenes reference frame (the roof pod) above the road, in
@@ -410,6 +412,13 @@ serialize = true
 # AutoE2E on Bench2Drive needs no pairing for its own 10 Hz: model.yaml declares
 # planning_hz 10 (docs/models/autoe2e.md, "On Bench2Drive"). The pairing that did
 # it before, AUTOE2E_REPLAN_S = "0.1", overrides a declared key: valid: false.
+#
+# Alpamayo 2 Edge on comma2k19 needs this pairing, or every plan is refused after
+# the checkpoint loads: comma2k19 records one camera and Edge requires six slots.
+# "black" fills the four with no camera with black frames; the run stays ranked
+# and the leaderboard notes it (docs/models/alpamayo2edge.md).
+# [models.alpamayo2edge.benchmarks.comma2k19.env]
+# ALPAMAYO2_EDGE_ABSENT_CAMERAS = "black"
 
 # Drive-JEPA reads each camera at its own intrinsics by default ("native"), which
 # is how every published drivejepa row was made. "openscene" crops each camera

@@ -1,0 +1,155 @@
+{
+  "run_id": "20261111T231928-e4e2d6",
+  "site": "renesas-sjccomp250",
+  "benchmark": "nuscenes",
+  "model": "alpamayo2edge",
+  "mode": "open_loop",
+  "started_utc": "2026-11-11T23:19:28+00:00",
+  "duration_s": 3864.2,
+  "repo_sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 5119,
+    "sequences_sha256": "b507a7d90c5ccae9"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "camera_history": "keyframes",
+    "history_seconds": 2.0,
+    "scoring_hz": 2.0,
+    "declared_env": {
+      "ALPAMAYO2_EDGE_CHECKPOINT": "{weights}/Alpamayo2-Edge",
+      "ALPAMAYO2_EDGE_FRAMES": "nearest",
+      "ALPAMAYO2_EDGE_HISTORY": "hermite",
+      "ALPAMAYO2_EDGE_SAMPLES": "1",
+      "ALPAMAYO2_EDGE_SEED": "43",
+      "HF_HUB_OFFLINE": "1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo2-edge",
+      "sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+      "pinned_sha": "02f55a7",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "e931fbf26326697354b208da13b1dc12e7c88a7e",
+      "dirty": false
+    },
+    "policy": {
+      "settings": {
+        "frames": "nearest",
+        "history": "hermite",
+        "samples": 1,
+        "seed": 43,
+        "nav_distance_m": null,
+        "save_reasoning": false
+      },
+      "checkpoint": "Alpamayo2-Edge",
+      "slots": [
+        "0: CAM_FRONT_LEFT",
+        "1: CAM_FRONT",
+        "2: CAM_FRONT_RIGHT",
+        "3: CAM_BACK_LEFT",
+        "5: CAM_BACK_RIGHT",
+        "6: CAM_FRONT, 30 deg crop"
+      ],
+      "slot_geometry": {
+        "0": {
+          "bearing_deg": 55.2,
+          "hfov_deg": 60.7
+        },
+        "1": {
+          "bearing_deg": 0.3,
+          "hfov_deg": 59.5
+        },
+        "2": {
+          "bearing_deg": -56.4,
+          "hfov_deg": 59.3
+        },
+        "3": {
+          "bearing_deg": 108.6,
+          "hfov_deg": 59.8
+        },
+        "5": {
+          "bearing_deg": -110.8,
+          "hfov_deg": 58.6
+        },
+        "6": {
+          "bearing_deg": 0.3,
+          "hfov_deg": 30.0
+        }
+      },
+      "plans": 5119,
+      "nominal_rationales": 1967,
+      "drawn_again": 0,
+      "mean_ms": {
+        "inputs": 252.9,
+        "model": 488.3,
+        "rest": 0.1
+      },
+      "warp_cache": {
+        "entries": 128,
+        "hits": 81904,
+        "misses": 30714
+      },
+      "last": {
+        "nav_text": "Turn left in 13m",
+        "frame_times_s": {
+          "0": [
+            -1.0,
+            -0.5,
+            0.0
+          ],
+          "1": [
+            -2.001,
+            -1.0,
+            -0.5,
+            -0.5,
+            0.0
+          ],
+          "2": [
+            -1.0,
+            -0.5,
+            0.0
+          ],
+          "3": [
+            -1.0,
+            -0.5,
+            0.0
+          ],
+          "5": [
+            -1.0,
+            -0.5,
+            0.0
+          ],
+          "6": [
+            -2.001,
+            -1.0,
+            -0.5,
+            -0.5,
+            0.0
+          ]
+        },
+        "history_extrapolated_s": 0.0,
+        "reasoning": "Proceed into the intersection and turn left to follow our route, as the lead vehicle has cleared our path under the green traffic signal.",
+        "plan_reach_m": 34.04,
+        "seed": 43
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

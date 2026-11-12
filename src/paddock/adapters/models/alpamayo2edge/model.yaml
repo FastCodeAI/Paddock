@@ -23,9 +23,17 @@ runtime:
     ALPAMAYO2_EDGE_HISTORY: "hermite"
     ALPAMAYO2_EDGE_SAMPLES: "1"
     ALPAMAYO2_EDGE_SEED: "43"
+    # A slot whose camera the source never sends stops the plan. comma2k19 sets
+    # "black" (score_notes below): it records one camera of Edge's six.
+    ALPAMAYO2_EDGE_ABSENT_CAMERAS: "refuse"
+    # torch's CPU threads. Torch takes every core by default, and on a 48-core box
+    # shared with CARLA the vendor's processor then spends 1.4 s packing one plan's
+    # frames, against 0.18 s with 4 threads; the plan is the same at any count.
+    ALPAMAYO2_EDGE_THREADS: "4"
   # Read from the shell that launches `paddock run`, so `ALPAMAYO2_EDGE_HISTORY=linear
   # paddock run ...` reaches the node. Any of these set to something other than
-  # the declared value stores the run valid: false, except SAVE_REASONING.
+  # the declared value stores the run valid: false, except SAVE_REASONING and THREADS,
+  # and ABSENT_CAMERAS, which stays ranked with its note.
   env_passthrough:
     - ALPAMAYO2_EDGE_FRAMES
     - ALPAMAYO2_EDGE_HISTORY
@@ -33,8 +41,11 @@ runtime:
     - ALPAMAYO2_EDGE_SEED
     - ALPAMAYO2_EDGE_NAV_DISTANCE_M
     - ALPAMAYO2_EDGE_SAVE_REASONING
-  # Only adds the rationale to each plan's extras; the plan is the same.
-  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING]
+    - ALPAMAYO2_EDGE_ABSENT_CAMERAS
+    - ALPAMAYO2_EDGE_THREADS
+  # SAVE_REASONING only adds the rationale to each plan's extras, and THREADS only
+  # changes how fast the CPU packs the input; the plan is the same.
+  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING, ALPAMAYO2_EDGE_THREADS]
 
 capabilities:
   # CAM_FRONT first: NAVSIM's 10 Hz path keys its history on the first camera.
@@ -45,7 +56,10 @@ capabilities:
   vram_gb: 8
   # A 5 GB checkpoint read from a network disk, then the processor.
   startup_timeout_s: 900
-  # All 64 poses go back, 0.1 s apart; NAVSIM resamples them to its 0.5 s grid.
+  # All 64 poses go back, 0.1 s apart. NAVSIM resamples them to its 0.5 s grid;
+  # KITScenes scores every fifth, and nuScenes reads the plan at every 0.5 s, which
+  # lands on the same points (each harness's plan_on_grid); a closed-loop client is
+  # sent every fifth as its six 0.5 s points (Trajectory.to_wire).
   waypoint_dt: 0.1
   # No floor. Every frame carries the time it was taken into the prompt, and the
   # 0.1 s pose history is rebuilt from slower poses with their measured speeds
@@ -55,6 +69,12 @@ capabilities:
   # The vendor's loader: 0.1 s apart at the newest frames, 2 s of history. A
   # benchmark holding 10 Hz frames (NAVSIM with [benchmarks.navsim] nuplan) feeds them.
   native_input_hz: 10.0
+  # How often it plans in closed loop: once per frame of that 0.1 s grid, as
+  # Alpamayo 1.5, whose loader has the same grid, declares. Bench2Drive steps at
+  # 20 Hz, so it asks once every 0.1 s and follows the last plan in between; the
+  # frames Edge then holds are 0.1 s apart, exactly the ones its slots and its pose
+  # history ask for. NVIDIA states no rate of its own.
+  planning_hz: 10.0
   history_s: 2.0
 
   # -- model card (docs/models/alpamayo2edge.md) --
@@ -97,5 +117,14 @@ capabilities:
     #    public driving set is named, and no NAVSIM or nuPlan data is claimed.
     - dataset: nvidia-physical-ai
 
+# Settings that change what a score means; the leaderboard prints the line under a
+# ranked run that set one to anything but its declared value.
+score_notes:
+  ALPAMAYO2_EDGE_ABSENT_CAMERAS: "slots with no source camera fed {value} frames; the front and telephoto real"
+# Of those, what a site may set and stay ranked. comma2k19 cannot be scored without
+# it: one recorded camera, and the vendor requires all six slots.
+ranked_with_note: [ALPAMAYO2_EDGE_ABSENT_CAMERAS]
+
 # One key: two `benchmarks:` lines keep only the last.
-benchmarks: [navsim, navsim_v1]
+# comma2k19 needs ALPAMAYO2_EDGE_ABSENT_CAMERAS=black (see above).
+benchmarks: [navsim, navsim_v1, bench2drive, kitscenes, nuscenes, comma2k19, neuroncap]

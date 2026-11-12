@@ -249,6 +249,8 @@ def tick_record(
     lights: dict | None = None,
     actors: list | None = None,
     asked: bool = True,
+    plan=None,
+    dt: float | None = None,
 ) -> dict:
     """One line of ``ticks.jsonl``.
 
@@ -262,6 +264,9 @@ def tick_record(
     ``sent``     what the node was given besides pixels: command, navigation
                  (the route polyline included), the agent's acceleration estimate
     ``reply``    the node's JSON exactly as returned (trajectory, dt, extras)
+    ``plan``     the points the controller followed, ``dt`` s apart (``pid.on_grid``):
+                 the reply's own points every 0.5 s. For a plan 0.5 s apart they are the
+                 reply's ``trajectory``, which is recorded when ``plan`` is None
     ``control``  steer / throttle / brake and the tracker's target speed
     ``route``    nearest route index, along-route metres, distance off the route
     ``lane``     the map lane under the ego and the ego's offset and heading in it
@@ -275,8 +280,8 @@ def tick_record(
         "infer_ms": round(infer_ms, 1),
         "ego": rounded(ego, 4),
         "sent": rounded(sent, 4),
-        "plan": rounded(reply.get("trajectory"), 3),
-        "dt": reply.get("dt"),
+        "plan": rounded(reply.get("trajectory") if plan is None else plan, 3),
+        "dt": reply.get("dt") if dt is None else dt,
         "extras": rounded(reply.get("extras") or {}, 3),
         "ctrl": rounded(control, 4),
     }

@@ -8,7 +8,7 @@
 | Dataset | `comma2k19` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/comma2k19/`](../../src/paddock/adapters/benchmarks/comma2k19/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -96,6 +96,7 @@ row is read with it.
 |---|---|
 | OpenPilot | the road frame in both its narrow and wide inputs, each warped with the road camera's own lens. Upstream `modeld` does the same on a one-camera device, and lists the EON that recorded comma2k19 as one |
 | Alpamayo 1.5 | a front-wide crop and a 30° tele crop of the road frame; its front-left and front-right cameras are left out, which the model accepts |
+| Alpamayo 2 Edge | the road frame in its front slot and a 30° tele crop of it in its telephoto slot; its four other slots are black, because the vendor's code requires all six. The run sets `ALPAMAYO2_EDGE_ABSENT_CAMERAS=black` to allow that, and its diagnostics list them as `black_slots` |
 | METEOR | a front-wide crop and a 30° narrow window of the road frame; its six other slots are black, which is how its training marks a missing camera |
 | AutoE2E | the road frame in its front view; its five other views are masked out |
 | Qwen-Drive | the road frame in its front view; its front-left and front-right views are black, because the model has no flag for a missing camera. The run's diagnostics list them as `blank_views` |
@@ -646,7 +647,7 @@ recorded samples rather than by eye so that "a curve" means a measured one:
 | sustained curve | speed > 20 m/s, \|yaw rate\| > 0.06 rad/s | `4/99c94dc769b5d96e\|2018-06-27--15-03-44/18/998` |
 | pull-away from low speed | lowest speeds, ranked by distance covered over the horizon — 2.65 m/s travelling 20.7 m, so a real departure and not a parked car | `8/99c94dc769b5d96e\|2018-08-17--15-51-25/6/999` |
 
-One sample id addresses the same scene for every row, because all eight runs score
+One sample id addresses the same scene for every row, because all nine runs score
 the identical sample set. The mp4s land in `{runs}/comma2k19/_samples/` and are
 not tracked — they are tens of megabytes and regenerate from the stored runs.
 
@@ -723,7 +724,7 @@ into the car's frame too.
 ## Recorded results
 
 The full dataset, 10,165 samples, every row on the identical sample set
-(`sequences_sha256` `293a225a0b5cbaff` in all eight run records). A model is
+(`sequences_sha256` `293a225a0b5cbaff` in all nine run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
@@ -745,6 +746,7 @@ failure.
 
 | | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | miss@3s | PDMS-style ↑ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo2edge (`Alpamayo2-Edge` f8951d0, the road camera in 2 of 6 slots, 4 black) | 6 s | 0.086 | 0.225 | **0.438** | 0.713 | 1.043 | — | 1.013 | 0.356 | 0.089 | 0.949 |
 | qwendrive (`Qwen-Drive-1.0-4B`, side slots black) | 5 s | 0.154 | 0.326 | **0.589** | 0.946 | 1.411 | — | 1.316 | 0.498 | 0.195 | 0.779 |
 | alpamayo15 (`Alpamayo-1.5-10B`, 2 of 4 camera slots) | 4 s | 0.152 | 0.427 | 0.819 | 1.314 | — | — | 1.864 | 0.737 | 0.395 | 0.690 |
 | openpilot (`small`, combined graph, `555f48c5d`) | 10 s | 0.299 | 0.548 | 0.843 | 1.185 | 1.582 | 4.396 | 1.611 | 0.643 | 0.293 | 0.816 |
@@ -864,8 +866,8 @@ Its plan is also much smoother than supercombo's: `comfort_within_bounds` 0.991
 against 0.322, and `comfort_lon_jerk_max` 0.58 m/s³ against 5.05 — see the jerk
 result below, which is the same measurement from the other side.
 
-Of the eight, only openpilot and visionpilot publish auxiliary heads through
-`Trajectory.extras`; alpamayo15 and qwendrive emit a trajectory and nothing else,
+Of the nine, only openpilot and visionpilot publish auxiliary heads through
+`Trajectory.extras`; alpamayo15, alpamayo2edge and qwendrive emit a trajectory and nothing else,
 and autoe2e's, meteor's and drivejepa's extras are their own diagnostics, so every
 metric in the next two paragraphs is `NaN` for them.
 That is the intended behaviour of one declared metric list rather than a
@@ -1089,11 +1091,13 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 place a keyframe at all, so it is 2033 × 5 (`{0: 2, 5: 2033}`) — derived, with
 both segments named, in [docs/datasets/comma2k19.md](../datasets/comma2k19.md).
 Every row is over the identical sample set (`sequences_sha256 =
-293a225a0b5cbaff` in all eight `run.json`), and every row was re-run in November
+293a225a0b5cbaff` in all nine `run.json`), and every row was re-run in November
 2026 and scored against a ground truth in the car's frame (see [Recorded
-results](comma2k19.md#recorded-results)). **Qwen-Drive leads at every horizon
-from 2 s to its 5 s, on the mean and the median, on one camera**: its two side
-views are black, where it was trained on three cameras. Alpamayo 1.5 and
+results](comma2k19.md#recorded-results)). **Alpamayo 2 Edge leads at every horizon
+from 1 s to 5 s, on the mean and the median, on one camera** (0.438 at 3 s): four of its
+six slots are black, and its front slot is 65° where it was trained on 120°. Qwen-Drive is
+second (0.589), on one camera too: its two side views are black, where it was trained on three
+cameras. Alpamayo 1.5 and
 OpenPilot follow within 2.4 cm of each other at 3 s, Alpamayo on a **shorter
 horizon and one camera** (it plans 4 s where supercombo plans 10, and two of its
 four view slots go unsent). Only OpenPilot plans 10 s. **Drive-JEPA's 18.754 is
@@ -1123,8 +1127,9 @@ padded. Lower is better throughout.
 
 | Model | horizon | ADE@1s | ADE@2s | **ADE@3s** | ADE@4s | ADE@5s | ADE@10s | FDE@3s | median ADE@3s | PDMS-style ↑ ⁂ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Qwen-Drive 1.0 | 5 s | 0.154 | **0.326** | **0.589** | **0.946** | **1.411** | — | **1.316** | **0.498** | 0.779 |
-| Alpamayo 1.5 | 4 s | **0.152** | 0.427 | 0.819 | 1.314 | — | — | 1.864 | 0.737 | 0.690 |
+| Alpamayo 2 Edge | 6 s | **0.086** | **0.225** | **0.438** | **0.713** | **1.043** | — | **1.013** | **0.356** | **0.949** |
+| Qwen-Drive 1.0 | 5 s | 0.154 | 0.326 | 0.589 | 0.946 | 1.411 | — | 1.316 | 0.498 | 0.779 |
+| Alpamayo 1.5 | 4 s | 0.152 | 0.427 | 0.819 | 1.314 | — | — | 1.864 | 0.737 | 0.690 |
 | OpenPilot | 10 s | 0.299 | 0.548 | 0.843 | 1.185 | 1.582 | **4.396** | 1.611 | 0.643 | 0.816 |
 | Baseline (Constant Velocity) | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.650 |
 | AutoE2E | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.766 |
@@ -1144,7 +1149,16 @@ extends the same arithmetic to 10 s, but its figures (2.411 / 3.331 / 10.048 at
 4, 5 and 10 s) predate the ground truth in the car's frame, so they are not
 set against OpenPilot's 4.396 at 10 s here.
 
-**Qwen-Drive and Alpamayo lead on less input than OpenPilot.** Both see one
+**Alpamayo 2 Edge plans 64 points 0.1 s apart.** Its ADE and FDE are scored on its
+own points at every 0.5 s, as every other row's are; nothing is interpolated. Its
+comfort terms are on the same 0.5 s grid as every other row's: the shared comfort
+code (`paddock/metrics/comfort.py`) moves any plan finer than 0.5 s onto that grid
+before measuring, and for a 0.1 s plan those are its own points. Only the
+lead-vehicle check reads the whole 0.1 s plan. Four of its
+six slots are black (`ALPAMAYO2_EDGE_ABSENT_CAMERAS=black`, which the leaderboard
+notes under the run). Run `20261112T012152-9b1e09`.
+
+**Edge, Qwen-Drive and Alpamayo lead on less input than OpenPilot.** Both see one
 camera where they expect several view slots — comma2k19 is a single forward
 camera, so Alpamayo's +55°/−55° slots go unsent and Qwen-Drive's side views are
 black — and both plan well short of supercombo's 10 s. Qwen-Drive is ahead of
@@ -1230,6 +1244,7 @@ derivation and what it still cannot see.
 
 [OpenPilot](../../results/comma2k19/openpilot/20261106T003719-5cde54/metrics.json)
 · [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20261106T005600-6c52a2/metrics.json)
+· [Alpamayo 2 Edge](../../results/comma2k19/alpamayo2edge/20261112T012152-9b1e09/metrics.json)
 · [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20261106T030530-7d9fd3/metrics.json)
 · [Drive-JEPA](../../results/comma2k19/drivejepa/20261106T192049-391e2d/metrics.json)
 · [VisionPilot](../../results/comma2k19/visionpilot/20261106T003749-c10a7f/metrics.json)
