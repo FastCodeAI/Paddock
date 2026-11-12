@@ -866,6 +866,28 @@ class Policy(ABC):
         finally:
             self.self_prime = previous
 
+    def infer_each(self, observations: list[Observation]) -> list[Trajectory]:
+        """Plan from every frame of one sequence in order, one plan per frame: a whole scene as one episode.
+
+        The other open-loop shape. `infer_sequence` resets before each scored frame and replays a short
+        window of its past; this resets once and infers every frame in turn, so a model that carries
+        state from one frame to the next (a previous BEV grid, tracks) has, at each frame, the state its
+        own evaluation loop gave it -- UniAD's and VAD's test scripts run each scene once, in order. A
+        harness scores whichever of the plans it needs. Self-priming is off for the same reason as in
+        `infer_sequence`: the real past is being fed.
+
+        A model that answers some calls without stepping (a plan held between replans) overrides this
+        so that every frame here is a step, as it was in the evaluation being reproduced.
+        """
+        if not observations:
+            raise ValueError("infer_each needs at least one observation")
+        previous, self.self_prime = self.self_prime, False
+        try:
+            self.reset()
+            return [self.infer(obs) for obs in observations]
+        finally:
+            self.self_prime = previous
+
     def diagnostics(self) -> dict[str, Any]:
         """Whatever helps confirm the adapter is wired correctly.
 

@@ -8,7 +8,7 @@
 | Dataset | `comma2k19` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/comma2k19/`](../../src/paddock/adapters/benchmarks/comma2k19/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -101,6 +101,7 @@ row is read with it.
 | AutoE2E | the road frame in its front view; its five other views are masked out |
 | Qwen-Drive | the road frame in its front view; its front-left and front-right views are black, because the model has no flag for a missing camera. The run's diagnostics list them as `blank_views` |
 | Drive-JEPA | the road frame in its front view; its front-left, front-right and back views are black. The model keeps only its front camera, so they never reach the plan; they are there because its loader expects four. The run's diagnostics list them as `blank_views` |
+| UniAD, VAD | the road frame as CAM_FRONT, at its own intrinsics and mount; their five other slots are black at nuScenes' own calibration of them, because the spatial cross-attention projects every BEV point through all six. The run's diagnostics list them as `blank_views` |
 | VisionPilot | its one camera |
 | constant velocity | no image |
 

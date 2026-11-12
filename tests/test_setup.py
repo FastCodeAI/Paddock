@@ -507,7 +507,7 @@ def _run_conda_setup(model: str, tmp_path: Path, venv: Path) -> tuple[subprocess
     return done, log.read_text() if log.exists() else ""
 
 
-@pytest.mark.parametrize("model", ["drivejepa", "visionpilot"])
+@pytest.mark.parametrize("model", ["drivejepa", "visionpilot", "uniad"])
 def test_conda_setup_leaves_an_existing_environment_alone(model: str, tmp_path: Path) -> None:
     """`conda create -y -p` deletes what is at the path, and a site's venv can be a shared one.
 
@@ -523,6 +523,16 @@ def test_conda_setup_leaves_an_existing_environment_alone(model: str, tmp_path: 
     assert done.returncode == 1 and "already exists" in done.stderr
     assert calls == "", "conda or pip ran against an environment that was already there"
     assert (venv / "bin" / "python").exists()
+
+
+def test_uniad_setup_asks_for_bench2drivezoo_before_building_anything(tmp_path: Path) -> None:
+    """The shared UniAD/VAD env copies two kernels from Bench2DriveZoo's checkout. Asked for only after the
+    ~45-minute mmcv-full build, a missing checkout cost the whole build, and a re-run stopped at the
+    existing-env guard."""
+    done, calls = _run_conda_setup("uniad", tmp_path, tmp_path / "env")
+    assert done.returncode == 1 and "need Bench2DriveZoo's checkout" in done.stderr
+    assert calls == "", f"conda or pip ran before the checkout was asked for: {calls!r}"
+    assert not (tmp_path / "env").exists()
 
 
 @pytest.mark.parametrize("model", ["drivejepa", "visionpilot"])

@@ -8,7 +8,7 @@
 | Dataset | rendered by the simulator |
 | Primary metric | `scene_score` |
 | Adapter | [`adapters/benchmarks/alpasim/`](../../src/paddock/adapters/benchmarks/alpasim/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md) |
 
 <!-- /summary -->
 
@@ -201,6 +201,26 @@ from the table above, and two more switches, also off for every other profile:
 Qwen-Drive profiles send, so these two switches are checked to change none of
 them. What the node does with them, and what still differs from the native
 runs, is in [docs/models/alpamayo15.md](../models/alpamayo15.md#on-alpasim-through-the-bridge).
+
+UniAD's and VAD's are one profile, a test checks they agree. Like AutoE2E's, it
+re-renders AlpaSim's six cameras as undistorted pinholes with the view straight
+back on the telephoto's id, here as nuScenes' rig: 1600×900, at the intrinsics
+and poses nuScenes calibrated on the log of scene-0103, every camera's pose
+included (`configs/driver/paddock_bridge_nuscenes_rig.yaml`; a test checks each
+number against the adapters' golden fixture). The cameras render every 500 ms,
+not every control step: every camera's first frame closes at the first policy
+step and the 500 ms replan grid starts there, so each replan's newest frame
+closed at that replan's own time, at a tenth of the render cost (the driver
+config's header has the reasoning, a test the equalities). The node is asked
+every 0.5 s with the warm-up sent to `/observe`, and `--canbus-ego-frame` and
+`--canbus-acceleration` put velocity and acceleration where nuScenes' CAN bus
+has them. `--send-route` and `--send-route-time` send the route and its frame's
+time, and the node turns the route into the right / left / forward command by
+the rule the nuScenes datasets labelled with (where the lidar would be 3 s along
+the route, ±2 m sideways; `bev_planners.route_command`), logged with each plan
+in the per-replan log. Same warm-up, control step and 30 pinned scenes as
+Drive-JEPA's; not yet run. What the models then read is in
+[docs/models/uniad.md](../models/uniad.md#benchmarks).
 
 ## Configuration
 

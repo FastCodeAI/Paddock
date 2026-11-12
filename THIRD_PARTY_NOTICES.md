@@ -17,6 +17,8 @@ comes under its owner's licence and terms, which you accept when you download it
 | `src/paddock/adapters/models/visionpilot/policy.py`, in part, ported from C++ | [Autoware Foundation VisionPilot](https://github.com/autowarefoundation/vision_pilot): `longitudinal_fusion.cpp`, `longitudinal_planning.cpp`, `planning.cpp` and `auto_speed.cpp` | Apache-2.0 |
 | `src/paddock/adapters/benchmarks/bench2drive/pid.py`, reimplemented | The control law of the PID controller in [TCP](https://github.com/OpenDriveLab/TCP) (`leaderboard/team_code/pid_controller.py`), which the UniAD and VAD agents of Bench2Drive's baselines also use | Apache-2.0 |
 | `src/paddock/adapters/benchmarks/comma2k19/calibration.py`, reimplemented | The camera-calibration formula, filters and constants of [openpilot](https://github.com/commaai/openpilot)'s `calibrationd.py` | MIT, Copyright (c) 2018, Comma.ai, Inc. |
+| `src/paddock/adapters/models/uniad/tests/golden_reference.py`, in part: a one-off tool, not part of the adapter, that runs the models' own data path once to write the UniAD and VAD golden fixtures | `_get_can_bus_info` and `obtain_sensor2top` of the nuScenes converters in [OpenDriveLab UniAD](https://github.com/OpenDriveLab/UniAD) and [hustvl VAD](https://github.com/hustvl/VAD) (`tools/data_converter/`), and the sample-building maths of their datasets | Apache-2.0 |
+| `src/paddock/adapters/models/uniad/bev_planners.py`, in part | The nuScenes CAN-bus layout and command label rule of UniAD's and VAD's converters | Apache-2.0 |
 | `src/paddock/adapters/models/meteor/policy.py`: METEOR's camera rig, as numbers (intrinsics, and three rows of each camera's transform) | [TIER IV METEOR](https://github.com/tier4/METEOR): `bevlane/ref_rig_drs.npz` | Apache-2.0 |
 
 Each file names its source, at the top or beside the copied lines.
@@ -25,6 +27,7 @@ Each file names its source, at the top or beside the copied lines.
 
 | Files | Source | Licence |
 |---|---|---|
+| `src/paddock/adapters/models/uniad/tests/fixtures/golden_*.json`; `src/paddock/adapters/models/uniad/bev_planners.py` (`NUSC_LIDAR2EGO`); `src/paddock/adapters/benchmarks/alpasim/configs/driver/paddock_bridge_nuscenes_rig.yaml` | From nuScenes scene-0103: camera calibration, the lidar mount and ego poses (all three files), and for four keyframes their sample tokens and CAN-bus `pose` readings (the fixtures) | [CC BY-NC-SA 4.0 and Motional's terms](https://www.nuscenes.org/terms-of-use) |
 | `src/paddock/adapters/benchmarks/nuscenes/val_scenes.json` | The nuScenes validation split, as listed in Motional's [nuscenes-devkit](https://github.com/nutonomy/nuscenes-devkit) (`python-sdk/nuscenes/utils/splits.py`) | Apache-2.0, Copyright 2021 Motional |
 | `src/paddock/adapters/benchmarks/neuroncap/scenarios_10hz/` | [neuro-ncap](https://github.com/atonderski/neuro-ncap)'s `scenarios/`, with the time step changed from 0.5 s to 0.1 s | MIT, Copyright (c) 2024 William Ljungbergh & Adam Tonderski |
 | `src/paddock/adapters/benchmarks/alpasim/scenes/` | Scene IDs and file paths as listed in [NVIDIA AlpaSim](https://github.com/NVlabs/alpasim)'s `data/scenes/` | Apache-2.0, Copyright 2025 NVIDIA Corporation |
@@ -42,7 +45,10 @@ project's licence.
 | Directory | Project | Licence of the code the patches edit |
 |---|---|---|
 | `patches/neuro-ncap/` | [neuro-ncap](https://github.com/atonderski/neuro-ncap) | MIT, Copyright (c) 2024 William Ljungbergh & Adam Tonderski |
+| `src/paddock/adapters/models/uniad/env/mmdet3d-0.17.1.patch`, applied by `uniad/setup.sh` to the PyPI sdist (outside `patches/`, so `tools/ci/check_patches.py` does not check it) | [OpenMMLab mmdetection3d](https://github.com/open-mmlab/mmdetection3d) 0.17.1 | Apache-2.0 |
 | `patches/Drive-JEPA/` | [Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) | Apache-2.0 |
+| `patches/UniAD/` | [UniAD](https://github.com/OpenDriveLab/UniAD) | Apache-2.0 |
+| `patches/Bench2DriveZoo/` | [Bench2DriveZoo](https://github.com/Thinklab-SJTU/Bench2DriveZoo) | The files they edit are in its vendored copy of OpenMMLab's [mmcv](https://github.com/open-mmlab/mmcv) (`mmcv/datasets/pipelines/data_augment_utils.py`, `mmcv/ops/csrc/pytorch/cpu/nms_rotated.cpp`), Apache-2.0 upstream. Bench2DriveZoo's own LICENSE is CC BY-NC-ND 4.0. |
 | `patches/HUGSIM/` | [HUGSIM](https://github.com/hyzhou404/HUGSIM) | MIT, Copyright (c) 2024 X-Dimensional Representations Lab (X-D Lab) of Zhejiang University |
 | `patches/Bench2Drive/` | [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | The file they edit, `leaderboard/leaderboard/leaderboard_evaluator.py`, is headed "Copyright (c) 2018-2019 Intel Corporation" and "licensed under the terms of the MIT license". The code the patches change, the crash handler's kill command and the loop that connects to CARLA, was added by Bench2Drive and is not in CARLA's original file, so that header may not cover it. Bench2Drive's README says: "All assets and code are under the CC-BY-NC-ND unless specified otherwise." |
 
