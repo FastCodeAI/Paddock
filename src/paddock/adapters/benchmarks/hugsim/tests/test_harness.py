@@ -171,3 +171,11 @@ def test_frames_between_plans_are_recorded_for_a_model_asked_slower_than_its_his
     plain = SimpleNamespace(planning_hz=2.0, native_input_hz=0.0, cameras=["CAM_FRONT"])
     assert HugsimBenchmark.model_run_config(None, dense)["observe"] is True
     assert "observe" not in HugsimBenchmark.model_run_config(None, plain), "other models keep their run id"
+
+
+def test_the_plan_sent_is_in_the_run_config() -> None:
+    """A run started with the wire's six waypoints and resumed with the whole plan would merge two protocols
+    under one run id: the plan sent and the IDM guard are in the hashed config, so `--resume` refuses."""
+    config = harness.HugsimBenchmark.run_config(None)
+    assert config["plan_sent"] == "the reply's whole plan, up to 8 waypoints 0.5 s apart"
+    assert config["idm_guard"] == "patches/HUGSIM/0003"

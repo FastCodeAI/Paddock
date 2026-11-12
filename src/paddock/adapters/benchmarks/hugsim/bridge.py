@@ -27,8 +27,9 @@ Paddock side: one POST /infer per model call with the Observation wire body (``p
 * ``command`` -- ``info['command']``: HUGSIM 0 right, 1 left, 2 straight, which are paddock's ``Command``
   values (checked on route geometry). No ``route_xy``: command only.
 
-The model's trajectory (paddock ego frame, rear axle, dt 0.5) is held in the world and re-sampled each step at
-t_now + 0.5 k (k = 1..N) for the front-camera point, so a model called every ``--infer_every`` steps
+The model's trajectory (paddock ego frame, rear axle, at the reply's own dt) is held in the world and
+re-sampled each step at t_now + 0.5 k (k = 1..N) for the front-camera point, so a model called every
+``--infer_every`` steps
 (Drive-JEPA: 2, its native 2 Hz) is tracked between calls, as the Bench2Drive client does with a held plan.
 """
 
@@ -403,7 +404,9 @@ def main() -> None:
         except Exception:
             rec["error"] = traceback.format_exc()[-800:]
             print(rec["error"], file=sys.stderr, flush=True)
-            plan = None  # tells HUGSIM the AD side failed: the episode ends here, scored as it stands
+            plan = (
+                None  # tells HUGSIM the AD side failed: upstream then fails the episode, which is not scored
+            )
         log.write(json.dumps(rec) + "\n")
         log.flush()
         with open(plan_pipe, "wb") as f:
