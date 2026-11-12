@@ -94,12 +94,11 @@ def showcase(runs, n: int = 4) -> list[dict]:
 
     The two hardest scenes, then the two where the models split most. Hardest means the
     lowest scene score averaged over every model. Split means the largest spread (standard
-    deviation) of the models' scores. A scene is skipped when no model is scored for a full
-    second, or fewer than three models are scored for 5 seconds or more. No scene is shown
-    twice. Ties go to the harder scene, then the lower scene id. Only scenes every run
-    scored are considered.
+    deviation) of the models' scores. A scene is skipped when fewer than three models are
+    scored for 5 seconds or more. No scene is shown twice. Ties go to the harder scene, then
+    the lower scene id. Only scenes every run scored are considered.
 
-    The skips are for scenes with nothing to watch: on one of the 30, every model is counted
+    The skip is for scenes with nothing to watch: on one of the 30, every model is counted
     off the road at the moment it takes over. Three was chosen after seeing what two and three
     pick: with two, the hardest scene was one where only two models drive long enough to
     watch. The widest gap between the best and the worst model, which neuroNCAP uses, says
@@ -124,7 +123,7 @@ def showcase(runs, n: int = 4) -> list[dict]:
 
     def watchable(scene: str) -> bool:
         seconds = [_scored_s(metrics) for metrics in full[scene].values()]
-        return max(seconds) >= 1.0 and sum(s >= 5.0 for s in seconds) >= 3
+        return sum(s >= 5.0 for s in seconds) >= 3
 
     def values(scene: str) -> list[float]:
         return [float(metrics["scene_score"]) for metrics in full[scene].values()]

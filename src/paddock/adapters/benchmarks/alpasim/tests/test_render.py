@@ -87,7 +87,7 @@ def test_showcase_skips_a_scene_with_nothing_to_watch() -> None:
 
     # Every model is out within a second: skipped, though it is the hardest by score.
     assert "aaaaaaa1" not in _picked(runs({"aaaaaaa1": [0.0, 0.5, 0.9]}))
-    # One model is scored for a full second, but only two for 5 seconds or more: skipped.
+    # Only two models are scored for 5 seconds or more: skipped.
     assert "aaaaaaa1" not in _picked(runs({"aaaaaaa1": [0.2, 5.0, 9.0]}))
     # Three models are scored for 5 seconds or more: kept, and the hardest.
     assert _picked(runs({"aaaaaaa1": [5.0, 5.0, 9.0]}))[0] == "aaaaaaa1"

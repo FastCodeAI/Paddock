@@ -627,21 +627,54 @@ can also smear while a car is still scored, when it drifts from the recorded
 drive; nothing hides that, and the line under the website's videos says so.
 
 Every tile is the same front camera. Some models are also sent side and rear
-cameras, which are not shown. A run made by a model's own driver, outside
-Paddock, can be drawn too once its scene folders are reachable in the run
-store as `<run>/<scene>/rollouts/<scene>/<id>/`, the layout a run made through
-Paddock has.
+cameras, which are not shown. A run with a record of the scene and no video
+still takes a tile, which says so; a video with no record gets a bar that says
+"no record of this scene".
+
+### Drawing a run made outside Paddock
+
+Some rows of the results table were made by a model's own AlpaSim driver and
+brought in with `paddock ingest`. Their scene folders are wherever that driver
+wrote them, so the renderer cannot find them until the run's folder in the run
+store looks like one made through Paddock. That takes two things, once per run:
+
+1. **The records.** `paddock ingest --all` writes
+   `{runs}/alpasim/<model>/<run id>/samples.jsonl` for every run named in the
+   site's `[ingest]` section (`alpasim_run_dirs`, or an
+   `[ingest.alpasim_campaigns.<run id>]` block listing the run's folders). It
+   rewrites the tracked `run.json` and `metrics.json` too; they should come
+   out unchanged, and `git status` says if they did not.
+2. **One link per scene**, from `{runs}/alpasim/<model>/<run id>/<scene id>` to
+   the AlpaSim run folder that holds that scene, the one with `rollouts/` and
+   `controller/` in it:
+
+   ```bash
+   cd {runs}/alpasim/<model>/<run id>
+   for run in /path/to/alpasim-runs/<campaign>*; do
+     for scene in "$run"/rollouts/clipgt-*; do
+       ln -s "$run" "$(basename "$scene")"
+     done
+   done
+   ```
+
+   A folder that drove ten scenes gets ten links. Nothing is copied.
+
+The renderer then reads
+`<scene id>/rollouts/<scene id>/<rollout id>/*_camera_front_wide_120fov_default.mp4`
+and `<scene id>/controller/` the same way for every run. The five such rows
+behind the website's videos (OpenPilot, VisionPilot, Drive-JEPA, METEOR and
+constant velocity) were linked this way at the site that made them.
 
 The website's AlpaSim videos are made the same way, by
-`python -m tools.site.videos alpasim`, from the runs the results table shows.
-Which scenes it shows is decided by `showcase` in the same file, never by hand:
-the two hardest scenes, then the two where the models split most. Hardest means
-the lowest scene score averaged over every model. Split means the largest
-spread (standard deviation) of the models' scores. A scene is skipped when no
-model is scored for a full second, or fewer than three models are scored for 5
-seconds or more. No scene is shown twice. Ties go to the harder scene, then the
-lower scene id. Only scenes every run scored are considered. Each model drives
-a scene once, so there is no most typical run to choose.
+`python -m tools.site.videos alpasim --out DIR`, from the runs the results
+table shows. Which scenes it shows is decided by `showcase` in the same file,
+never by hand: the two hardest scenes, then the two where the models split
+most. Hardest means the lowest scene score averaged over every model. Split
+means the largest spread (standard deviation) of the models' scores. A scene is
+skipped when fewer than three models are scored for 5 seconds or more. No scene
+is shown twice. Ties go to the harder scene, then the lower scene id. Only
+scenes every run scored are considered. Each model drives a scene once, so
+there is no most typical run to choose.
 
 ## Support-matrix results
 
