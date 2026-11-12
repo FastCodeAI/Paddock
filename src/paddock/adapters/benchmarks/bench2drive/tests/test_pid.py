@@ -14,6 +14,8 @@ from paddock.adapters.benchmarks.bench2drive.pid import (
     CONTROL_HORIZON_S,
     MAX_THROTTLE,
     WaypointTracker,
+    grid_stride,
+    on_grid,
 )
 
 
@@ -93,3 +95,40 @@ def test_yaw_column_is_ignored_and_short_plans_are_rejected() -> None:
     assert tracker.control(with_yaw, 0.0)[3] == pytest.approx(5.0)
     with pytest.raises(ValueError):
         tracker.control(np.array([[2.5, 0.0]]), 0.0)
+
+
+def test_a_plan_is_read_at_its_own_points_every_half_second() -> None:
+    """A plan 0.5 s apart is read point for point, one 0.1 s apart at every fifth point, and a
+    spacing that does not divide 0.5 s not at all: nothing is interpolated."""
+    assert grid_stride(0.5, 0.5) == 1
+    assert grid_stride(0.1, 0.5) == 5
+    assert grid_stride(0.25, 0.5) == 2
+    for off_grid in (0.2, 0.3, 0.75, 1.0, 0.0, -0.1):
+        assert grid_stride(off_grid, 0.5) is None, off_grid
+
+    coarse = _plan(5.0, curve=0.3, n=8)
+    assert np.array_equal(on_grid(coarse, 0.5, 0.5, 6), coarse[:6]), "the first six, as the wire sends"
+
+    t = 0.1 * np.arange(1, 65)  # alpamayo2edge: 64 poses 0.1 s apart, with heading
+    fine = np.stack([5.0 * t, 0.2 * t**2, np.arctan2(0.4 * t, 5.0)], axis=1)
+    grid = on_grid(fine, 0.1, 0.5, 6)
+    assert np.array_equal(grid, fine[4:30:5, :2]), "its points at 0.5, 1.0, ... 3.0 s; the yaw is not read"
+    assert np.allclose(grid[:, 0], 5.0 * 0.5 * np.arange(1, 7))
+
+
+def test_a_fine_plan_read_on_the_grid_keeps_its_speed() -> None:
+    """The bug this guards: a 0.1 s plan's first six points, read 0.5 s apart, ask for a fifth
+    of the planned speed."""
+    t = 0.1 * np.arange(1, 65)
+    fine = np.stack([6.0 * t, np.zeros_like(t)], axis=1)
+    assert WaypointTracker(0.5).control(fine[:6], 6.0)[3] == pytest.approx(6.0 / 5)
+    assert WaypointTracker(0.5).control(on_grid(fine, 0.1, 0.5, 6), 6.0)[3] == pytest.approx(6.0)
+
+
+def test_a_plan_off_the_grid_or_too_short_is_refused() -> None:
+    with pytest.raises(ValueError, match="no points on the 0.5 s grid"):
+        on_grid(_plan(5.0, n=20, dt=0.2), 0.2, 0.5, 6)
+    with pytest.raises(ValueError, match="ends at 2.5 s"):
+        on_grid(_plan(5.0, n=25, dt=0.1), 0.1, 0.5, 6)
+    with pytest.raises(ValueError, match="ends at 2.5 s"):
+        on_grid(_plan(5.0, n=5), 0.5, 0.5, 6)

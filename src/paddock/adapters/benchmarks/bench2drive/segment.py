@@ -682,9 +682,10 @@ class Segment:
                 Image.fromarray(f[c]).save(
                     os.path.join(self.out, "frames", c, "model", f"{tk:05d}.jpg"), quality=90
                 )
-        control, v_des, _plan, _native = agent.decide(self._held, inputs["speed"])
-        # the model's plan for this tick (waypoints, ego frame x fwd / y left) -- kept so offline
-        # analysis can see what the model intended, not only what the car did
+        control, v_des, plan, _native = agent.decide(self._held, inputs["speed"])
+        # the model's plan for this tick (waypoints, ego frame x fwd / y left) as the controller
+        # read it (agent.decide) -- kept so offline analysis can see what the model intended,
+        # not only what the car did
         with open(os.path.join(self.out, "plans.jsonl"), "a") as pf:
             pf.write(
                 json.dumps(
@@ -693,7 +694,7 @@ class Segment:
                         "timestamp_us": inputs["us"],
                         "speed": inputs["speed"],
                         "ego2world": inputs["ego2world"],
-                        "trajectory": self._held.get("trajectory"),
+                        "trajectory": plan.xy.tolist(),
                         "extras": self._held.get("extras"),
                     }
                 )
