@@ -111,6 +111,7 @@ from paddock.policy.protocol import (
     Command,
     Observation,
     Trajectory,
+    grid_stride,
 )
 from paddock.runtime import env as env_builder
 from paddock.runtime import gpu
@@ -127,20 +128,6 @@ EVAL_HORIZON_S = 3.0
 #: comma's dataset for comma's model. Segments are 60 s, so the recording is
 #: nowhere near the binding constraint.
 N_GT_POSES = 20
-
-
-def grid_stride(dt: float) -> int | None:
-    """How many of a plan's points make one `INTERVAL_S` step, or None if they never land on it.
-
-    A plan 0.5 s apart is scored point for point (stride 1); one 0.1 s apart has a
-    point at every 0.5 s time, every fifth (stride 5). Any other spacing would have
-    to be interpolated, which would score a smoothed plan, not the one the model gave.
-    The same rule as KITScenes' harness.
-    """
-    if dt <= 0:
-        return None
-    stride = round(INTERVAL_S / dt)
-    return stride if stride >= 1 and abs(stride * dt - INTERVAL_S) < 1e-6 else None
 
 
 #: See the module docstring: 96 fills the small model's feature buffer, 128
@@ -689,7 +676,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         recording -- comma2k19 holds 20 Hz and someone asked for less -- so the
         remedy named is the rate, not the dataset.
         """
-        if grid_stride(model.waypoint_dt) is None:
+        if grid_stride(model.waypoint_dt, INTERVAL_S) is None:
             return [
                 f"{model.name} plans {model.waypoint_dt:g} s apart; comma2k19 scores a plan's own "
                 f"points at every {INTERVAL_S:g} s and does not interpolate one, so the spacing "
@@ -1303,7 +1290,7 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # Alpamayo 2 Edge's 0.1 s plan over 30 points to 3 s where every other
         # model is averaged over 6. A plan 0.5 s apart, every model before Edge,
         # is the same array, so its scores do not move.
-        stride = grid_stride(prediction.dt)
+        stride = grid_stride(prediction.dt, INTERVAL_S)
         if stride is None:
             raise ValueError(f"a plan {prediction.dt:g} s apart has no points on the {INTERVAL_S:g} s grid")
         scored = (

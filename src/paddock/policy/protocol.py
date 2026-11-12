@@ -88,8 +88,8 @@ def grid_stride(dt: float, step_s: float = WIRE_DT) -> int | None:
     A plan 0.5 s apart is read point for point on a 0.5 s grid (stride 1); one 0.1 s
     apart has a point at every 0.5 s time, every fifth (stride 5). Any other spacing
     would have to be interpolated, which would send or score a smoothed plan, not the
-    one the model gave. Used by `to_wire` and neuroNCAP's harness; KITScenes' and
-    comma2k19's harnesses apply the same rule with their own copy.
+    one the model gave. Used by `to_wire` and by the KITScenes, comma2k19 and neuroNCAP
+    harnesses, each passing its own step.
     """
     if dt <= 0:
         return None

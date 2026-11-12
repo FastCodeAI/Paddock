@@ -32,7 +32,7 @@ from paddock.adapters.benchmarks.kitscenes import loader as L
 from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.metrics import pdm
 from paddock.metrics import trajectory as M
-from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation, Trajectory
+from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation, Trajectory, grid_stride
 from paddock.results import store
 
 #: Source frames of history fed before the scored keyframe. 48 at the dataset's
@@ -147,23 +147,9 @@ MAP_FORMAT = "lanelet2_osm"
 ROUTE_SOURCES = ("oracle", "none")
 
 
-def grid_stride(dt: float) -> int | None:
-    """How many of a plan's points make one `INTERVAL_S` step, or None if they never land on it.
-
-    A plan 0.5 s apart is scored point for point (stride 1); one 0.1 s apart has a
-    point at every 0.5 s time, every fifth (stride 5). Any other spacing would have
-    to be interpolated, which `metrics.trajectory` rules out for a prediction: it
-    would score a smoothed plan, not the one the model gave.
-    """
-    if dt <= 0:
-        return None
-    stride = round(INTERVAL_S / dt)
-    return stride if stride >= 1 and abs(stride * dt - INTERVAL_S) < 1e-6 else None
-
-
 def plan_on_grid(prediction: Trajectory) -> np.ndarray:
     """The plan's own points at 0.5, 1.0, ... s, (N, 2). Nothing is interpolated."""
-    stride = grid_stride(prediction.dt)
+    stride = grid_stride(prediction.dt, INTERVAL_S)
     if stride is None:
         raise ValueError(f"a plan {prediction.dt:g} s apart has no points on the {INTERVAL_S:g} s grid")
     return prediction.xy[stride - 1 :: stride]
@@ -174,7 +160,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
 
     def model_problems(self, model, limit: int | None = None) -> list[str]:
         """Refuse a plan spacing with no points on the 0.5 s grid, before the model loads."""
-        if grid_stride(model.waypoint_dt) is None:
+        if grid_stride(model.waypoint_dt, INTERVAL_S) is None:
             return [
                 f"{model.name} plans {model.waypoint_dt:g} s apart; KITScenes scores its own "
                 f"points at every {INTERVAL_S:g} s and does not interpolate a plan, so the "
