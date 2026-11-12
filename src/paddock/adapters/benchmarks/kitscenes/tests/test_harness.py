@@ -311,19 +311,47 @@ def test_a_route_hint_reaches_the_keyframe_alone(tmp_path, monkeypatch, one_hot,
     assert Observation.from_wire(scored.to_wire()).command == expected
 
 
+GT = 'command_source = "gt"\n'
+
+
 def test_a_route_hint_is_a_different_measurement(tmp_path, monkeypatch) -> None:
     archive = tmp_path / "archive"
     _write_scene(archive, RING)
-    bench = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    bench = _benchmark(tmp_path, monkeypatch, [archive], settings=GT, row={"driving_command": [1, 0, 0, 0]})
 
-    assert bench.run_config() == {"ground_offset_m": POD_HEIGHT_M, "command_source": "gt"}
+    config = bench.run_config()
+    assert config["command_source"] == "gt"
+    assert config["commands"] | {"sha256": None} == {"left": 1, "straight": 0, "right": 0, "sha256": None}
+
+
+def test_a_route_hint_records_which_commands_were_given(tmp_path, monkeypatch) -> None:
+    """Two lists that differ only in a keyframe's command are two measurements, with two run ids.
+
+    `sequences_sha256` covers the keyframe ids alone, and each site builds the
+    `driving_command` column itself, so this is the only record of which turns
+    the model was told about.
+    """
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+
+    def commands(one_hot) -> dict:
+        bench = _benchmark(tmp_path, monkeypatch, [archive], settings=GT, row={"driving_command": one_hot})
+        return bench.run_config()["commands"]
+
+    left, right = commands([1, 0, 0, 0]), commands([0, 0, 1, 0])
+    assert (left["left"], left["right"]) == (1, 0) and (right["left"], right["right"]) == (0, 1)
+    assert left["sha256"] != right["sha256"]
+    assert commands(np.asarray([1, 0, 0, 0])) == left, "what the model is told, not the spelling"
+    assert commands([0, 0, 0, 1]) == commands(STRAIGHT_COMMAND), "unknown is told straight"
 
 
 def test_a_route_hint_is_recorded_and_ranked(tmp_path, monkeypatch) -> None:
     """`gt` is the route signal ranked rows here and every nuScenes model get: recorded, not invalid."""
     archive = tmp_path / "archive"
     _write_scene(archive, [*RING, BASE])
-    hinted = _benchmark(tmp_path, monkeypatch, [archive], settings='command_source = "gt"\n')
+    hinted = _benchmark(
+        tmp_path, monkeypatch, [archive], settings=GT, row={"driving_command": STRAIGHT_COMMAND}
+    )
     assert hinted.invalid_reasons() == [], "a navigation command is an input, not a look at the scorer"
     assert hinted.run_config()["command_source"] == "gt", "and the record says the model was given it"
 
@@ -586,3 +614,57 @@ def test_preflight_names_a_scene_whose_map_no_tier_holds(tmp_path, monkeypatch) 
     assert "maps/map.osm" in problem and SCENE in problem
     off = _benchmark(tmp_path, monkeypatch, [fast], settings='map = false\nroute = "none"\n')
     assert off.preflight() == []
+
+
+# ---------------------------------------------------------------------------
+# Plans not 0.5 s apart
+# ---------------------------------------------------------------------------
+
+
+def _curving_plan(dt: float, horizon_s: float = 6.4) -> np.ndarray:
+    """A plan that speeds up and bends left, so a wrongly picked point shows."""
+    t = dt * np.arange(1, int(round(horizon_s / dt)) + 1)
+    return np.column_stack([8.0 * t + 0.4 * t**2, 0.15 * t**2])
+
+
+def test_a_plan_a_tenth_of_a_second_apart_is_scored_on_its_own_half_second_points(
+    tmp_path, monkeypatch
+) -> None:
+    """alpamayo2edge returns 64 points 0.1 s apart. Read as if they were 0.5 s apart,
+    its 3 s score would pair 0.6 s of plan with 3 s of recorded future."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive])
+    fine = _curving_plan(0.1)
+    ground_truth = np.column_stack([_curving_plan(0.5)[:8] + [0.3, -0.2], np.zeros(8)])
+    sample = SimpleNamespace(ground_truth=ground_truth)
+
+    tenth = bench.score(sample, H.Trajectory(fine, dt=0.1))
+    half = bench.score(sample, H.Trajectory(fine[4::5], dt=0.5))
+
+    for key in ("ade", "fde@1s", "fde@2s", "fde@3s", "longitudinal_mae", "lateral_mae", "pdm_ep"):
+        assert tenth[key] == pytest.approx(half[key], abs=1e-12), key
+    assert tenth["ade"] == pytest.approx(np.hypot(0.3, 0.2))
+
+
+def test_a_plan_already_half_a_second_apart_is_scored_point_for_point() -> None:
+    """Every model scored here before alpamayo2edge plans 0.5 s apart; its numbers must not move."""
+    plan = _curving_plan(0.5)
+    assert np.array_equal(H.plan_on_grid(H.Trajectory(plan, dt=0.5)), plan)
+
+
+@pytest.mark.parametrize(
+    ("dt", "stride"), [(0.5, 1), (0.25, 2), (0.1, 5), (0.05, 10), (0.3, None), (1.0, None)]
+)
+def test_only_a_spacing_that_divides_half_a_second_has_points_on_the_grid(dt, stride) -> None:
+    assert H.grid_stride(dt) == stride
+
+
+def test_a_model_whose_plan_misses_the_grid_is_refused_before_it_loads(tmp_path, monkeypatch) -> None:
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive])
+    (problem,) = bench.model_problems(SimpleNamespace(name="coarse", waypoint_dt=1.0))
+    assert "coarse" in problem and "does not interpolate" in problem
+    declared = [m for m in Registry.load().models.values() if "kitscenes" in m.benchmarks]
+    assert declared and all(bench.model_problems(m) == [] for m in declared)

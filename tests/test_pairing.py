@@ -7,6 +7,7 @@ These pin both halves: what a pairing changes, and that it changes nothing else.
 
 from __future__ import annotations
 
+import pickle
 import re
 
 import pytest
@@ -145,10 +146,20 @@ def _measured(cfg: SiteConfig) -> dict:
 def test_a_pairing_is_recorded_and_hashed_as_the_same_values_set_globally(tmp_path, monkeypatch) -> None:
     """So a run made under the default says exactly what it ran, and its id is
     the one the same settings written anywhere else would give."""
-    paired = _measured(_site(tmp_path, monkeypatch, PAIRING).paired("openpilot", "kitscenes"))
+    # `gt` also records which commands it gives, read from the sample list.
+    sample_list = tmp_path / "sample_list.pkl"
+    row = {"scene_id": "scene", "keyframe_index": 50, "split": "val", "driving_command": [1, 0, 0, 0]}
+    sample_list.write_bytes(pickle.dumps([row]))
+    listed = f'[benchmarks.kitscenes]\nsample_list = "{sample_list}"\n'
+
+    def site(tables: str) -> SiteConfig:
+        return _site(tmp_path, monkeypatch, tables.replace("[benchmarks.kitscenes]\n", listed))
+
+    paired = _measured(site(PAIRING).paired("openpilot", "kitscenes"))
     assert paired["model_env"]["PADDOCK_OPENPILOT_PITCH_DEG"] == "-1.7"
     assert paired["front_camera"] == "base" and paired["command_source"] == "gt"
-    assert paired == _measured(_site(tmp_path, monkeypatch, GLOBAL))
+    assert paired["commands"]["left"] == 1
+    assert paired == _measured(site(GLOBAL))
 
 
 def _stopped_at_preflight(monkeypatch) -> list:

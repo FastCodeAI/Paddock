@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -274,7 +274,9 @@ nuPlan data is claimed.
   history is continued, not recorded. With `[benchmarks.navsim] nuplan` set, the
   harness feeds nuPlan's 10 Hz frames instead; nobody has run Edge on them yet.
 - **Field of view.** The front and cross slots get 62° on NAVSIM and 70° on
-  Bench2Drive, where the model saw 120°.
+  Bench2Drive, where the model saw 120°. On KITScenes every ring camera is about 87°:
+  narrower than 120° in the front and cross slots, wider than 70° in the rear ones
+  (`slot_geometry` in the run record).
 - **Lens.** The crop treats every camera as a pinhole; the training rig's lens model
   is not taken into account.
 - **No route distance on NAVSIM**, as above.
@@ -291,6 +293,8 @@ nuPlan data is claimed.
   `trajectory`, so `benchmarks` does not list them.
 
 ## Results
+
+### NAVSIM
 
 NAVSIM navtest, all 12,146 scenarios, on OpenScene's 2 Hz frames, with no failed
 scenario. The v1 score replays the v2 run's plans through the v1 devkit, so the two
@@ -331,3 +335,27 @@ What the plans look like, from the run's plan dump and node logs:
 - **The model wrote `<NOMINAL>` in 37 % of scenarios** (4,488 of 12,146) and a
   rationale in the rest.
 - **Two plans were drawn again**, the two the first run lost, both at seed 44.
+
+### KITScenes
+
+All 223 keyframes of the list every KITScenes row uses, at its recorded 10 Hz, so each
+frame is the one at the time Edge asks for and no pose history is extrapolated. Edge's
+64 points, 0.1 s apart, are scored on their own points at 0.5, 1.0, ... s.
+
+| Route | ADE@3s ↓ (m) | FDE@3s ↓ (m) | Run |
+|---|---:|---:|---|
+| as text, `command_source = "gt"` | **0.752** | 1.393 | `kitscenes/alpamayo2edge/20261111T230906-22b8a7` |
+| "Continue straight" on every keyframe | 0.762 | 1.423 | `kitscenes/alpamayo2edge/20261111T223048-778679` |
+
+The first is the support-matrix cell. It is given the route the way Alpamayo 1.5's
+cell (`legacy-full-nav`, 1.002 m) is: a turn on 39 of the 223 keyframes, from the
+recorded future ([kitscenes.md](../benchmarks/kitscenes.md#the-eight-rows-and-where-each-came-from)
+says how that column was made here). The second shows what the route is worth. The 184
+keyframes told to go straight give identical plans in both runs; on the 39 turns ADE
+moves from 1.068 to 1.012 m, a paired bootstrap 95% interval of −0.172 to +0.014 m.
+
+Both runs were made with no local changes, one per H200, about 13 minutes each: the
+second at `f8a51e6`, the first at `30b616e`. The first was made again at that later
+commit so that its record lists the turn commands it was given, and every number came
+out the same as the first time. In each, the model wrote `<NOMINAL>` on 74 of the 223
+keyframes, and no plan was drawn again.
