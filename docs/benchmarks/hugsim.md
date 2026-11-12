@@ -115,7 +115,10 @@ waypoints. The choices that fix what is measured:
 - **The whole plan is sent**, up to 4 s (8 waypoints 0.5 s apart; NAVSIM's horizon,
   UniAD and VAD plan 3 s). HUGSIM scores every step's sent plan -- collision, drivable
   area, TTC and comfort over its length -- so a plan cut short is judged over less time
-  than the model planned. The bridge reads the reply's `plan`, not its `trajectory`,
+  than the model planned, and a model that plans 3 s (constant velocity, METEOR: 6
+  waypoints) is judged over a shorter, easier window than one that plans 4 s: no
+  collision is 0 if any sent waypoint collides. Its iLQR also tracks the whole sent
+  plan, so the horizon changes how the car is driven, not only how it is scored. The bridge reads the reply's `plan`, not its `trajectory`,
   which the wire cuts at six waypoints for neuroNCAP. **The 22 Oct campaigns, now
   superseded, were sent six (3 s)** for every model, Drive-JEPA's 4 s plans included.
 - **The step cap.** Upstream ends an episode after 400 steps (100 s).
@@ -236,11 +239,14 @@ What to read with them:
   offsets fitted to a ground path, the longitudinal schedule from a ported IDM) and stretches it from
   the stack's native 1.0 s to 4.0 s, so the tail of every plan HUGSIM scores is extrapolation. Its
   comfort of 7.8 is measured on that synthesized plan.
-- **openpilot's route completion of 7.0 is not explained.** Its plans reach a median 4.4 m in 4 s
-  and the car's median speed over all steps is 0.07 m/s; 54.5% of its episodes run to the step cap
-  and none completes. A plan that barely moves collides with little, which is why its PDMS (73.5) is
-  high. Why openpilot plans this slowly here, and why the car moves slower still, has not been
-  established; its HUGSIM inputs have not been audited.
+- **openpilot ran at 4 Hz, below the 10 Hz its `model.yaml` declares as its minimum** (`min_input_hz`).
+  HUGSIM renders one frame per 0.25 s step, and supercombo infers its own motion from the change between
+  frames: fed frames that far apart it reads the scene as nearly still, the parked-car plan its model.yaml
+  describes. That matches what it did: its plans reach a median 4.4 m in 4 s, the car's median speed over
+  all steps is 0.07 m/s, 54.5% of its episodes run to the step cap and none completes, and a plan that
+  barely moves collides with little, which is why its PDMS (73.5) is high. Its row is ranked, with this
+  caveat: it measures openpilot at a rate it was not built for, not openpilot as it drives at 20 Hz.
+  Nothing in the HUGSIM harness refuses a model below its `min_input_hz` (the open-loop harnesses do).
 - **AutoE2E takes no command**, so it gets upstream's no-route input. Two thirds of its episodes end
   against scenery: it swerves out of its lane early, as it does on Bench2Drive.
 - **Rear cameras on KITTI-360 and Waymo are black for every model.** HUGSIM has no rear data there.
@@ -297,7 +303,7 @@ recorded none, so an older run keeps its id.
 | Patch 0003 lets scene-0166-medium-01 finish | the same guard, applied at run time, re-drove released Drive-JEPA on it: steps 0-59 identical to the crashed attempt (ego path, all 30 model calls), then on to the 400-step cap; 3,860 random IDM cases identical to upstream, finite on the 140 upstream raises on | **verified** |
 | The bridge sends the model's whole plan | `plan` read before `trajectory`, the horizon counted in time, cut at 8 (`tests/test_bridge.py`); end to end, every call of the 8-9 Nov campaign logged 8 waypoints sent for the six models that plan 4 s or more (AutoE2E plans 12, openpilot 20) and 6 for the two that plan 3 s | **verified** |
 | The Drive-JEPA node drove as main's adapter did on 22 Oct | the served adapter differs from `ac7788f` only by recording and a camera placement that is identical given the identity `lidar2ego`. Against a run of `ac7788f` itself on 7 scenarios: 5 identical to six decimals; the two longest (331 and 400 steps) diverged | argued, partly checked |
-| `launcher.py` runs a scenario end to end | not run: no HUGSIM episode was driven through the harness for this change | **unverified** |
+| `launcher.py` runs a scenario end to end, including the `--observe` launch path | not run: no HUGSIM episode was driven through the harness for this change; the records here came from the campaign runner, and `--observe` (Qwen-Drive) ran only there | **unverified** |
 | The 16 left-out scenarios fail for every model | each failed the same way for three models in the campaign | **verified** |
 
 ## Support-matrix results
