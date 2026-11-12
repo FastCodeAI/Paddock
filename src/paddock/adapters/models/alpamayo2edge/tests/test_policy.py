@@ -191,6 +191,29 @@ def test_a_camera_the_source_never_sent_is_named(tmp_path: Path) -> None:
         _loaded().infer_sequence(_sequence(tmp_path, cameras=cameras))
 
 
+def test_absent_cameras_black_feeds_their_slots_black_at_the_times_they_ask_for(tmp_path: Path) -> None:
+    """comma2k19's one camera: the front and telephoto slots are real, the other four black,
+    each black frame stamped like a real one would be, and the four named."""
+    policy = _loaded(Settings(absent_cameras="black"))
+    policy.infer_sequence(_sequence(tmp_path, cameras=("CAM_FRONT",)))
+    sample = policy.runs[-1]
+    assert sorted(sample.black_slots) == [0, 2, 3, 5]
+    assert len(sample.frames) == len(sample.camera_ids) == len(sample.timestamps_us) == 22
+    for camera_id, frame in zip(sample.camera_ids, sample.frames, strict=True):
+        assert bool(frame.max() == 0) is (int(camera_id) in sample.black_slots)
+    # A black slot's frames are taken at the source's own frame times, as a real one's are.
+    assert sample.frame_times_s[0] == sample.frame_times_s[3] == sample.frame_times_s[5]
+    assert policy.diagnostics()["last"]["black_slots"] == sample.black_slots
+
+
+def test_with_every_camera_present_black_changes_nothing(tmp_path: Path) -> None:
+    refuse, black = _loaded(), _loaded(Settings(absent_cameras="black"))
+    refuse.infer_sequence(_sequence(tmp_path))
+    black.infer_sequence(_sequence(tmp_path))
+    assert black.runs[-1].black_slots == []
+    np.testing.assert_array_equal(black.runs[-1].frames, refuse.runs[-1].frames)
+
+
 def test_a_straight_command_is_continue_straight(tmp_path: Path) -> None:
     policy = _loaded()
     policy.infer_sequence(_sequence(tmp_path, command=Command.STRAIGHT))
@@ -272,7 +295,7 @@ def test_diagnostics_answer_before_load_and_report_the_last_plan(tmp_path: Path)
 
 
 def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
-    assert Settings.from_env({}) == Settings() == Settings("nearest", "hermite", 1, 43, None, False)
+    assert Settings.from_env({}) == Settings() == Settings("nearest", "hermite", 1, 43, None, False, "refuse")
     env = {
         "ALPAMAYO2_EDGE_FRAMES": "distinct",
         "ALPAMAYO2_EDGE_HISTORY": "linear",
@@ -280,13 +303,21 @@ def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
         "ALPAMAYO2_EDGE_SEED": "7",
         "ALPAMAYO2_EDGE_NAV_DISTANCE_M": "25",
         "ALPAMAYO2_EDGE_SAVE_REASONING": "1",
+        "ALPAMAYO2_EDGE_ABSENT_CAMERAS": "black",
     }
-    assert Settings.from_env(env) == Settings("distinct", "linear", 6, 7, 25.0, True)
+    assert Settings.from_env(env) == Settings("distinct", "linear", 6, 7, 25.0, True, "black")
 
 
 @pytest.mark.parametrize(
     "name,value",
-    [("FRAMES", "grid"), ("HISTORY", "clamp"), ("SAMPLES", "0"), ("NAV_DISTANCE_M", "-5"), ("SEED", "x")],
+    [
+        ("FRAMES", "grid"),
+        ("HISTORY", "clamp"),
+        ("SAMPLES", "0"),
+        ("NAV_DISTANCE_M", "-5"),
+        ("SEED", "x"),
+        ("ABSENT_CAMERAS", "grey"),
+    ],
 )
 def test_a_bad_setting_stops_the_node(name: str, value: str) -> None:
     with pytest.raises(ValueError):
@@ -323,6 +354,9 @@ def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_throu
     knobs = {f"ALPAMAYO2_EDGE_{name.upper()}" for name in Settings.__dataclass_fields__}
     assert knobs == set(spec.runtime.env_passthrough)
     assert set(spec.runtime.tuning_env) == {"ALPAMAYO2_EDGE_SAVE_REASONING"}
+    # The one setting a site may change and stay ranked, with the line the report prints.
+    assert spec.ranked_with_note == ("ALPAMAYO2_EDGE_ABSENT_CAMERAS",)
+    assert "{value}" in spec.score_notes["ALPAMAYO2_EDGE_ABSENT_CAMERAS"]
 
 
 # -- a rationale that never reaches the trajectory ------------------------------------
