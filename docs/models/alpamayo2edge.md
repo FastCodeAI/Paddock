@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -301,10 +301,10 @@ nuPlan data is claimed.
   800-pixel front view, which the vendor's processor then reads at 576×320.
 - **CARLA is not what Edge was trained on.** Its training drives are real camera
   video; Bench2Drive's frames are rendered.
-- **Closed loop on Bench2Drive only.** The wire's `trajectory` field carries a plan's
-  first six poses, 0.6 s of Edge's plan. Bench2Drive's client reads the whole plan at
-  its own 0.5 s points instead. neuroNCAP's engine and HUGSIM's bridge read
-  `trajectory`, so `benchmarks` does not list them.
+- **Closed loop on Bench2Drive and neuroNCAP only.** Both drive Edge's own points at
+  0.5, 1.0, … 3.0 s: neuroNCAP's engine from the wire's `trajectory` field
+  (`Trajectory.to_wire`), Bench2Drive's client from the whole plan. Edge has not been
+  run on HUGSIM, so `benchmarks` does not list it.
 
 ## Results
 
@@ -422,3 +422,30 @@ the site's two H200s, 5.6 hours. No plan was drawn again. That commit is on the 
 `alpamayo2edge/nuscenes-neuroncap`; its Edge adapter and comma2k19 code are this
 branch's, except that its harness imported the same 0.5 s stride rule from
 `policy/protocol.py`, which there also changes what a closed-loop simulator is sent.
+
+### neuroNCAP
+
+The full official set: 20 scenario–scene pairs over 14 scenes, 10 runs each, 200 runs. The
+simulator renders at 10 Hz, so every frame is the one at the time Edge asks for, once a run
+is 2 s old; before that, its earliest frames repeat and its past path is continued, as for
+every model at the start of a run. The engine drives six points 0.5 s apart, and is sent
+Edge's own points at 0.5 ... 3.0 s, every fifth of its 64 (`Trajectory.to_wire`). The route
+is the scenario's command, so a turn has no distance ("Turn right").
+
+| Stationary ↑ | Frontal ↑ | Side ↑ | Overall ↑ (0–5) | Collision rate ↓ | Run |
+|---:|---:|---:|---:|---:|---|
+| 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54 % | `neuroncap/alpamayo2edge/20261111T231934-33adca` |
+
+Fifth of the eight model rows on the full set: below Drive-JEPA (4.13), Alpamayo 1.5 (3.73), OpenPilot
+(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.58). Side impacts are
+its weak column: 38 of 50 side runs collided, every run in `side-0103` and `side-0921`. It
+avoided every collision in four pairs: `stationary-0106`, `stationary-0108`, `side-0108` and
+`frontal-0346`.
+
+Made at `e931fbf` with no local changes on the site's two H200s, 10.3 hours. The model
+wrote `<NOMINAL>` on 4,559 of its 12,917 plans (35 %), and no plan was drawn again.
+That commit is on the branch `alpamayo2edge/nuscenes-neuroncap`. Its Edge adapter,
+closed-loop wire and neuroNCAP code are this branch's, but for two things that change
+nothing here: the stride helper was named `wire_stride`, and the adapter did not yet have
+`ALPAMAYO2_EDGE_ABSENT_CAMERAS`, whose default refuses a missing camera as it did then;
+neuroNCAP sends all five.

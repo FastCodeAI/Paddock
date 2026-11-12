@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-102 runs across 9 benchmarks.
+103 runs across 9 benchmarks.
 58 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -167,6 +167,7 @@
 | openpilot | 20260905T055713-11ac59 | 200 | 3.604 | 2.698 | 8.604 | 0.380 |
 | drivejepa | 20260905T220225-f11ac0 | 200 | 3.568 | 2.229 | 8.604 | 0.455 |
 | autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 |
+| alpamayo2edge | 20261111T231934-33adca | 200 | 2.918 | 3.634 | 8.604 | 0.540 |
 | meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 |
 | qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 |
 | visionpilot | 20260905T121810-155d36 | 200 | 1.576 | 6.218 | 8.604 | 0.855 |

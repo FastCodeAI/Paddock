@@ -812,10 +812,11 @@ class PaddockB2DAgent(AutonomousAgent):
 
         ``plan`` is what the controller follows: the reply's whole plan (``plan``, every
         point at the model's own spacing) read at every WAYPOINT_DT s, six points
-        (``pid.on_grid``). For a plan 0.5 s apart those are exactly the six the reply's
-        ``trajectory`` carries. That field is the plan's first six points whatever their
-        spacing, so for alpamayo2edge's, 0.1 s apart, it holds 0.6 s of plan, which read
-        as 3 s would drive at a fifth of the planned speed."""
+        (``pid.on_grid``). Those are the same six points the reply's ``trajectory``
+        carries (``Trajectory.to_wire``). That field once held the plan's first six
+        points whatever their spacing, which for alpamayo2edge's, 0.1 s apart, was 0.6 s
+        of plan that read as 3 s would drive at a fifth of the planned speed; reading
+        ``plan`` keeps the client right against a node that still sends that."""
         whole = payload["plan"]
         points = on_grid(whole["waypoints"], float(whole["dt"]), WAYPOINT_DT, N_WAYPOINTS)
         plan = Trajectory(points, dt=WAYPOINT_DT)

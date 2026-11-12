@@ -38,6 +38,8 @@ from collections import deque
 
 import numpy as np
 
+from paddock.policy.protocol import grid_stride
+
 #: TCP's gains, unchanged in Bench2DriveZoo.
 TURN_KP, TURN_KI, TURN_KD, TURN_N = 1.25, 0.75, 0.3, 40
 SPEED_KP, SPEED_KI, SPEED_KD, SPEED_N = 5.0, 0.5, 1.0, 40
@@ -63,20 +65,6 @@ CLIP_DELTA = 0.25
 #: plan exactly 8 waypoints at 0.5 s, and visionpilot's 3 s plan is shorter than
 #: the window and therefore untouched.
 CONTROL_HORIZON_S = 4.0
-
-
-def grid_stride(dt: float, grid_dt: float) -> int | None:
-    """How many of a plan's points make one ``grid_dt`` step, or None if they never land on it.
-
-    A plan 0.5 s apart is read point for point on a 0.5 s grid (stride 1); one 0.1 s
-    apart has a point at every 0.5 s, every fifth (stride 5). Any other spacing would
-    have to be interpolated, and the controller would then follow a smoothed plan
-    instead of the one the model gave.
-    """
-    if not dt > 0 or not grid_dt > 0:
-        return None
-    stride = int(round(grid_dt / dt))
-    return stride if stride >= 1 and abs(stride * dt - grid_dt) < 1e-6 else None
 
 
 def on_grid(waypoints, dt: float, grid_dt: float, n: int) -> np.ndarray:

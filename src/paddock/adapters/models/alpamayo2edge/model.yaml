@@ -58,7 +58,8 @@ capabilities:
   startup_timeout_s: 900
   # All 64 poses go back, 0.1 s apart. NAVSIM resamples them to its 0.5 s grid;
   # KITScenes scores every fifth, and nuScenes reads the plan at every 0.5 s, which
-  # lands on the same points (each harness's plan_on_grid).
+  # lands on the same points (each harness's plan_on_grid); a closed-loop client is
+  # sent every fifth as its six 0.5 s points (Trajectory.to_wire).
   waypoint_dt: 0.1
   # No floor. Every frame carries the time it was taken into the prompt, and the
   # 0.1 s pose history is rebuilt from slower poses with their measured speeds
@@ -126,4 +127,4 @@ ranked_with_note: [ALPAMAYO2_EDGE_ABSENT_CAMERAS]
 
 # One key: two `benchmarks:` lines keep only the last.
 # comma2k19 needs ALPAMAYO2_EDGE_ABSENT_CAMERAS=black (see above).
-benchmarks: [navsim, navsim_v1, bench2drive, kitscenes, nuscenes, comma2k19]
+benchmarks: [navsim, navsim_v1, bench2drive, kitscenes, nuscenes, comma2k19, neuroncap]
