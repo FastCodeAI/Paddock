@@ -150,6 +150,7 @@ navsim_v1 = { run = "navsim_v1/alpamayo2edge/20261111T070439-f19e8f", note = "2 
 kitscenes = { run = "kitscenes/alpamayo2edge/20261111T230906-22b8a7" }
 # nuScenes' 2 Hz keyframes, as every row gets; nuScenes is not in its claimed training data.
 nuscenes = { run = "nuscenes/alpamayo2edge/20261111T231928-e4e2d6", note = "2 Hz" }
+neuroncap = { run = "neuroncap/alpamayo2edge/20261111T231934-33adca" }
 # One recorded camera in 2 of its 6 slots, the other 4 black (ALPAMAYO2_EDGE_ABSENT_CAMERAS).
 comma2k19 = { run = "comma2k19/alpamayo2edge/20261112T012152-9b1e09" }
 
