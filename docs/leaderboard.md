@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-109 runs across 10 benchmarks.
-72 run(s) excluded as invalid — shown at the end, never averaged in.
+116 runs across 10 benchmarks.
+67 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -128,14 +128,20 @@
 
 | model | run | n | epdms ↑ | epdms_stage_one ↑ | no_at_fault_collisions_stage_one ↑ | drivable_area_compliance_stage_one ↑ | driving_direction_compliance_stage_one ↑ | traffic_light_compliance_stage_one ↑ | ego_progress_stage_one ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| drivejepa [1] | 20261110T165434-167fd4 | 450 | 0.428 | 0.818 | 0.956 | 0.960 | 0.997 | 0.998 | 0.843 |
 | qwendrive | 20261111T060112-5231af | 450 | 0.312 | 0.763 | 0.969 | 0.880 | 0.996 | 0.998 | 0.826 |
 | alpamayo15 | 20261111T090014-04904f | 450 | 0.193 | 0.507 | 0.924 | 0.664 | 0.861 | 0.998 | 0.796 |
 | visionpilot | 20261110T165413-30c0d8 | 450 | 0.192 | 0.453 | 0.921 | 0.618 | 0.871 | 0.993 | 0.786 |
+| uniad [2] | 20261110T092734-19b732 | 450 | 0.123 | 0.386 | 0.890 | 0.527 | 0.896 | 0.996 | 0.847 |
 | constant_velocity | 20261110T085953-e122fd | 450 | 0.115 | 0.290 | 0.889 | 0.429 | 0.707 | 0.993 | 0.775 |
-| meteor [1] | 20261110T181854-9b4014 | 450 | 0.088 | 0.315 | 0.868 | 0.507 | 0.752 | 0.996 | 0.802 |
+| vad [3] | 20261110T185531-0cecc0 | 450 | 0.099 | 0.343 | 0.860 | 0.522 | 0.783 | 0.996 | 0.803 |
+| meteor [4] | 20261110T181854-9b4014 | 450 | 0.088 | 0.315 | 0.868 | 0.507 | 0.752 | 0.996 | 0.802 |
 | autoe2e | 20261110T192825-24d0b3 | 450 | 0.082 | 0.330 | 0.858 | 0.520 | 0.649 | 0.993 | 0.829 |
 
-- [1] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [1] drivejepa: streamed (per_log): samples fed in order to one node that keeps its state, not one at a time
+- [2] uniad: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [3] vad: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [4] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
 
 ## navsim
 
@@ -148,12 +154,16 @@
 | alpamayo2edge | 20261111T052918-f9f90a | 12146 | 0.626 | 0.924 | 0.801 | 0.879 | 0.996 | 0.654 | 0.908 |
 | alpamayo15 | 20260903T183818-5879c1 | 12146 | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 |
 | autoe2e | 20261009T055926-3ceb18 | 12146 | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 |
+| uniad [2] | 20261109T082522-c24426 | 12146 | 0.478 | 0.826 | 0.729 | 0.919 | 0.984 | 0.517 | 0.792 |
 | visionpilot | 20260902T175642-df5291 | 12146 | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 |
-| meteor [2] | 20260914T234307-e56cfc | 12146 | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
+| vad [3] | 20261110T095855-0ebf09 | 12146 | 0.428 | 0.814 | 0.722 | 0.848 | 0.981 | 0.443 | 0.787 |
+| meteor [4] | 20260914T234307-e56cfc | 12146 | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 |
 | constant_velocity | 20260902T175923-feba73 | 12146 | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 |
 
 - [1] drivejepa: streamed (per_log): samples fed in order to one node that keeps its state, not one at a time
-- [2] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [2] uniad: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [3] vad: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [4] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
 
 ## navsim_v1
 
@@ -166,7 +176,9 @@
 | alpamayo2edge | 20261111T070439-f19e8f | 12146 | 0.699 | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 |
 | alpamayo15 | 20260911T044805-0aea35 | 12146 | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | autoe2e | 20261104T210206-3022fb | 12146 | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
+| uniad | 20261112T130241-e02e88 | 12146 | 0.532 | 0.826 | 0.729 | 0.525 | 0.692 | 0.963 | 0.914 |
 | visionpilot | 20260911T083323-c07583 | 12146 | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| vad | 20261112T132424-25e0e5 | 12146 | 0.473 | 0.813 | 0.722 | 0.451 | 0.682 | 0.958 | 0.843 |
 | meteor [2] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | constant_velocity | 20260911T034553-8f28ac | 12146 | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
@@ -227,13 +239,8 @@
 - **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score. Superseded by 20261111T052813-8f96dd: The row it pointed at, 20260902T173156-7e208f, is retired too: Drive-JEPA's rows are its momentum-aware model now, so this one points at that run.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
 - **navsim/alpamayo2edge/20261111T031938-f9f90a** — 2 scenario(s) failed in the scorer and are excluded
-- **navhard/vad/20261110T185531-0cecc0** — site env override may change what was measured: VAD_HORIZON_S (values in config.model_env)
-- **navhard/drivejepa/20261110T165434-167fd4** — site env override may change what was measured: DRIVEJEPA_CHECKPOINT (values in config.model_env); streamed (PADDOCK_NAVHARD_STREAMED): stage-one frames planned in time order per log, each naming its log so the node could keep its own previous plan; synthetic stage-two scenes planned as in a standard run. Upstream's navhard protocol hands no agent a previous plan. Counts in by_group.streamed
-- **navsim_v1/vad/20261110T160343-25e0e5** — replayed from navsim/vad/20261110T095855-0ebf09, which is stored valid=false: site env override may change what was measured: VAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277, stored valid=false); the same plans, this benchmark's scorer
-- **navsim_v1/uniad/20261110T154404-e02e88** — replayed from navsim/uniad/20261109T082522-c24426, which is stored valid=false: site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/uniad/20261109T082522-c24426 (that run: epdms 0.4781, stored valid=false); the same plans, this benchmark's scorer
-- **navsim/vad/20261110T095855-0ebf09** — site env override may change what was measured: VAD_HORIZON_S (values in config.model_env)
-- **navhard/uniad/20261110T092734-19b732** — site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env)
-- **navsim/uniad/20261109T082522-c24426** — site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env)
+- **navsim_v1/vad/20261110T160343-25e0e5** — replayed from navsim/vad/20261110T095855-0ebf09, which is stored valid=false: site env override may change what was measured: VAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277, stored valid=false); the same plans, this benchmark's scorer Superseded by 20261112T132424-25e0e5: the same plans replayed again from the NAVSIM run after its record was re-written valid (byte-identical checkpoint override no longer counted as one)
+- **navsim_v1/uniad/20261110T154404-e02e88** — replayed from navsim/uniad/20261109T082522-c24426, which is stored valid=false: site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/uniad/20261109T082522-c24426 (that run: epdms 0.4781, stored valid=false); the same plans, this benchmark's scorer Superseded by 20261112T130241-e02e88: the same plans replayed again from the NAVSIM run after its record was re-written valid (byte-identical checkpoint override no longer counted as one)
 - **comma2k19/drivejepa/20261106T192049-391e2d** — Superseded by 20261111T074533-0f26ee: Drive-JEPA's rows are its momentum-aware model now: 20261111T074533-0f26ee plans each keyframe after a discarded warm-up plan for the frame 0.5 s earlier (a Paddock choice, not upstream protocol; 10,163 of 10,165 fed). Momentum was on in this run but could not act: each open-loop sample reset the node (the node whose counts the record keeps fed 0 of 1,271 replans).
 - **comma2k19/drivejepa_free/20261106T053407-587a3e** — Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026. Superseded by drivejepa/20261111T074533-0f26ee: The row it pointed at, drivejepa/20261106T192049-391e2d, is retired too: Drive-JEPA's rows are its momentum-aware model now, so this one points at that run.
 - **nuscenes/drivejepa/20261105T201953-308dc5** — Superseded by 20261111T061849-382fec: Drive-JEPA's rows are its momentum-aware model now: 20261111T061849-382fec plans each scene's keyframes in order on one node (streamed per scene, 4,485 of 5,119 keyframes fed). Momentum was on in this run but never acted: 0 of 5,119 plans were given a previous plan, because each open-loop sample reset the node.

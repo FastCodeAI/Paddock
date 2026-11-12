@@ -223,19 +223,21 @@ neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 
 # nuScenes-trained checkpoints, zero-shot everywhere else. On NAVSIM the 3 s plan is held to the 4 s NAVSIM
-# scores (UNIAD_HORIZON_S / VAD_HORIZON_S); those runs predate model.yaml listing that setting as ranked with
-# a note, so they are stored valid: false and are not ranked. Their nuScenes runs are not in results/ yet.
+# scores (UNIAD_HORIZON_S / VAD_HORIZON_S), a setting model.yaml lists as ranked with a note. The NAVSIM records
+# were written again from their stored chunks (--resume, nothing scored again) after the runner stopped counting a
+# byte-identical checkpoint path as an override; the NAVSIM v1 cells replay those runs' plans (no model process).
+# Their nuScenes runs are not in results/ yet.
 [cells.uniad]
 kitscenes = { run = "kitscenes/uniad/20261109T082536-b881a6" }
-navsim = { run = "navsim/uniad/20261109T082522-c24426", marks = "P V" }
-navsim_v1 = { run = "navsim_v1/uniad/20261110T154404-e02e88", marks = "P V" }
+navsim = { run = "navsim/uniad/20261109T082522-c24426", marks = "P" }
+navsim_v1 = { run = "navsim_v1/uniad/20261112T130241-e02e88", marks = "P" }
 neuroncap = { run = "neuroncap/uniad/20261109T092826-5919f1" }
 alpasim = { run = "alpasim/uniad/20261110T120651-8ea842" }  # six cameras, re-rendered as nuScenes' rig
 
 [cells.vad]
 kitscenes = { run = "kitscenes/vad/20261109T082536-a393ec" }
-navsim = { run = "navsim/vad/20261110T095855-0ebf09", marks = "P V" }
-navsim_v1 = { run = "navsim_v1/vad/20261110T160343-25e0e5", marks = "P V" }
+navsim = { run = "navsim/vad/20261110T095855-0ebf09", marks = "P" }
+navsim_v1 = { run = "navsim_v1/vad/20261112T132424-25e0e5", marks = "P" }
 neuroncap = { run = "neuroncap/vad/20261110T033544-7f435b" }
 alpasim = { run = "alpasim/vad/20261110T153825-72448c" }  # six cameras, re-rendered as nuScenes' rig
 

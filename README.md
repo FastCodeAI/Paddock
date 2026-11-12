@@ -67,11 +67,11 @@ it differs.
   once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** Every VisionPilot figure but
   comma2k19's and KITScenes' predates the `CURV_SCALE` fix.
-- **V — stored `valid: false`, so not ranked.** UniAD's and VAD's NAVSIM cells. Their
-  3 s plan is held to NAVSIM's 4 s by a site setting (`UNIAD_HORIZON_S`, `VAD_HORIZON_S`),
-  which their `model.yaml` now lists as ranked with a note, as METEOR's is. These runs
-  were made before that line went in, so the runner stored them `valid: false`, and a
-  stored flag is never edited by hand. A run made from now on ranks, with the note.
+- **V — stored `valid: false`, so not ranked.** No cell carries it now. UniAD's and VAD's
+  NAVSIM cells hold their 3 s plan to NAVSIM's 4 s by a site setting (`UNIAD_HORIZON_S`,
+  `VAD_HORIZON_S`), which their `model.yaml` lists as ranked with a note, as METEOR's is.
+  Their records were written again from the stored chunks (`paddock run ... --resume`,
+  nothing scored again), so they rank with that note.
 - **Drive-JEPA's open-loop and neuroNCAP cells are its momentum-aware model.**
   Its selection stage hands each plan the node's own plan from 0.5 s earlier, which
   open loop never does on its own, because every sample resets the node. So these
