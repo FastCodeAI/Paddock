@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Any
 
 from paddock.adapters.benchmarks.bench2drive import early_stop, rig
+from paddock.adapters.benchmarks.bench2drive.pid import grid_stride
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.config import REPO_ROOT
 from paddock.runtime import ports
@@ -132,9 +133,13 @@ KILL_ALL_LINE = "xargs -r kill -9"
 #: again, never what is measured.
 DEFAULT_CONNECT_TIMEOUT_S = 60
 
-#: Spacing of the waypoints the node returns. Every closed-loop model plans on a
-#: 0.5 s grid (see ``neuroncap/harness.py``); the agent turns waypoint spacing
-#: into a target speed with it, so it is a measurement parameter, not a knob.
+#: The grid the controller reads a plan on: the plan's own points at 0.5, 1.0, ...
+#: 3.0 s (``pid.on_grid``), whatever the model's spacing. Every model but
+#: alpamayo2edge plans 0.5 s apart, so for them these are the plan's first six
+#: points, which is all the agent ever read; Edge's are every fifth of its 0.1 s
+#: points. The agent turns their spacing into a target speed, so it is a
+#: measurement parameter, not a knob. ``input_problems`` refuses a model whose
+#: spacing has no points on this grid.
 WAYPOINT_DT = 0.5
 
 DEFAULT_ROUTES_FILE = "bench2drive220.xml"
@@ -971,6 +976,22 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             f"it must import {', '.join(AGENT_IMPORTS)} with PYTHONPATH="
             f"{os.pathsep.join(self._pythonpath())} (see docs/benchmarks/bench2drive.md)"
         ]
+
+    def input_problems(self, model) -> list[str]:
+        """Why ``model`` cannot be driven here, from its spec alone; the runner asks before any launch.
+
+        The controller follows a plan's own points at every ``WAYPOINT_DT`` s and does
+        not interpolate one (``pid.on_grid``). A spacing that does not divide 0.5 s
+        has no such points, and the agent would refuse the first plan -- after CARLA
+        has loaded the town and the model its checkpoint.
+        """
+        if grid_stride(model.waypoint_dt, WAYPOINT_DT) is None:
+            return [
+                f"{model.name} plans {model.waypoint_dt:g} s apart; Bench2Drive's controller follows a "
+                f"plan's own points at every {WAYPOINT_DT:g} s and does not interpolate one, so the "
+                f"spacing must divide {WAYPOINT_DT:g} s"
+            ]
+        return []
 
     def scene_problems(self, scene: str) -> list[str]:
         """``--scene`` names a route id or a town; say so before the model loads."""

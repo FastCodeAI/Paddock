@@ -26,7 +26,6 @@ ASSIGNED: dict[str, str] = {
     "alpamayo": "#7570b3",
     "drivejepa": "#1b9e77",
     "visionpilot": "#e7298a",
-    "sunnypilot": "#a6761d",
     "alpamayo2": "#66a61e",
     # Added when METEOR's hashed fallback (#9467bd) turned out to be
     # indistinguishable from alpamayo15's #7570b3 in the NAVSIM comparison.
