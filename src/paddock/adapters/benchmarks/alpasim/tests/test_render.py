@@ -172,6 +172,46 @@ def test_the_bar_says_how_the_scored_part_ended_and_every_speed_is_the_cars_own(
     assert R._outcome(clean, None, None) == ("score 1.00", "scored to the end")
 
 
+def _rollout(tmp_path: Path, rows: int, step_us: int = 50_000) -> Path:
+    """A rollout folder with a controller log beside it; the video is only a name here."""
+    rollout = tmp_path / "scene" / "rollouts" / "scene" / "r1"
+    rollout.mkdir(parents=True)
+    log = tmp_path / "scene" / "controller" / "alpasim_controller_r1.csv"
+    log.parent.mkdir()
+    lines = ["timestamp_us,vx,vy"] + [f"{1_000_000 + k * step_us},{k / 10},0.0" for k in range(rows)]
+    log.write_text("\n".join(lines) + "\n")
+    return rollout / "scene_r1_camera_front_wide_120fov_default.mp4"
+
+
+def test_the_speed_is_the_cars_own_at_the_stop_two_steps_into_the_log(tmp_path: Path) -> None:
+    video = _rollout(tmp_path, rows=100)
+    # Frame 52 of the video is row 50 of the log: 5.0 m/s, 18 km/h.
+    assert R._speed_kmh(video, 52) == pytest.approx(18.0)
+    assert R._speed_kmh(video, None) is None
+    assert R._speed_kmh(video, 150) is None  # the log ends first: no speed, never the last row's
+    assert R._speed_kmh(tmp_path / "a" / "b" / "c" / "d" / "none.mp4", 52) is None  # no log at all
+
+
+def test_a_drive_on_another_clock_is_refused(tmp_path: Path) -> None:
+    def run(**config) -> LoadedRun:
+        return LoadedRun("a", "alpasim", "a-run", {"config": config}, {}, [])
+
+    video = _rollout(tmp_path / "ok", rows=396)
+    R._check_clock(run(), video, 398)  # 20 steps a second, one frame a step
+    R._check_clock(run(control_timestep_us=50_000, force_gt_duration_us=3_000_000), video, 398)
+    R._check_clock(run(bridge_args=["--force-gt-us", "3000000"]), video, 398)
+    R._check_clock(run(), tmp_path / "a" / "b" / "c" / "d" / "none.mp4", 10)  # nothing recorded: no check
+    with pytest.raises(R.NotDrawable, match="video_every_nth_frame = 1"):
+        R._check_clock(run(), video, 199)  # every second frame only
+    with pytest.raises(R.NotDrawable, match="steps every 0.1 s"):
+        R._check_clock(run(), _rollout(tmp_path / "slow", rows=198, step_us=100_000), 200)
+    with pytest.raises(R.NotDrawable, match="steps every 0.1 s"):
+        R._check_clock(run(control_timestep_us=100_000), video, 398)
+    with pytest.raises(R.NotDrawable, match="hands over to the model at 2 s"):
+        R._check_clock(run(bridge_args=["--force-gt-us", "2000000"]), video, 398)
+    assert issubclass(R.NotDrawable, LookupError)  # so `paddock render` prints it and exits 1
+
+
 def test_a_tile_freezes_dimmed_from_the_moment_its_scoring_stopped() -> None:
     pytest.importorskip("PIL")
     w, h = 480, 270

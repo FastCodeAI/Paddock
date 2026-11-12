@@ -228,6 +228,7 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
             np.asarray(Image.fromarray(f).crop(box).resize((tile_w, tile_h), Image.LANCZOS)) for f in whole
         ]
         del whole
+        _check_clock(run, video, len(frames))
         stop = _stop_frame(metrics)
         if stop is not None:
             stop = min(stop, len(frames) - 1)
@@ -317,22 +318,73 @@ def _stop_frame(metrics: dict) -> int | None:
     return round((HANDOVER_S + _scored_s(metrics)) * FPS) + 1
 
 
+class NotDrawable(LookupError):
+    """A drive this file's clock would misread. A LookupError, so `paddock render` prints it plainly."""
+
+
+def _controller_rows(video: Path) -> list[dict]:
+    """The controller's log of this rollout, one row a step: `controller/..._<rollout id>.csv`."""
+    logs = sorted(video.parents[3].glob(f"controller/*{video.parent.name}.csv"))
+    if not logs:
+        return []
+    with logs[0].open(newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def _check_clock(run, video: Path, n_frames: int) -> None:
+    """Refuse a drive that does not step 20 times a second with one video frame a step and a 3 s hand-over.
+
+    The stop frame, the bar's time and the speed all count in those units. A site that sets
+    `video_every_nth_frame = 2`, or a run with another step or hand-over, would get tiles that
+    freeze at the wrong moment under a bar with the wrong time, and nothing would say so.
+    Each check is made only where the run recorded the fact.
+    """
+    config = (getattr(run, "run", None) or {}).get("config", {})
+    step_us, handover_us = config.get("control_timestep_us"), config.get("force_gt_duration_us")
+    args = [str(a) for a in config.get("bridge_args") or []]
+    if "--force-gt-us" in args[:-1]:
+        handover_us = args[args.index("--force-gt-us") + 1]
+    who = f"{run.model}/{run.run_id}"
+    if step_us is not None and int(step_us) != round(1e6 / FPS):
+        raise NotDrawable(
+            f"{who} steps every {int(step_us) / 1e6:g} s; this draws runs that step {FPS} a second"
+        )
+    if handover_us is not None and int(handover_us) != round(HANDOVER_S * 1e6):
+        raise NotDrawable(
+            f"{who} hands over to the model at {int(handover_us) / 1e6:g} s; this draws runs that do at "
+            f"{HANDOVER_S:g} s"
+        )
+    rows = _controller_rows(video)
+    try:
+        times = [int(row["timestamp_us"]) for row in rows]
+    except (KeyError, ValueError):
+        times = []
+    if len(times) < 3:
+        return
+    step = statistics.median(b - a for a, b in zip(times, times[1:], strict=False))
+    if abs(step - 1e6 / FPS) > 1000:
+        raise NotDrawable(f"{who} steps every {step / 1e6:g} s; this draws runs that step {FPS} a second")
+    # The log's first row is two steps after the video's first frame, so a whole video has two more frames.
+    if abs(n_frames - (len(times) + 2)) > 2:
+        raise NotDrawable(
+            f"{video.name} has {n_frames} frames for {len(times)} steps of {who}; this needs one frame a "
+            "step, which is [benchmarks.alpasim] video_every_nth_frame = 1"
+        )
+
+
 def _speed_kmh(video: Path, stop: int | None) -> float | None:
     """The car's own speed at frame `stop`, from the controller's log beside the rollouts.
 
     AlpaSim records no impact speed. The log's first row is two steps after the video's first
-    frame. None when there is no log, so the bar then leaves the speed out.
+    frame. None when there is no log or it ends before that frame, so the bar then leaves the
+    speed out.
     """
     if stop is None:
         return None
-    logs = sorted(video.parents[3].glob(f"controller/*{video.parent.name}.csv"))
-    if not logs:
+    rows = _controller_rows(video)
+    if not 0 <= stop - 2 < len(rows):
         return None
-    with logs[0].open(newline="") as fh:
-        rows = list(csv.DictReader(fh))
-    if not rows:
-        return None
-    row = rows[min(max(stop - 2, 0), len(rows) - 1)]
+    row = rows[stop - 2]
     try:
         return 3.6 * math.hypot(float(row["vx"]), float(row["vy"]))
     except (KeyError, ValueError):

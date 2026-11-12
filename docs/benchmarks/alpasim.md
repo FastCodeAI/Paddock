@@ -617,6 +617,11 @@ later. That was checked step for step against `metrics.parquet` on 40 drives
 (eight models, five scenes). A speed in a bar is the car's own, from the
 controller's log; AlpaSim records no impact speed.
 
+All of this counts in steps of 0.05 s with one video frame a step and the
+hand-over at 3 s, which is how every row of the results table was run. A drive
+on another clock is refused with a message, not drawn wrongly: leave
+`video_every_nth_frame` at 1 for runs you mean to draw.
+
 The picture after the stop can smear, which the dimmed tile hides. The picture
 can also smear while a car is still scored, when it drifts from the recorded
 drive; nothing hides that, and the line under the website's videos says so.
