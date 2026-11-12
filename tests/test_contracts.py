@@ -183,6 +183,15 @@ def test_card_values_are_in_range(name: str) -> None:
         "a count of poses means nothing without their spacing"
     )
     assert m.ego_history_steps is None or m.ego_history_steps >= 1, f"{name}: ego_history_steps must be >= 1"
+    times = list(m.camera_frame_times_s)
+    if times:
+        assert len(times) == m.history_frames, (
+            f"{name}: camera_frame_times_s gives {len(times)} times for {m.history_frames} history_frames"
+        )
+        assert times == sorted(set(times)) and times[-1] == 0, (
+            f"{name}: camera_frame_times_s runs oldest first, each time once, and ends now, at 0"
+        )
+        assert m.camera_hz is None, f"{name}: give camera_frame_times_s or camera_hz, not both"
 
 
 #: Words of prose a training-overlap section must carry. A heading alone, or a

@@ -21,7 +21,7 @@ from typer.testing import CliRunner
 from paddock import vendor
 from paddock.cli import app
 from paddock.config import SiteConfig
-from paddock.registry import ModelSpec, Registry, RepoSpec, Runtime
+from paddock.registry import BenchmarkSpec, ModelSpec, Registry, RepoSpec, Runtime
 
 FIXTURE = Path(__file__).parent / "fixtures" / "alt_site.toml"
 
@@ -98,10 +98,12 @@ def site(monkeypatch, tmp_path):
     )
 
 
-def _registry(site, patches: tuple[str, ...] = (), models: dict | None = None) -> Registry:
+def _registry(
+    site, patches: tuple[str, ...] = (), models: dict | None = None, benchmarks: dict | None = None
+) -> Registry:
     """repos.yaml with one entry, `up`, pinned to the upstream's first commit (short sha)."""
     spec = RepoSpec(name="up", url=site.url, sha=site.first[:9], patches=patches)
-    return Registry(repos={"up": spec}, datasets={}, models=models or {}, benchmarks={})
+    return Registry(repos={"up": spec}, datasets={}, models=models or {}, benchmarks=benchmarks or {})
 
 
 def _setup(site, registry: Registry, **kwargs) -> tuple[int, str]:
@@ -338,8 +340,109 @@ def test_unknown_names_are_refused_with_the_known_ones(site) -> None:
     assert code == 2 and "no repos.yaml entry named 'nope'; known: up" in out
     code, out = _setup(site, _registry(site), model="nope")
     assert code == 2 and "unknown model" in out
+    code, out = _setup(site, _registry(site), bench="nope")
+    assert code == 2 and "unknown benchmark" in out
     code, out = _setup(site, _registry(site), repo="up", model="nope")
     assert code == 2 and "not both" in out
+    code, out = _setup(site, _registry(site), model="up", bench="nope")
+    assert code == 2 and "not both" in out
+
+
+# -- --bench ----------------------------------------------------------------------------
+
+
+def _stub_bench(site, script: str) -> BenchmarkSpec:
+    directory = site.root / "stubbench"
+    directory.mkdir(exist_ok=True)
+    (directory / "setup.sh").write_text(script)
+    return BenchmarkSpec(name="stubbench", mode="closed_loop", dataset="", directory=directory, repo="up")
+
+
+def test_bench_runs_its_setup_sh_in_its_clone_by_default(site) -> None:
+    spec = _stub_bench(site, RECORDING_SCRIPT)
+
+    code, out = _setup(site, _registry(site, benchmarks={"stubbench": spec}), bench="stubbench")
+
+    assert code == 0, out
+    assert _head(site.clone) == site.first, "the benchmark's repo is set up first"
+    seen = (spec.directory / "seen.txt").read_text().splitlines()
+    assert seen[:2] == [str(site.clone), str(site.clone / ".venv")]
+
+
+def test_bench_setup_builds_where_its_python_setting_points(site) -> None:
+    """The harness launches `[benchmarks.<name>] python`, so that is where the env must go."""
+    env = site.root / "envs" / "client"
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    config.write_text(config.read_text() + f'\n[benchmarks.stubbench]\npython = "{env / "bin" / "python"}"\n')
+    site.cfg = SiteConfig.load()
+    spec = _stub_bench(site, RECORDING_SCRIPT)
+
+    code, out = _setup(site, _registry(site, benchmarks={"stubbench": spec}), bench="stubbench")
+
+    assert code == 0, out
+    assert (spec.directory / "seen.txt").read_text().splitlines()[1] == str(env)
+
+
+def test_bench_without_a_setup_sh_fails_and_says_so(site) -> None:
+    spec = _stub_bench(site, "")
+    (spec.directory / "setup.sh").unlink()
+
+    code, out = _setup(site, _registry(site, benchmarks={"stubbench": spec}), bench="stubbench")
+
+    assert code == 1 and "has no setup.sh" in out
+
+
+def _run_bench2drive_setup(tmp_path: Path, venv: Path) -> tuple[subprocess.CompletedProcess, str]:
+    """bench2drive's real setup.sh, with uv replaced by a stub that only logs its arguments."""
+    stubs, log = tmp_path / "stubs", tmp_path / "calls.log"
+    stubs.mkdir()
+    (stubs / "uv").write_text(f'#!/bin/sh\necho "uv $*" >> "{log}"\n')
+    (stubs / "uv").chmod(0o755)
+    env = {"PATH": f"{stubs}:/usr/bin:/bin", "PADDOCK_VENV": str(venv)}
+    script = Registry.load().benchmarks["bench2drive"].directory / "setup.sh"
+    done = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+    return done, log.read_text() if log.exists() else ""
+
+
+def test_bench2drive_setup_builds_python_3_8_from_its_pinned_list(tmp_path: Path) -> None:
+    venv = tmp_path / "env"
+    done, calls = _run_bench2drive_setup(tmp_path, venv)
+    assert done.returncode == 0, done.stderr
+    requirements = Registry.load().benchmarks["bench2drive"].directory / "client-requirements.txt"
+    assert calls.splitlines() == [
+        f"uv venv {venv} --python 3.8",
+        f"uv pip install --python {venv}/bin/python -r {requirements}",
+    ]
+    assert f'python     = "{venv}/bin/python"' in done.stdout, "it says what to put in paddock.toml"
+
+
+@pytest.mark.parametrize("venv_kind", ["conda", "venv"])
+def test_bench2drive_setup_leaves_an_existing_environment_alone(tmp_path: Path, venv_kind: str) -> None:
+    """A site's CARLA client is often a shared conda env; installing into it changes others' versions.
+
+    The folder is two levels above `python`, so for a conda env it is the whole install:
+    it must never be the one the script tells someone to delete.
+    """
+    venv = tmp_path / "env"
+    (venv / "bin").mkdir(parents=True)
+    if venv_kind == "venv":
+        (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
+
+    done, calls = _run_bench2drive_setup(tmp_path, venv)
+
+    assert done.returncode == 0, done.stderr
+    assert "left as it is" in done.stdout
+    assert ("delete that folder" in done.stdout) == (venv_kind == "venv")
+    assert calls == ""
+
+
+def test_bench2drive_client_requirements_are_all_pinned() -> None:
+    """Every line an exact version: the CARLA client is rebuilt to match, not resolved afresh."""
+    path = Registry.load().benchmarks["bench2drive"].directory / "client-requirements.txt"
+    lines = [ln.strip() for ln in path.read_text().splitlines() if ln.strip() and not ln.startswith("#")]
+    loose = [ln for ln in lines if "==" not in ln]
+    assert lines and not loose, f"unpinned: {loose}"
+    assert "carla==0.9.15" in lines
 
 
 # -- the command itself -----------------------------------------------------------------
@@ -376,14 +479,16 @@ def test_a_comment_does_not_count_as_reading_a_variable() -> None:
     assert "PADDOCK_VENV" in _code('# a comment\nuv venv "${PADDOCK_VENV}"\n')
 
 
-def test_every_model_setup_sh_builds_where_paddock_will_look() -> None:
+def test_every_setup_sh_builds_where_paddock_will_look() -> None:
     """`paddock setup --model X` hands the script PADDOCK_VENV, the path paddock will launch from.
 
     Three scripts once ignored it: two built a conda env by name, which landed in
     conda's default folder and not at model.yaml's `venv`, and openpilot's always
     built `.venv`. Setup then "succeeded" and the first run could not find the env.
     """
-    scripts = [spec.directory / "setup.sh" for spec in Registry.load().models.values()]
+    registry = Registry.load()
+    specs = [*registry.models.values(), *registry.benchmarks.values()]
+    scripts = [spec.directory / "setup.sh" for spec in specs]
     ignoring = [s.parent.name for s in scripts if s.exists() and "PADDOCK_VENV" not in _code(s.read_text())]
     assert not ignoring, f"setup.sh ignores PADDOCK_VENV: {ignoring}"
 

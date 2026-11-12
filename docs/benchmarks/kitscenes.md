@@ -13,7 +13,9 @@
 <!-- /summary -->
 
 Open-loop trajectory accuracy: ADE and FDE against the recorded future, over a
-fixed set of 223 keyframes.
+fixed set of 223 keyframes. They come from all 140 sequences of two whole splits:
+186 keyframes from the 117 sequences of `val`, and 37 from the 23 of
+`overlap_train_val`. No `test` or `test-e2e` sequence is scored.
 
 ```bash
 paddock run --bench kitscenes --model openpilot --limit 5   # smoke
@@ -43,13 +45,17 @@ predictions sitting beside them; `paddock ingest` reads the same file for the
 predictions, which is how Drive-JEPA has a row on this benchmark without a
 paddock run.
 
+The list is not in this repository yet, so a site that downloads KITScenes
+with `paddock data fetch kitscenes` still cannot score a model on it; issue
+[#178](https://github.com/FastCodeAI/Paddock/issues/178) tracks publishing it.
+
 ### The seven rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
 | qwendrive | `20260914T220841-5a91fd` | 223 | 0.806 | a paddock run; three of the six ring cameras |
 | alpamayo15 | `legacy-full-nonav` | 223 | 0.921 | `eval_kitscenes/runs/full` |
-| visionpilot | `20260909T202724-153b04` | 223 | 1.534 | a paddock run; see below |
+| visionpilot | `20261105T191932-c71101` | 223 | 1.475 | a paddock run; see below |
 | openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire ([⊜](#notes-on-the-matrix-cells)) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
@@ -508,7 +514,7 @@ adapted, and is the one row given the scene's map and an oracle route (see
 | OpenPilot | 1.248 ⊜ | 2.355 ⊜ |
 | Alpamayo 1.5 | 1.002 | 2.158 |
 | Drive-JEPA | 2.364 | 4.199 |
-| VisionPilot | 1.534 ∗ | 3.089 ∗ |
+| VisionPilot | 1.475 ∗ | 2.968 ∗ |
 | METEOR | 1.879 ◇ | 4.034 ◇ |
 | Qwen-Drive 1.0 | **0.806** | **1.777** |
 | AutoE2E | 0.847 ⊞ | 1.903 ⊞ |

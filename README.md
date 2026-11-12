@@ -22,20 +22,20 @@ and every score it produces traces back to a run you can inspect.
 </p>
 
 **A** adapted to the benchmark · **P** a pipeline around the model is graded ·
-**S** stale · **R** not ranked: measured on different scenes or by a different method.
+**S** stale.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
 names for it. The matrix holds released checkpoints only.
 Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-matrix-results) ·
 [KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
 [comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
-[nuPlan](docs/benchmarks/nuplan.md#support-matrix-results) ·
 [NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) ·
 [NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) ·
 [Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) ·
 [neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
 [AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
 [HUGSIM](docs/benchmarks/hugsim.md) has no column yet: two of these models have driven it.
+[nuPlan](docs/benchmarks/nuplan.md) has no column yet: its runs so far cover 25 of 351 anchors.
 
 <details>
 <summary>Why each cell is marked, and what to check before comparing</summary>
@@ -46,8 +46,7 @@ it differs.
 
 - **A — adapted, not zero-shot.** The model was trained on data from this
   benchmark, or its settings were chosen on it. Drive-JEPA and Qwen-Drive on
-  NAVSIM (both trained on `navtrain`), Drive-JEPA on nuPlan (52 of the 62
-  nuPlan mini logs are `navtrain` logs), Qwen-Drive on nuScenes and neuroNCAP
+  NAVSIM (both trained on `navtrain`), Qwen-Drive on nuScenes and neuroNCAP
   (its VLM trained on nuScenes train, and on driving-VQA sets whose training
   splits hold nuScenes val scenes), Alpamayo on NAVSIM, nuScenes and
   neuroNCAP (its model card lists two NAVSIM-built and five nuScenes-built public
@@ -64,23 +63,21 @@ it differs.
   and its driver-resume nudge, which stands in for a driver pressing resume
   once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** Every VisionPilot figure but
-  comma2k19's predates the `CURV_SCALE` fix. Drive-JEPA's nuScenes cell is the camera-blind run from
-  before the camera fix of 13 Oct 2026.
-- **R — not ranked, because the number was measured on different scenes or by a
-  different method from the rest of its column.** How many cameras a model is
-  given, whether it drives through paddock's bridge or its own simulator driver,
-  and whether its Bench2Drive routes end early as failed drives are never
-  reasons to leave a cell unranked.
-- **Ranked, though some Bench2Drive routes end early.** AutoE2E's, METEOR's and
-  OpenPilot's Bench2Drive runs end a route after 30 s without progress or at 4x
-  the expert's time, and score it as it stood, as a failed drive; the rest of
-  the column drove every route to Bench2Drive's own end. That can move a score
+  comma2k19's and KITScenes' predates the `CURV_SCALE` fix.
+- **What never leaves a cell unranked.** How many cameras a model is given,
+  whether it drives through paddock's bridge or its own simulator driver, and
+  whether its Bench2Drive routes end early as failed drives are never reasons to
+  leave a cell unranked.
+- **Ranked, though some Bench2Drive routes end early.** In the 50-route column,
+  AutoE2E's, METEOR's and OpenPilot's runs end a route after 30 s without progress
+  or at 4x the expert's time, and score it as it stood, as a failed drive; the rest
+  of that column drove every route to Bench2Drive's own end. That can move a score
   either way: a car that would have crept on, or finished just after the cut,
   scores what it had, and one left to drive on could have collected more
   penalties ([Ending routes early](docs/benchmarks/bench2drive.md#ending-routes-early)).
-- **Ranked, though fed what the model is built for.** Bench2Drive cells marked
-  2 Hz, 5 Hz or 10 Hz are driven at the model's native inference rate, where the
-  rest of the column runs at 20 Hz over the same 50 routes. Drive-JEPA, Alpamayo
+- **Ranked, though fed what the model is built for.** 50-route Bench2Drive cells
+  marked 2 Hz, 5 Hz or 10 Hz are driven at the model's native inference rate, where
+  the rest of that column runs at 20 Hz over the same 50 routes. Drive-JEPA, Alpamayo
   and Qwen-Drive score higher there than at 20 Hz; those gains are
   partly more exposure. Alpamayo's and Qwen-Drive's means are over 49 routes:
   route 3800 crashes CARLA at their rate. Qwen-Drive's 2 Hz is its camera rate
@@ -94,14 +91,35 @@ it differs.
   three views are black, and the model reads only its front camera. METEOR there
   sees that one camera in two of its eight slots, the other six left black as its
   training drops a camera.
+- **Ranked, though fed less than the model is built for.** Alpamayo 2 Edge's NAVSIM
+  cells, marked 2 Hz, are a model built for 0.1 s frames run on OpenScene's 2 Hz; it
+  has not been run on nuPlan's 10 Hz frames. Compare them with Alpamayo 1.5's 2 Hz run
+  (0.676 PDMS, 0.608 EPDMS), not with the 10 Hz cells above them
+  ([navsim.md](docs/benchmarks/navsim.md#notes-on-the-matrix-cells)).
 
 Before comparing numbers:
 
+- **Three columns use part of a benchmark, so don't compare them with published
+  scores.** Bench2Drive's "50 of 220 routes" column covers 14 of its 44 scenario
+  types. AlpaSim is 30 of the 913 scenes in `public_2601`. NAVSIM v2 is
+  `navtest`, stage one only; its public leaderboard uses `navhard`, two stages.
+- **Bench2Drive has two columns.** The one headed "216 of 220 routes" is every
+  model driven the same way over all 220 routes but the four set aside for every
+  model (CARLA crashes on route 11715 whichever model drives, and crashed on 3800,
+  23695 and 24071 on every attempt by Alpamayo 1.5):
+  each model at its own rate, routes ended after 30 s without progress or at 4x
+  the expert's time, and three tries per route
+  ([The 220-route protocol](docs/benchmarks/bench2drive.md#the-220-route-protocol)).
+  It fills as models are run; a dash is a model not run yet. The "50 of 220
+  routes" column stays until every model has its 220-route cell. The two are
+  ranked separately. Bench2Drive's own success rate, abilities, efficiency and
+  comfort for each 220-route cell are in the `upstream_scores.json` beside its
+  record
+  ([Bench2Drive — 220 routes](docs/benchmarks/bench2drive.md#bench2drive--220-routes)).
+- **Both NAVSIM columns are open loop.** The plan is simulated for 4 s to score it,
+  but the model never sees what happened, so errors do not compound.
 - **Open-loop L2 rewards a straight line.** On nuScenes, constant velocity
   (0.641) beats every learned model except Qwen-Drive, whose cell is adapted.
-- **nuPlan is recorded, not ranked.** These runs use one of nuPlan's nine camera
-  shards: 25 anchors, in 7 of 59 scenario types, six of them stop-sign or
-  traffic-light decelerations. Every run is stored `valid: false`.
 - **Close closed-loop scores are often ties.** On neuroNCAP (20 scenario pairs,
   10 runs each) the top three are statistically indistinguishable. On AlpaSim
   (30 scenes, one rollout each) a difference under about 0.16 is within two
@@ -162,7 +180,7 @@ flowchart LR
         c2k["comma2k19<br/>20 Hz highway · 10,165 samples"]
         npl["nuPlan<br/>v1.1 · 10 Hz · ADE / FDE"]
     end
-    subgraph pseudo ["pseudo-closed-loop"]
+    subgraph simscored ["open-loop, plan simulated for scoring"]
         nv["NAVSIM<br/>v1 PDMS · v2 EPDMS"]
     end
     subgraph closed ["closed-loop"]
@@ -177,13 +195,13 @@ flowchart LR
 
     op & al & dj & vp & me & ae & qd & wj & cv --> pol
     pol -- "harness posts a recording<br/>/infer_sequence" --> open
-    pol -- "scorer posts a recording,<br/>then simulates the plan" --> pseudo
+    pol -- "scorer posts a recording,<br/>then simulates the plan" --> simscored
     pol -- "simulator posts /infer<br/>every tick, the plan<br/>moves the car<br/>(AlpaSim: via a gRPC bridge)" --> closed
-    open & pseudo & closed --> res
+    open & simscored & closed --> res
 
     style models fill:#fff8f1,stroke:#c2410c,stroke-width:1.5px,color:#9a3412
     style open   fill:#f2fbf4,stroke:#15803d,stroke-width:1.5px,color:#166534
-    style pseudo fill:#fffbeb,stroke:#b45309,stroke-width:1.5px,color:#92400e
+    style simscored fill:#fffbeb,stroke:#b45309,stroke-width:1.5px,color:#92400e
     style closed fill:#fff5f5,stroke:#b91c1c,stroke-width:1.5px,color:#991b1b
 
     classDef model   fill:#ffedd5,stroke:#ea580c,stroke-width:1.5px,color:#1f2328
@@ -210,6 +228,7 @@ benchmark is one new directory under `adapters/`. What crosses the wire:
 | Model | What it is | Code | Paper |
 |---|---|---|---|
 | [Alpamayo 1.5](docs/models/alpamayo15.md) | NVIDIA's 10B vision-language model with a diffusion trajectory decoder | [NVlabs/alpamayo1.5](https://github.com/NVlabs/alpamayo1.5) · Apache-2.0 | [Alpamayo-R1](https://arxiv.org/abs/2511.00088) |
+| [Alpamayo 2 Edge](docs/models/alpamayo2edge.md) | NVIDIA's 2.65B vision-language model that reasons only when it needs to, with a flow-matching trajectory expert | [NVlabs/alpamayo2-edge](https://github.com/NVlabs/alpamayo2-edge) · Apache-2.0 | |
 | [AutoE2E](docs/models/autoe2e.md) | The Autoware Foundation's end-to-end model | [autowarefoundation/auto_e2e](https://github.com/autowarefoundation/auto_e2e) · Apache-2.0 | |
 | [Drive-JEPA](docs/models/drivejepa.md) | Video JEPA encoder with a proposal-based planner | [linhanwang/Drive-JEPA](https://github.com/linhanwang/Drive-JEPA) · Apache-2.0 | [Drive-JEPA](https://arxiv.org/abs/2601.22032) |
 | [METEOR](docs/models/meteor.md) | TIER IV's 8-camera multi-task network | [tier4/METEOR](https://github.com/tier4/METEOR) · Apache-2.0 | |
@@ -234,17 +253,17 @@ Paddock ships no weights and no datasets.
 | [KITScenes](docs/benchmarks/kitscenes.md) | open loop | ADE | [KIT-MRT/kitscenes](https://github.com/KIT-MRT/kitscenes) | [KITScenes](https://arxiv.org/abs/2606.02956) |
 | [comma2k19](docs/benchmarks/comma2k19.md) | open loop | ADE | [commaai/comma2k19](https://github.com/commaai/comma2k19) | [A Commute in Data](https://arxiv.org/abs/1812.05752) |
 | [nuPlan](docs/benchmarks/nuplan.md) | open loop | ADE | [nuPlan](https://www.nuscenes.org/nuplan) | [nuPlan](https://arxiv.org/abs/2106.11810) |
-| [NAVSIM v2](docs/benchmarks/navsim.md) | pseudo-closed loop | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
-| [NAVSIM v1](docs/benchmarks/navsim_v1.md) | pseudo-closed loop | PDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [NAVSIM](https://arxiv.org/abs/2406.15349) |
-| [Bench2Drive](docs/benchmarks/bench2drive.md) | closed loop, CARLA | driving score | [Thinklab-SJTU/Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
+| [NAVSIM v2](docs/benchmarks/navsim.md) | open loop, plan simulated for scoring; `navtest`, stage one | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
+| [NAVSIM v1](docs/benchmarks/navsim_v1.md) | open loop, plan simulated for scoring | PDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [NAVSIM](https://arxiv.org/abs/2406.15349) |
+| [Bench2Drive](docs/benchmarks/bench2drive.md) | closed loop, CARLA; 50 of 220 routes | driving score | [Thinklab-SJTU/Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
 | [neuroNCAP](docs/benchmarks/neuroncap.md) | closed loop, NeuRAD | NCAP score | [atonderski/neuro-ncap](https://github.com/atonderski/neuro-ncap) | [NeuroNCAP](https://arxiv.org/abs/2404.07762) |
-| [AlpaSim](docs/benchmarks/alpasim.md) | closed loop, NuRec | scene score | [NVlabs/alpasim](https://github.com/NVlabs/alpasim) | |
+| [AlpaSim](docs/benchmarks/alpasim.md) | closed loop, NuRec; 30 of 913 scenes | scene score | [NVlabs/alpasim](https://github.com/NVlabs/alpasim) | |
 | [HUGSIM](docs/benchmarks/hugsim.md) | closed loop, Gaussian splatting | HD-Score | [hyzhou404/HUGSIM](https://github.com/hyzhou404/HUGSIM) | [HUGSIM](https://arxiv.org/abs/2412.01718) |
 
 ## Quickstart
 
-You need git, make, [uv](https://docs.astral.sh/uv/getting-started/installation/), curl
-and unzip.
+You need git, make, [uv](https://docs.astral.sh/uv/getting-started/installation/) and
+curl.
 
 ```bash
 git clone <this repo> paddock && cd paddock
@@ -257,18 +276,14 @@ Then get a first score, with no GPU and no model weights: the constant-velocity 
 on one 8.7 GB chunk of comma2k19.
 
 ```bash
-mkdir -p ~/data/comma2k19
-curl -L -o ~/data/Chunk_1.zip https://huggingface.co/datasets/commaai/comma2k19/resolve/main/raw_data/Chunk_1.zip
-unzip -q ~/data/Chunk_1.zip -d ~/data/comma2k19
-printf '\n[datasets.comma2k19]\npath = "%s"\n' ~/data/comma2k19 >> paddock.toml
-
+paddock data fetch comma2k19 --dest ~/data/comma2k19 --match Chunk_1.zip   # also adds its path to paddock.toml
 paddock setup --repo comma2k19              # comma's toolkit, at its pinned commit
 paddock setup --model constant_velocity     # this model's own environment
 paddock run --model constant_velocity --bench comma2k19 --limit 5
 paddock report
 ```
 
-The run takes under a minute and ends with `n=5  ade mean=0.997717`. Five samples of one
+The run takes under a minute and ends with `n=5  ade mean=0.899672`. Five samples of one
 chunk is a smoke test, so Paddock keeps the record but does not rank it:
 `paddock report` lists it under "Excluded runs".
 
@@ -372,3 +387,7 @@ and being listed here does not mean they endorse Paddock.
 ## License
 
 Apache License 2.0 ([LICENSE](LICENSE)). Copyright 2026 Renesas Electronics Corporation.
+
+A few files hold material from other projects under their own licences.
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists them, with the licences of the
+datasets behind the results.

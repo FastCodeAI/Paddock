@@ -55,7 +55,7 @@ RESULTS = ROOT / "results"
 MATRIX_SVG = ROOT / "docs" / "assets" / "support-matrix.svg"
 MODELS_SVG = ROOT / "docs" / "assets" / "models.svg"
 
-LOOP = {"open": "open loop", "pseudo": "pseudo-closed loop", "closed": "closed loop"}
+LOOP = {"open": "open loop", "closed": "closed loop"}
 MISSING = ("—", "not run")
 UNRANKED_MARKS = {"R", "V"}
 CELL_KEYS = {"run", "value", "source", "marks", "note", "model"}
@@ -72,6 +72,7 @@ TEXT_DARK = ["#0b0b0b", "#0b0b0b", "#0b0b0b", "#ffffff", "#ffffff", "#ffffff"]
 MODELS = {
     "openpilot": "OpenPilot",
     "alpamayo15": "Alpamayo 1.5",
+    "alpamayo2edge": "Alpamayo 2 Edge",
     "drivejepa": "Drive-JEPA",
     "visionpilot": "VisionPilot",
     "meteor": "METEOR",
@@ -113,6 +114,7 @@ DATASET_LABEL = {
     "drivingdojo": "DrivingDojo",
     "qwen3-vl": "Qwen3-VL corpus",
     "cosmos-reason2": "Cosmos-Reason2 data",
+    "cosmos3-edge": "Cosmos3-Edge data",
     "public-driving-qa": "public driving QA sets",
     "qwen3.5": "Qwen3.5 corpus",
     "in-house-china": "in-house (China)",
@@ -342,7 +344,10 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     # Both pictures share one width so they scale alike on the page; more benchmarks
     # means narrower columns, not a wider picture.
     col_w = (WIDTH - 2 * PAD - LABEL_W) // len(columns)
-    metric_lines = [_wrap(c.header, 14) for c in columns]
+    # The names and metric lines are sized for COL_W; at ten columns one name ran into the next,
+    # so narrower columns shrink the names and wrap the lines in step.
+    fit = min(1.0, col_w / COL_W)
+    metric_lines = [_wrap(c.header, int(14 * fit)) for c in columns]
     legend_h, band_h = 34, 24
     head_h = band_h + 18 + 13 * max(len(m) for m in metric_lines) + 8
     floor_gap = 10
@@ -353,14 +358,12 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     light = [".miss{fill:#f0efec}", ".floor{fill:#fcfcfb;stroke:#a9a8a3;stroke-dasharray:3 3}"]
     light += [".floorline{fill:none;stroke:#52514e;stroke-width:1.5;stroke-dasharray:4 3}"]
     light += [".hbg{fill:#f0efec}", ".hln{stroke:#c9c8c3}", ".worse{fill:#d03b3b;stroke:#fcfcfb}"]
-    light += [".open{fill:#15803d;stroke:#15803d}", ".pseudo{fill:#b45309;stroke:#b45309}"]
-    light += [".closed{fill:#b91c1c;stroke:#b91c1c}"]
+    light += [".open{fill:#15803d;stroke:#15803d}", ".closed{fill:#b91c1c;stroke:#b91c1c}"]
     light += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_LIGHT)]
     light += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_LIGHT)]
     dark = [".miss{fill:#2a2a28}", ".floor{fill:#1a1a19;stroke:#6b6a66}", ".floorline{stroke:#c3c2b7}"]
     dark += [".hbg{fill:#2a2a28}", ".hln{stroke:#45453f}", ".worse{fill:#e66767;stroke:#1a1a19}"]
-    dark += [".open{fill:#4ade80;stroke:#4ade80}", ".pseudo{fill:#fbbf24;stroke:#fbbf24}"]
-    dark += [".closed{fill:#f87171;stroke:#f87171}"]
+    dark += [".open{fill:#4ade80;stroke:#4ade80}", ".closed{fill:#f87171;stroke:#f87171}"]
     dark += [f".r{i + 1}{{fill:{c}}}" for i, c in enumerate(RAMP_DARK)]
     dark += [f".t{i + 1}{{fill:{c}}}" for i, c in enumerate(TEXT_DARK)]
     defs = (
@@ -383,9 +386,11 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
     sx += 26 * len(RAMP_LIGHT) + 4
     out.append(_text(sx, y, "rank 6+", "sec", 12))
     sx += 70
-    out.append(f'<rect fill="url(#hatch)" x="{sx}" y="{y - 11}" width="24" height="14" rx="3"/>')
-    out.append(_text(sx + 30, y, "not ranked", "sec", 12))
-    sx += 120
+    # Only when a cell uses it: a key for nothing on the page sends a reader looking.
+    if any(c.value is not None and c.rank is None for r in rows if not r.is_floor for c in r.cells):
+        out.append(f'<rect fill="url(#hatch)" x="{sx}" y="{y - 11}" width="24" height="14" rx="3"/>')
+        out.append(_text(sx + 30, y, "not ranked", "sec", 12))
+        sx += 120
     out.append(f'<path class="worse" d="M{sx} {y - 10}h11l-5.5 9z" stroke-width="1.5"/>')
     out.append(_text(sx + 16, y, "worse than constant velocity", "sec", 12))
     sx += 200
@@ -404,13 +409,22 @@ def render_matrix(columns: list[Column], rows: list[Row]) -> str:
         out.append(_text(bx, by + 8, columns[j].loop.upper(), "sec", 9.5, extra=' letter-spacing="0.8"'))
         j = k + 1
 
-    # Column headers.
-    for j, col in enumerate(columns):
-        cx = x0 + col_w * j + (col_w + GAP) / 2
-        hy = PAD + legend_h + band_h + 14
-        out.append(_text(cx, hy, escape(col.name), "ink", 12, "middle", weight="600"))
-        for i, line in enumerate(metric_lines[j]):
-            out.append(_text(cx, hy + 15 + 13 * i, escape(line), "sec", 10.5, "middle"))
+    # Column headers. Adjacent columns of one name -- Bench2Drive's 50 routes and its 220 -- share
+    # it, drawn once across them; their metric lines tell them apart.
+    hy = PAD + legend_h + band_h + 14
+    j = 0
+    while j < len(columns):
+        k = j
+        while k + 1 < len(columns) and columns[k + 1].name == columns[j].name:
+            k += 1
+        cx = x0 + col_w * (j + k + 1) / 2 + GAP / 2
+        size = f"{round(12 * fit, 1):g}"
+        out.append(_text(cx, hy, escape(columns[j].name), "ink", size, "middle", weight="600"))
+        for c in range(j, k + 1):
+            cx = x0 + col_w * c + (col_w + GAP) / 2
+            for i, line in enumerate(metric_lines[c]):
+                out.append(_text(cx, hy + 15 + 13 * i, escape(line), "sec", 10.5, "middle"))
+        j = k + 1
 
     # Rows.
     y = grid_top
@@ -498,12 +512,24 @@ def views(model: ModelSpec) -> list[tuple[str, int, int]]:
     return list(out.values())
 
 
+def _seconds(t: float) -> str:
+    # 0.0 + t turns -0.0 into 0.0; the minus sign is the one the axis labels use.
+    return f"{0.0 + t:g}".replace("-", "−")
+
+
 def history(model: ModelSpec) -> tuple[list[float], list[float], str]:
     """(camera frame ages, ego state ages, in seconds before now) and their caption."""
     n = model.history_frames or 1
     hz = model.camera_hz
-    frames = [k / hz for k in range(n)] if hz else [0.0]
-    cam = f"cam {n} @ {hz:g} Hz" if hz and n > 1 else "cam 1" if n == 1 else f"cam {n}, back to back"
+    if model.camera_frame_times_s:
+        # No one rate spaces these frames (Alpamayo 2 Edge's -2, -1, -0.5, -0.1 and 0 s):
+        # each is drawn at its own time, and the caption names the times.
+        times = model.camera_frame_times_s
+        frames = sorted(0.0 - t for t in times)
+        cam = f"cam {len(times)} at {', '.join(_seconds(t) for t in times)} s"
+    else:
+        frames = [k / hz for k in range(n)] if hz else [0.0]
+        cam = f"cam {n} @ {hz:g} Hz" if hz and n > 1 else "cam 1" if n == 1 else f"cam {n}, back to back"
     if hz and n > 1 and model.camera_frames_by_request:
         cam += " in training"
     if model.ego_history_steps and model.ego_history_hz:

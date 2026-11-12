@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} · end-to-end driving models, every benchmark</title>
+<meta name="description" content="{{DESCRIPTION}}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{TITLE}}">
+<meta property="og:description" content="{{DESCRIPTION}}">
+<meta property="og:url" content="{{SITE_URL}}">
+<meta property="og:image" content="{{SITE_URL}}social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="paddock.svg" type="image/svg+xml">
+<style>
+{{RAMP}}
+{{CSS}}
+</style>
+</head>
+<body>
+<a class="skip" href="#results">Skip to the results</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="#top"><img src="paddock.svg" alt="" width="28" height="28">Paddock</a>
+    <nav aria-label="Sections">
+      <a href="#results">Results</a>
+      <a href="#rankings">Rankings</a>
+      {{NAV_VIDEOS}}
+      <a href="#models">Models</a>
+      <a href="#benchmarks">Benchmarks</a>
+      <a href="#start">Get started</a>
+      <a class="gh" href="{{GITHUB}}">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-text">
+        <h1><img src="paddock.svg" alt="" width="64" height="64">Paddock</h1>
+        <p class="tagline">{{TAGLINE}}</p>
+        <p class="lede">{{LEDE}}</p>
+        <div class="cta">
+          <a class="btn primary" href="#results">See the results</a>
+          <a class="btn" href="#start">Run it yourself</a>
+          <a class="btn ghost" href="{{GITHUB}}">GitHub</a>
+        </div>
+        <ul class="stats" aria-label="What is covered">
+          <li><b>{{N_MODELS}}</b> models</li>
+          <li><b>{{N_BENCHES}}</b> benchmarks</li>
+          <li><b>{{N_SCORES}}</b> scores, each linked to its source</li>
+        </ul>
+      </div>
+      {{HERO_MEDIA}}
+    </div>
+  </section>
+
+  <section id="results" aria-labelledby="results-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 id="results-h">Results</h2>
+        <p class="sub">Each model's headline score on each benchmark. Shading is its rank in that column. Click a number to open the run it came from.</p>
+      </div>
+      <div class="controls">
+        <label class="toggle"><input type="checkbox" id="hide-adapted"><span class="track" aria-hidden="true"></span>
+          <span>Leave out <b>A</b> cells <small>where the model was trained or tuned on that benchmark's data</small></span></label>
+        <div class="key" aria-hidden="true">
+          <span class="ramp"><i class="r1">1</i><i class="r2">2</i><i class="r3">3</i><i class="r4">4</i><i class="r5">5</i><i class="r6">6+</i></span>
+          <span><i class="sw unranked"></i>not ranked</span>
+          <span><b class="tri">▼</b> worse than the floor</span>
+        </div>
+      </div>
+      <div class="scroll" tabindex="0" role="region" aria-label="Results table, scrolls sideways">
+        {{MATRIX}}
+      </div>
+      <details class="notes">
+        <summary>What the letters mean, and what to check before comparing</summary>
+        <div class="prose">{{MATRIX_NOTES}}
+          <p class="src">Every cell is named in <a href="{{SUPPORT_TOML}}">docs/support-matrix.toml</a>, and every number is read from the run it names.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section id="rankings" aria-labelledby="rankings-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 id="rankings-h">Each benchmark ranks the models differently</h2>
+        <p class="sub">The table above, as ranks. 1 is best. Hover a line, or click a model, to follow it.</p>
+      </div>
+      <div class="legend" id="legend" role="group" aria-label="Follow one model"></div>
+      <div class="scroll chart-wrap" tabindex="0" role="region" aria-label="Rank chart, scrolls sideways">
+        <svg id="bump" class="bump" role="img" aria-label="Each model's rank on each benchmark. The table above holds the same numbers."></svg>
+      </div>
+      <p class="sub small" id="bump-left-out" hidden></p>
+      <div class="tip" id="tip" role="status" hidden></div>
+    </div>
+  </section>
+
+  {{GALLERY}}
+
+  <section id="why" aria-labelledby="why-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 id="why-h">Why Paddock</h2>
+        <p class="sub">One adapter per model, and every benchmark calls it the same way. <a href="{{ARCHITECTURE}}">How it works</a></p>
+      </div>
+      {{FLOW}}
+      <div class="grid why-grid">{{WHY}}</div>
+    </div>
+  </section>
+
+  <section id="models" aria-labelledby="models-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 id="models-h">Models</h2>
+        <p class="sub">Released checkpoints only. Training sets that are one of Paddock's benchmarks are filled in.</p>
+      </div>
+      <div class="grid model-grid">{{MODELS}}</div>
+    </div>
+  </section>
+
+  <section id="benchmarks" aria-labelledby="benchmarks-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 id="benchmarks-h">Benchmarks</h2>
+        <p class="sub">Open loop scores a plan against a recorded drive. Closed loop lets the plan drive.</p>
+      </div>
+      <div class="scroll" tabindex="0" role="region" aria-label="Benchmarks table">{{BENCHES}}</div>
+    </div>
+  </section>
+
+  <section id="start" aria-labelledby="start-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 id="start-h">Get started</h2>
+      </div>
+      <div class="steps">
+        <div class="prose card"><h3>A first score, with no GPU</h3>{{QUICKSTART}}</div>
+        <div class="prose card"><h3>Add your model</h3>{{ADD_MODEL}}</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="authors" aria-labelledby="authors-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 id="authors-h">For model authors</h2>
+        <p class="sub">A badge for your README that links to your model's row here.</p>
+      </div>
+      <div class="card badge-box">
+        <label>Model <select id="badge-model">{{BADGE_OPTIONS}}</select></label>
+        <img id="badge-img" alt="Paddock badge preview" height="20" data-first="{{BADGE_FIRST}}">
+        <pre class="code"><code id="badge-md"></code></pre>
+        <button type="button" class="btn small" id="badge-copy">Copy</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="cite" aria-labelledby="cite-h">
+    <div class="wrap">
+      <div class="sec-head"><h2 id="cite-h">Citation</h2></div>
+      <div class="prose">{{CITATION}}</div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>Built from {{BUILT}}. Paddock is licensed under <a href="{{LICENSE}}">Apache 2.0</a>. Models, benchmarks and datasets keep their own licences; Paddock ships none of them.</p>
+    <p><a href="data.json">data.json</a> · every cell above, machine-readable · <a href="{{GITHUB}}">{{GITHUB}}</a></p>
+  </div>
+</footer>
+
+<script id="paddock-data" type="application/json">{{DATA}}</script>
+<script>
+{{JS}}
+</script>
+</body>
+</html>

@@ -281,7 +281,7 @@ shared `kitscenes_e2e_final` list, the six-camera ring, native 3 s plan,
 | **1.879** (median 1.419) | 0.695 | 2.040 | 4.034 | 1.563 | 0.688 |
 
 Constant velocity scores 1.381 on the same list; Alpamayo 1.002, VisionPilot
-1.534, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.364. A
+1.475, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.364. A
 second run reproduced all 223 predictions exactly.
 
 **Front camera only, kept as an ablation:**
@@ -317,9 +317,9 @@ anchors in 150 scenes, all six cameras, 2 Hz keyframes, native 3 s plan,
 |---|---|---|---|---|---|---|
 | 0.616 | 1.683 | 3.356 | **1.885** (median 1.581) | 0.977 | 1.570 | 6.15 % |
 
-Drive-JEPA scores 1.882 / 0.912 / 1.46 % on the same anchors and constant
+Drive-JEPA scores 2.344 / 1.328 / 1.63 % on the same anchors and constant
 velocity 1.288 / 0.641 / 1.66 %. With its cameras filled in, METEOR's
-displacement error sits with Drive-JEPA; the collision rate does not. Where
+displacement error is below Drive-JEPA's; its collision rate is above both. Where
 each comes from, measured on the per-sample records:
 
 - **Speed is in range here.** nuScenes is urban: 96 % of anchors are below
@@ -572,6 +572,14 @@ about 1.9 m up, in left-hand traffic), where paddock's rig is 70 deg (back
 Bench2Drive clip outside this repository found METEOR's 2D detection carries over
 to these cameras and the depth behind its BEV lift does not. And it gets no
 driving command. Nothing here measures which of these holds it still.
+
+Over all 220 routes, `results/bench2drive/meteor/full220-836dda734659a86c-dda00e`
+(7 Nov 2026, the 220-route protocol: the same rate, cameras and early stop, up to
+three attempts a route, the four routes set aside for every model left out): DS
+**1.92** over 216 routes, RC 5.40%, infraction penalty 0.92, a collision on 26 routes.
+189 routes end under 1% route completion, and one, 26394, is completed, with 12 collisions with
+static objects. The tables, and Bench2Drive's own scores for the record, are in
+[Bench2Drive — 220 routes](../benchmarks/bench2drive.md#bench2drive--220-routes).
 
 AlpaSim, `results/alpasim/meteor/legacy-meteor_011_published_30scenes` (30
 scenes, one rollout each, six cameras at 20 Hz) and `…_first10` (the first ten

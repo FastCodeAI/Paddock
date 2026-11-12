@@ -246,13 +246,10 @@ def run(model_filter: str | None = None) -> Report:
     for name, spec in registry.datasets.items():
         configured = cfg.datasets.get(name)
         if configured is None:
-            report.add(
-                "datasets",
-                name,
-                Status.WARN,
-                "not configured",
-                f"add [datasets.{name}] to paddock.toml if you have it -- see docs/data-setup.md",
-            )
+            hint = f"add [datasets.{name}] to paddock.toml if you have it -- see docs/data-setup.md"
+            if spec.fetch:
+                hint += f"; or download it: paddock data fetch {name} --dest <dir>"
+            report.add("datasets", name, Status.WARN, "not configured", hint)
             continue
         root = configured.resolve()
         if not root.exists():

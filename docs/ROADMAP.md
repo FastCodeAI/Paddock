@@ -16,7 +16,7 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 ## Known issues
 
 - **VisionPilot's figures predate the `CURV_SCALE` fix.** Every VisionPilot cell
-  but comma2k19's, re-run in November 2026, is due to be re-run.
+  but comma2k19's and KITScenes', re-run in November 2026, is due to be re-run.
 - **OpenPilot runs made with the ONNX backend** fed the road camera's image to
   the wide view. Those rows are due to be re-run.
 - **comma2k19's `pdm_style_score` proxy ranks a parked car first.** It pairs
@@ -43,13 +43,29 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   they are ranked with ran on `1e0d5fea`. Nobody has shown the two images drive
   identically, and no committed fixture yet compares the bridge's inputs with each
   model's native AlpaSim driver.
+- **Adding a model can mean editing `src/paddock/viz/palette.py`.** A model with no
+  entry there is drawn in one of six colours picked by a hash of its name, and three
+  of the six are taken (constant velocity, AutoE2E, WA-JEPA). So about half of new
+  model names share a colour with a registered model, and `tests/test_viz.py` then
+  fails until `palette.py` gets an entry, which `CONTRIBUTING.md` says adding a model
+  must not need. A colour set in the model's own `model.yaml` would remove the conflict.
+
+- **Bench2Drive's ranked runs cover 50 of 220 routes and 14 of 44 scenario types.**
+  They cannot be compared with published 220-route scores.
+- **AlpaSim's matrix cells cover 30 of 913 scenes, one rollout each.** A gap under
+  about 0.16 is within two standard errors.
+- **NAVSIM v2 has not been run two-stage on `navhard`,** the set its public
+  leaderboard uses. Paddock's column is `navtest`, stage one only.
 
 ## Next
 
 - Bench2Drive over all 220 routes, one column of its own, made the same way for
   every model ("The 220-route protocol" in docs/benchmarks/bench2drive.md):
-  openpilot, AutoE2E, METEOR and Alpamayo 1.5 first, the other models after
-  (issue #158).
+  openpilot's, METEOR's, AutoE2E's and Alpamayo 1.5's cells are in; the other
+  models after (issue #158).
+- nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
-- Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2 and sunnypilot.
+- Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.
+- Alpamayo 2 Edge on NAVSIM with nuPlan's 10 Hz frames, which it is built for. Its
+  NAVSIM cells are 2 Hz: the site that ran it holds no nuPlan 10 Hz data.
 - Failure-mode analysis, the same for every model and dataset.

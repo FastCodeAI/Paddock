@@ -5,7 +5,7 @@ The model runs in its own env behind paddock's HTTP policy node; this agent is
 the CARLA *client*. Each tick it renders the cameras the model declares, packs
 them into the paddock wire format, POSTs ``/infer``, receives waypoints (ego
 frame, x forward, y LEFT) and turns them into a CARLA ``VehicleControl`` via
-the Bench2Drive dual-PID tracker vendored in ``pid.py``.
+the Bench2Drive dual-PID tracker, reimplemented in ``pid.py``.
 
 One agent serves every model: which cameras to render and which node to call
 come from the environment, set by ``harness.run_episode``:

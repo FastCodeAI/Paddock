@@ -26,6 +26,7 @@ from paddock.adapters.benchmarks.bench2drive import harness as harness_module
 from paddock.adapters.benchmarks.bench2drive.harness import (
     ATOMIC_BEHAVIORS,
     BENCHMARK,
+    CARLA_EGG,
     CONNECT_TIMEOUT_FLAG,
     CRASH_STATUSES,
     DEFAULT_CONNECT_TIMEOUT_S,
@@ -777,6 +778,32 @@ def test_preflight_imports_what_the_agent_imports_in_the_client_interpreter(tmp_
     assert len(problems) == 1
     assert "carla" in problems[0]
     assert "PYTHONPATH=" in problems[0]
+
+
+def test_the_release_egg_goes_on_the_path_only_without_an_installed_carla(tmp_path, monkeypatch) -> None:
+    """An egg on PYTHONPATH is imported ahead of an installed carla.
+
+    The egg needs the system's libtiff.so.5; PyPI's wheel, which
+    `paddock setup --bench bench2drive` installs, carries its own. So the egg is
+    for an interpreter with no carla of its own, such as a conda env with those
+    libraries, and must not shadow the wheel where there is one.
+    """
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    egg = tmp_path / "carla" / CARLA_EGG
+    egg.parent.mkdir(parents=True)
+    egg.write_bytes(b"")
+    # This test's interpreter has no carla: the egg is how the client gets one.
+    assert str(egg) in _harness(cfg)._pythonpath()
+
+    # One that has carla installed, as the probe sees it: find_spec finds it, exit 0.
+    has_carla = tmp_path / "python-with-carla"
+    has_carla.write_text("#!/bin/sh\nexit 0\n")
+    has_carla.chmod(0o755)
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    config.write_text(config.read_text().replace(f'python = "{sys.executable}"', f'python = "{has_carla}"'))
+    path = _harness(SiteConfig.load())._pythonpath()
+    assert str(egg) not in path
+    assert str(tmp_path / "carla" / "PythonAPI" / "carla") in path, "agents.navigation still comes from CARLA"
 
 
 def test_an_unknown_scene_or_scenario_is_reported_before_the_model_loads(tmp_path, monkeypatch) -> None:

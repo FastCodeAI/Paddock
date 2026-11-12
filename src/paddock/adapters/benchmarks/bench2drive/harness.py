@@ -36,6 +36,7 @@ CARLA and the Bench2Drive checkout are vendored outside the package; the
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -184,7 +185,8 @@ EXPERT_TRAJ = "expert_traj.json"
 
 #: CARLA's client library as the 0.9.15 release ships it. Put on the client's
 #: path when present, as the checkout's own ``run_evaluation.sh`` does, so a
-#: site need not also ``pip install carla``.
+#: site need not also ``pip install carla`` -- unless the interpreter has a
+#: ``carla`` of its own (``_has_own_carla``).
 CARLA_EGG = Path("PythonAPI") / "carla" / "dist" / "carla-0.9.15-py3.7-linux-x86_64.egg"
 
 #: ``statistics_manager.FAILURE_MESSAGES`` in Bench2Drive 0.0.4 (7ec25d1). A
@@ -202,9 +204,10 @@ CRASH_STATUSES = frozenset(
     }
 )
 
-#: Routes left out of every model's numbers, with the reason. Each fails in the simulator
-#: on every attempt, whichever model drives, so it measures no model -- and a mean with it
-#: for one model and without it for another would not be over the same routes. Poor
+#: Routes left out of every model's numbers, with the reason. Each failed in the simulator
+#: on every attempt by whichever model drives (11715), or by Alpamayo 1.5 at its declared
+#: 10 Hz (3800, 23695, 24071), so it measures no model, and a mean with it for one
+#: model and without it for another would not be over the same routes. Poor
 #: driving is never a reason: a route the car is blocked on, deviates from, times out on or
 #: has ended early scores. Nor is a model's own node failing (an HTTP 500, out of memory):
 #: that is the model's to fix. A route joins after three attempts that failed in the
@@ -217,6 +220,10 @@ SET_ASIDE: dict[str, str] = {
     # the hero (ALargeMapManager::ConvertActiveToDormantActors -> ASensor::EndPlay). Patch 0003
     # removes such a car first, as its sink would; with it 11715 scored for the three models of the
     # 220-route sweep (Drive-JEPA, Qwen-Drive, VisionPilot; 8 Nov 2026).
+    # Three Town13 routes then crashed CARLA the same way at another site (3800, 23695, 24071: every
+    # attempt by Alpamayo 1.5 at its declared 10 Hz, 9 Nov 2026), and the four 216-route records made
+    # there set all four aside. Under patch 0003 the four routes scored for Alpamayo 1.5, AutoE2E,
+    # METEOR and openpilot here (12 Nov 2026), and for UniAD and VAD in their 220-route sweep.
 }
 
 #: Everything ``agent.py`` imports, checked in the client interpreter by
@@ -674,6 +681,14 @@ def reap_carla(port: int, wait_s: float = 30.0) -> list[int]:
 # ---------------------------------------------------------------------------
 
 
+#: The three settings every run needs, and the command that makes each.
+_MAKES_SETTING = {
+    "python": "`paddock setup --bench bench2drive` builds a CARLA-client interpreter",
+    "carla_root": "`paddock data fetch carla` downloads CARLA 0.9.15 and its maps",
+    "repo": "`paddock setup --bench bench2drive` clones Bench2Drive at its pin",
+}
+
+
 class Bench2DriveBenchmark(ClosedLoopBenchmark):
     # ---- site settings: `self.setting(key)` / `self.settings` from the base ----
 
@@ -785,12 +800,34 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         carla_root, repo = self.carla_root, self.repo
         entries = [str(REPO_ROOT / "src")]
         if carla_root is not None:
-            if (carla_root / CARLA_EGG).exists():
+            if (carla_root / CARLA_EGG).exists() and not self._has_own_carla:
                 entries.append(str(carla_root / CARLA_EGG))
             entries.append(str(carla_root / "PythonAPI" / "carla"))
         if repo is not None:
             entries += [str(repo / "leaderboard"), str(repo / "scenario_runner")]
         return entries
+
+    @functools.cached_property
+    def _has_own_carla(self) -> bool:
+        """True when the client interpreter has a ``carla`` package installed.
+
+        The release's egg needs the system's libtiff.so.5, which newer systems
+        replace with libtiff.so.6, and a conda env supplies it itself. PyPI's
+        carla 0.9.15 wheel carries its own copy, so it is what
+        ``paddock setup --bench bench2drive`` installs. An egg on PYTHONPATH
+        would be imported ahead of that wheel, so it goes on only for an
+        interpreter without one. ``find_spec`` finds carla without running it;
+        whether it imports is preflight's check.
+        """
+        python = self.setting("python")
+        if not python:
+            return False
+        probe = "import importlib.util, sys; sys.exit(importlib.util.find_spec('carla') is None)"
+        try:
+            found = subprocess.run([str(python), "-I", "-c", probe], capture_output=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return found.returncode == 0
 
     def _environment(self, extra: dict[str, str]) -> dict[str, str]:
         """The evaluator's environment: the host passthrough set, plus ours.
@@ -820,13 +857,14 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         problems: list[str] = []
         if self.settings is None:
             return [
-                "no [benchmarks.bench2drive] section in paddock.toml; it needs `python`, "
-                "`carla_root` and `repo` (see docs/benchmarks/bench2drive.md)"
+                "no [benchmarks.bench2drive] section in paddock.toml; it needs `python` and "
+                "`repo` (`paddock setup --bench bench2drive` makes both) and `carla_root` "
+                "(`paddock data fetch carla`); see docs/benchmarks/bench2drive.md"
             ]
 
-        for key in ("python", "carla_root", "repo"):
+        for key, how in _MAKES_SETTING.items():
             if not self.setting(key):
-                problems.append(f"[benchmarks.bench2drive] {key} is not set in paddock.toml")
+                problems.append(f"[benchmarks.bench2drive] {key} is not set in paddock.toml; {how}")
 
         python = self.setting("python")
         if python and not Path(python).exists():

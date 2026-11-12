@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -196,6 +197,29 @@ def test_one_benchmark_can_fill_two_columns(tmp_path: Path) -> None:
         )
 
 
+def test_names_narrow_with_their_columns_and_one_name_spans_its_columns() -> None:
+    """The picture keeps its width, so a tenth benchmark narrows every column: at full size one
+    name ran into the next. The names shrink and the metric lines wrap in step, and two adjacent
+    columns of one name -- Bench2Drive's 50 routes and its 220 -- share it, drawn once."""
+
+    def column(key: str, name: str, header: str) -> readme_figures.Column:
+        return readme_figures.Column(key, name, "closed", header, "m", 2, False, True)
+
+    def name_size(svg: str, name: str) -> str:
+        return re.findall(rf'font-size="([\d.]+)"[^>]*>{name}</text>', svg)[0]
+
+    nine = [column(f"b{i}", f"Bench {i}", "score ↑ (0–100)") for i in range(9)]
+    shared = [
+        column("b8", "Shared", "score ↑ (0–100), 50 routes"),
+        column("b9", "Shared", "score ↑ (0–100), 219 of 220 routes"),
+    ]
+    full, narrow = readme_figures.render_matrix(nine, []), readme_figures.render_matrix(nine[:8] + shared, [])
+    assert name_size(full, "Bench 0") == "12", "nine columns are drawn as they always were"
+    assert name_size(narrow, "Bench 0") == "10.7" and name_size(narrow, "Shared") == "10.7"
+    assert narrow.count(">Shared</text>") == 1
+    assert ">219 of 220</text>" in narrow and ">routes</text>" in narrow, "the lines wrap at 12 characters"
+
+
 def test_a_header_arrow_must_agree_with_paddocks_direction(tmp_path: Path) -> None:
     # The arrow is typed by hand; an ADE column marked higher-is-better would rank backwards.
     flipped = HEADER.replace('header = "ADE ↓ (m)"', 'header = "ADE ↑ (m)"', 1)
@@ -207,6 +231,31 @@ def test_a_run_stored_invalid_cannot_be_ranked(tmp_path: Path) -> None:
     rows = ROWS.replace('open = { run = "open/invalid/1", marks = "V" }', 'open = { run = "open/invalid/1" }')
     with pytest.raises(ValueError, match="valid: false"):
         _load(tmp_path, HEADER + rows, {**RUNS, "open/invalid/1": 0.2}, invalid=("open/invalid/1",))
+
+
+def test_the_not_ranked_key_is_drawn_only_when_a_cell_is_hatched(tmp_path: Path) -> None:
+    runs = {**RUNS, "open/invalid/1": 0.2}
+    columns, by = _load(tmp_path / "hatched", HEADER + ROWS, runs, invalid=("open/invalid/1",))
+    assert "not ranked" in readme_figures.render_matrix(columns, list(by.values()))
+
+    one_ranked_cell = """
+[[benchmark]]
+key = "open"
+name = "Open"
+loop = "open"
+header = "ADE ↓ (m)"
+metric = "ade"
+decimals = 2
+
+[[model]]
+key = "good"
+name = "Good"
+
+[cells.good]
+open = { run = "open/good/1" }
+"""
+    columns, by = _load(tmp_path / "plain", one_ranked_cell, {"open/good/1": 0.5})
+    assert "not ranked" not in readme_figures.render_matrix(columns, list(by.values()))
 
 
 def test_cameras_are_counted_by_view() -> None:
@@ -245,6 +294,15 @@ def test_history_shows_camera_and_ego_at_their_own_rates() -> None:
     assert readme_figures.history(models["visionpilot"])[2] == "cam 2 @ 10 Hz in training · speed now"
     assert "benchmark's rate" in readme_figures.history_note(models["visionpilot"])
     assert readme_figures.history_note(models["qwendrive"]) == ""
+
+
+def test_uneven_camera_frames_are_drawn_at_their_own_times() -> None:
+    """Alpamayo 2 Edge reads its front cameras at -2, -1, -0.5, -0.1 and 0 s. Drawn at
+    one rate, five frames over 2 s would read as 2 Hz video, which the README says the
+    model is not: its -0.1 s frame is why it needs 10 Hz."""
+    frames, _, caption = readme_figures.history(load_models()["alpamayo2edge"])
+    assert frames == pytest.approx([0.0, 0.1, 0.5, 1.0, 2.0])
+    assert caption == "cam 5 at −2, −1, −0.5, −0.1, 0 s · ego 20 @ 10 Hz"
 
 
 def test_only_paddocks_own_datasets_are_marked_as_benchmark_data() -> None:
