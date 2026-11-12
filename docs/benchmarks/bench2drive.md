@@ -975,7 +975,7 @@ its own rate. Each record is `paddock ingest`'s pool (`routes = "all"`); the sup
 | OpenPilot (P) | every tick | yes | 43.87 | 55.96 | 0.811 | 23.18 | [`full220-86aa45e768a29a64-102db6`](../../results/bench2drive/openpilot/full220-86aa45e768a29a64-102db6/run.json) |
 | Drive-JEPA (released NAVSIM v2 checkpoint, zero-shot) | 2 Hz | no | 40.74 | 52.67 | 0.827 | 24.09 | [`pooled220-86aa45e768a29a64-1507a1`](../../results/bench2drive/drivejepa/pooled220-86aa45e768a29a64-1507a1/run.json) |
 | Alpamayo 1.5 | 10 Hz | yes | 38.22 | 56.77 | 0.744 | 40.00 | [`full220-86aa45e768a29a64-600411`](../../results/bench2drive/alpamayo15/full220-86aa45e768a29a64-600411/run.json) |
-| Qwen-Drive, frames every 0.1 s between plans | 2 Hz | no | 27.41 | 61.70 | 0.467 | 78.64 | [`pooled220-86aa45e768a29a64-11acea`](../../results/bench2drive/qwendrive/pooled220-86aa45e768a29a64-11acea/run.json) |
+| Qwen-Drive, frames every 0.1 s between plans | 2 Hz | no | 27.41 | 61.70 | 0.467 | 78.64 | [`pooled220-86aa45e768a29a64-a23127`](../../results/bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127/run.json) |
 | UniAD (1.0 base, nuScenes-trained, zero-shot) | 2 Hz | no | 16.23 | 41.61 | 0.422 | 84.55 | [`full220-86aa45e768a29a64-fb1f0a`](../../results/bench2drive/uniad/full220-86aa45e768a29a64-fb1f0a/run.json) |
 | VAD (base, nuScenes-trained, zero-shot) | 2 Hz | no | 15.58 | 31.45 | 0.672 | 52.73 | [`full220-86aa45e768a29a64-6cb75d`](../../results/bench2drive/vad/full220-86aa45e768a29a64-6cb75d/run.json) |
 | AutoE2E | 10 Hz | yes | 14.29 | 27.72 | 0.547 | 80.00 | [`full220-86aa45e768a29a64-740c68`](../../results/bench2drive/autoe2e/full220-86aa45e768a29a64-740c68/run.json) |

@@ -268,7 +268,7 @@
     "source_config_read": "20/20 source runs",
     "declared_env": {
       "VISIONPILOT_PROVIDERS": "cpu",
-      "VISIONPILOT_WEIGHTS": "{repo}weights"
+      "VISIONPILOT_WEIGHTS": "{repo}/VisionPilot/modules/models/weights"
     }
   },
   "hardware": {},

@@ -265,11 +265,11 @@
     "source_sites": [],
     "waypoint_dt": 0.5,
     "model_env": {
-      "DRIVEJEPA_CHECKPOINT": "{data.navsim.exp}drive_jepa_perception_based_agent_vitl_v2.ckpt"
+      "DRIVEJEPA_CHECKPOINT": "{data.navsim.exp}/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt"
     },
     "source_config_read": "22/22 source runs",
     "declared_env": {
-      "DRIVEJEPA_CHECKPOINT": "{data.navsim.exp}drive_jepa_perception_based_agent_vitl_v2.ckpt",
+      "DRIVEJEPA_CHECKPOINT": "{data.navsim.exp}/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt",
       "DRIVEJEPA_IMAGE_GEOMETRY": "openscene",
       "DRIVEJEPA_MOMENTUM": "on",
       "DRIVE_JEPA_MSDA": "auto",

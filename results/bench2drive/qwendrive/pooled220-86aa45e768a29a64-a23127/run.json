@@ -1,5 +1,5 @@
 {
-  "run_id": "pooled220-86aa45e768a29a64-11acea",
+  "run_id": "pooled220-86aa45e768a29a64-a23127",
   "site": "fastcode-shakaal",
   "benchmark": "bench2drive",
   "model": "qwendrive",
@@ -276,7 +276,8 @@
       "QWENDRIVE_PLANNER": "planner-sft",
       "QWENDRIVE_VIEWS": "ring"
     },
-    "infer_hz": 2.0
+    "infer_hz": 2.0,
+    "observe_hz": 10.0
   },
   "hardware": {},
   "provenance": {},

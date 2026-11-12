@@ -175,7 +175,7 @@ kitscenes = { run = "kitscenes/qwendrive/20260914T220841-5a91fd" }
 comma2k19 = { run = "comma2k19/qwendrive/20261106T030530-7d9fd3" }
 navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20261104T205054-df25d5", marks = "A" }
-bench2drive = { run = "bench2drive/qwendrive/pooled220-86aa45e768a29a64-11acea", note = "2 Hz" }
+bench2drive = { run = "bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
 alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8" }
 
