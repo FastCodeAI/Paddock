@@ -28,6 +28,16 @@ if [ -e "${PADDOCK_VENV}" ]; then
   exit 1
 fi
 
+# mmdet3d's sdist lacks two roiaware_pool3d kernels, copied below from Bench2DriveZoo's checkout (the same
+# 0.17.1 files). Checked before anything is built: the mmcv-full build alone takes ~45 minutes, and a second
+# run stops at the guard above. Bench2DriveZoo's own LICENSE is CC BY-NC-ND 4.0 (THIRD_PARTY_NOTICES.md).
+ZOO="$(dirname "${PADDOCK_REPO}")/Bench2DriveZoo"
+if [ ! -d "${ZOO}/mmcv/ops/roiaware_pool3d/src" ]; then
+  echo "need Bench2DriveZoo's checkout beside this repo for two roiaware_pool3d kernels:" >&2
+  echo "  paddock setup --repo Bench2DriveZoo, then run this again" >&2
+  exit 1
+fi
+
 conda create -y -p "${PADDOCK_VENV}" python=3.9
 # shellcheck disable=SC1091
 eval "$(conda shell.bash hook)" && conda activate "${PADDOCK_VENV}"
@@ -91,12 +101,6 @@ pip install --no-deps nuscenes-devkit==1.1.11 lyft_dataset_sdk==0.0.8 pytorch-li
 curl -L -o "${SRC}/mmdet3d-0.17.1.tar.gz" "$(sdist mmdet3d 0.17.1)"
 tar -xzf "${SRC}/mmdet3d-0.17.1.tar.gz" -C "${SRC}"
 (cd "${SRC}/mmdet3d-0.17.1" && patch -p1 < "${HERE}/env/mmdet3d-0.17.1.patch")
-ZOO="$(dirname "${PADDOCK_REPO}")/Bench2DriveZoo"
-if [ ! -d "${ZOO}/mmcv/ops/roiaware_pool3d/src" ]; then
-  echo "need Bench2DriveZoo's checkout beside this repo for two roiaware_pool3d kernels:" >&2
-  echo "  paddock setup --repo Bench2DriveZoo, then run this again" >&2
-  exit 1
-fi
 cp "${ZOO}"/mmcv/ops/roiaware_pool3d/src/{roiaware_pool3d_kernel.cu,points_in_boxes_cuda.cu} \
   "${SRC}/mmdet3d-0.17.1/mmdet3d/ops/roiaware_pool3d/src/"
 (cd "${SRC}/mmdet3d-0.17.1" && FORCE_CUDA=1 pip install -v --no-build-isolation --no-deps -e .)

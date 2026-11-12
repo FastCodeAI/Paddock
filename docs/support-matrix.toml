@@ -90,6 +90,10 @@ key = "alpamayo15"
 name = "Alpamayo 1.5"
 
 [[model]]
+key = "alpamayo2edge"
+name = "Alpamayo 2 Edge"
+
+[[model]]
 key = "drivejepa"
 name = "Drive-JEPA"
 
@@ -152,6 +156,12 @@ bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d
 bench2drive220 = { run = "bench2drive/alpamayo15/full220-836dda734659a86c-f81033", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the bridge, 30 scenes
+
+[cells.alpamayo2edge]
+# A model built for 0.1 s frames, on OpenScene's 2 Hz: it has not been run on nuPlan's
+# 10 Hz frames. The README says to compare it with Alpamayo 1.5's 2 Hz pair.
+navsim = { run = "navsim/alpamayo2edge/20261111T052918-f9f90a", note = "2 Hz" }
+navsim_v1 = { run = "navsim_v1/alpamayo2edge/20261111T070439-f19e8f", note = "2 Hz" }
 
 # Momentum-aware: each plan may be handed the node's own plan from 0.5 s earlier, as model.yaml declares.
 # Open loop resets the node every sample, so the open-loop cells are streamed runs (docs/models/drivejepa.md):

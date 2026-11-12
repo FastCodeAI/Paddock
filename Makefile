@@ -17,7 +17,7 @@ PY := $(shell \
   elif [ -x .venv/bin/python ]; then echo ".venv/bin/python"; \
   else echo "python3"; fi)
 
-.PHONY: help setup setup-conda check check-alpasim-driver check-alpamayo check-openpilot check-uniad-vad test lint fmt typecheck doctor which clean
+.PHONY: help setup setup-conda check check-alpasim-driver check-alpamayo check-alpamayo2edge check-openpilot check-uniad-vad test lint fmt typecheck doctor which clean
 
 help:
 	@echo "make setup        — create .venv and install paddock (uv; the default)"
@@ -25,6 +25,7 @@ help:
 	@echo "make check        — lint + tests + portability gate. Run before every PR."
 	@echo "make check-alpasim-driver ALPASIM_PY=<python> — the AlpaSim bridge tests, in AlpaSim's interpreter"
 	@echo "make check-alpamayo ALPAMAYO_PY=<python> — the Alpamayo 1.5 input tests, in its own interpreter"
+	@echo "make check-alpamayo2edge ALPAMAYO2_EDGE_PY=<python> ALPAMAYO2_EDGE_CHECKPOINT=<dir> — the Alpamayo 2 Edge input tests, against NVIDIA's own code"
 	@echo "make check-openpilot OPENPILOT_REPO=<dir> — the openpilot geometry tests, against its checkout"
 	@echo "make check-uniad-vad UNIAD_VAD_DATA=<dir> — UniAD/VAD golden tests, in their env on the GPU"
 	@echo "make test         — pytest only"
@@ -86,6 +87,22 @@ check-alpamayo:
 	@test -n "$(ALPAMAYO_PY)" || { echo "set ALPAMAYO_PY to Alpamayo's python, e.g. <repos>/alpamayo1.5/a1_5_venv/bin/python"; exit 2; }
 	@$(ALPAMAYO_PY) -c "import torch, scipy, alpamayo1_5" || { echo "$(ALPAMAYO_PY) is not Alpamayo's environment (needs torch, scipy, alpamayo1_5)"; exit 2; }
 	CUDA_VISIBLE_DEVICES= PYTHONPATH=src $(ALPAMAYO_PY) -m pytest src/paddock/adapters/models/alpamayo15/tests -q -p no:cacheprovider
+
+# The Alpamayo 2 Edge adapter's vendor tests (tests/test_vendor_inputs.py) put
+# the policy's input through NVIDIA's own code: the vendor's sample checks and
+# prompt, and its prepare_model_inputs, which the adapter's prepare_inputs must
+# match tensor for tensor. They need torch and alpamayo2_edge, which paddock's
+# environment deliberately lacks, so `make check` and CI skip them. They run in
+# the model's own interpreter on the CPU and load no weights. Two of them read
+# the checkpoint's config, tokenizer and processor and skip without it, the
+# tensor comparison among them, so this target asks for the checkpoint too; a
+# reviewer at a site that has both runs it (docs/reviewing.md §1). It fails
+# rather than skips when either is missing, for the same reason as above.
+check-alpamayo2edge:
+	@test -n "$(ALPAMAYO2_EDGE_PY)" || { echo "set ALPAMAYO2_EDGE_PY to the model's python, e.g. <repos>/alpamayo2-edge/.venv/bin/python"; exit 2; }
+	@$(ALPAMAYO2_EDGE_PY) -c "import torch, alpamayo2_edge" || { echo "$(ALPAMAYO2_EDGE_PY) is not Alpamayo 2 Edge's environment (needs torch, alpamayo2_edge)"; exit 2; }
+	@test -f "$(ALPAMAYO2_EDGE_CHECKPOINT)/config.json" || { echo "set ALPAMAYO2_EDGE_CHECKPOINT to the checkpoint, e.g. <weights>/Alpamayo2-Edge"; exit 2; }
+	ALPAMAYO2_EDGE_CHECKPOINT="$(ALPAMAYO2_EDGE_CHECKPOINT)" HF_HUB_OFFLINE=1 CUDA_VISIBLE_DEVICES= PYTHONPATH=src $(ALPAMAYO2_EDGE_PY) -m pytest src/paddock/adapters/models/alpamayo2edge/tests -q -rs -p no:cacheprovider
 
 # The openpilot adapter's geometry tests (height scale, tilt, cut) need
 # openpilot's own transforms, which paddock's environment deliberately lacks,

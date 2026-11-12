@@ -29,6 +29,19 @@ def test_known_models_have_distinct_colours() -> None:
     assert len({palette.color(n) for n in names}) == len(names)
 
 
+def test_every_registered_model_has_a_colour_of_its_own() -> None:
+    """The hash picks from six colours, so a new model can land on one already drawn:
+    autoe2e and then alpamayo2edge both hashed to the constant-velocity floor's grey.
+    A collision gets an entry in palette.ASSIGNED."""
+    from paddock.registry import Registry
+
+    colours: dict[str, list[str]] = {}
+    for name in sorted(Registry.load().models):
+        colours.setdefault(palette.color(name), []).append(name)
+    shared = {colour: names for colour, names in colours.items() if len(names) > 1}
+    assert not shared, f"models drawn in the same colour, give one an ASSIGNED entry: {shared}"
+
+
 def test_no_model_takes_the_ground_truth_colour() -> None:
     """Ground truth must stay visually distinct from every prediction."""
     assert palette.GROUND_TRUTH not in palette.ASSIGNED.values()

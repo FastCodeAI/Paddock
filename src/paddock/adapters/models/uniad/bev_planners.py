@@ -47,6 +47,7 @@ import numpy as np
 from paddock.policy.protocol import (
     CANBUS_ACCEL,
     CANBUS_VELOCITY,
+    CANBUS_YAW_RATE,
     Command,
     Observation,
     Policy,
@@ -91,7 +92,7 @@ GRAVITY = 9.81
 #: one, the rest decode and convert the six cameras side by side, and OpenCV's own pool is held to as many.
 #: Speed only: every frame is prepared in order and fed what it would be fed one at a time, so the plans
 #: are the same at any count (the golden tests, `make check-uniad-vad`). 1 or less prepares on the model's
-#: thread, one camera after another, as before. model.yaml declares it `tuning_env`.
+#: thread, one camera after another. model.yaml declares it `tuning_env`.
 THREADS_ENV = "UNIAD_VAD_THREADS"
 DEFAULT_THREADS = 5
 
@@ -301,9 +302,11 @@ def nuscenes_can_bus(ego2world, canbus, quaternion) -> tuple[np.ndarray, bool]:
     out = np.zeros(18)
     out[0:3] = pose[:3, 3]
     out[3:7] = float(np.asarray(quaternion, dtype=np.float64)[0])
-    out[CANBUS_ACCEL : CANBUS_ACCEL + 3], added = accel_with_gravity(source[CANBUS_ACCEL : CANBUS_ACCEL + 3])
-    out[CANBUS_ACCEL + 3 : CANBUS_VELOCITY] = source[CANBUS_ACCEL + 3 : CANBUS_VELOCITY]
-    out[CANBUS_VELOCITY : CANBUS_VELOCITY + 3] = source[CANBUS_VELOCITY : CANBUS_VELOCITY + 3]
+    # The checkpoint's slots are fixed by training, so they are literals; paddock's are read by its constants.
+    # The two layouts coincide today, which is why this is a copy and not a re-order.
+    out[7:10], added = accel_with_gravity(source[CANBUS_ACCEL : CANBUS_ACCEL + 3])
+    out[10:13] = source[CANBUS_YAW_RATE - 2 : CANBUS_YAW_RATE + 1]  # roll, pitch, yaw rate
+    out[13:16] = source[CANBUS_VELOCITY : CANBUS_VELOCITY + 3]
     patch_angle = yaw_of(pose) / np.pi * 180
     if patch_angle < 0:
         patch_angle += 360
@@ -355,7 +358,7 @@ def b2d_can_bus(ego2world, canbus) -> tuple[np.ndarray, bool]:
     out[3:7] = [math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2)]
     out[7] = source[CANBUS_VELOCITY]
     out[10:13], added = accel_with_gravity(source[CANBUS_ACCEL : CANBUS_ACCEL + 3])
-    roll_rate, pitch_rate, yaw_rate = source[CANBUS_ACCEL + 3 : CANBUS_VELOCITY]
+    roll_rate, pitch_rate, yaw_rate = source[CANBUS_YAW_RATE - 2 : CANBUS_YAW_RATE + 1]
     out[13:16] = [roll_rate, -pitch_rate, yaw_rate]
     wrapped = yaw + 2 * np.pi if yaw < 0 else yaw
     out[16] = wrapped

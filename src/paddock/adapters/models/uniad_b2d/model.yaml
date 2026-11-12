@@ -75,6 +75,6 @@ capabilities:
 # Where it runs (docs/models/uniad_b2d.md, "Benchmarks"): every benchmark that sends the six surround cameras.
 # navsim and navsim_v1 need UNIAD_B2D_HORIZON_S = "4.0" (above). neuroncap asks every 0.1 s whatever
 # planning_hz says; the policy steps the model every 0.5 s and holds its plan in between
-# (bev_planners.held_plan). Not listed: comma2k19 sends one camera; alpasim renders no rectified six-camera
-# nuScenes-like rig (no alpasim.yaml).
+# (bev_planners.held_plan). Not listed: comma2k19 sends one camera; alpasim's six-camera profile renders
+# nuScenes' rig, not the CARLA rig this checkpoint was trained on (no alpasim.yaml).
 benchmarks: [hugsim, nuscenes, bench2drive, kitscenes, nuplan, neuroncap, navsim, navsim_v1]

@@ -42,16 +42,22 @@ the plugin's must be registered with `force=True` (UniAD 2.0 did the same).
 | file | source | sha256 |
 |---|---|---|
 | `uniad_base_e2e.pth` (996,345,538 bytes) | `github.com/OpenDriveLab/UniAD/releases/download/v1.0.1/uniad_base_e2e.pth` | `0ad0c2f5dc9788a41c313305779ea49346aeb742d1f6bb5ad25c46f9beffc990` |
-| `motion_anchor_infos_mode6.pkl` | the UniAD v1.0 release assets (the repo does not track it) | `45761de4a965c590318987f43af7e7f50b8e043f9a2832a91246f4fd39bb57bb` |
+| `motion_anchor_infos_mode6.pkl` | `github.com/OpenDriveLab/UniAD/releases/download/v1.0/motion_anchor_infos_mode6.pkl` (`docs/DATA_PREP.md`; the repo does not track it) | `45761de4a965c590318987f43af7e7f50b8e043f9a2832a91246f4fd39bb57bb` |
 
 The config names the anchors relative to the working directory; `UNIAD_MOTION_ANCHORS` in model.yaml points
 the motion head at the weights folder instead.
 
 **Environment.** One conda env (Python 3.9) serves `uniad`, `vad`, `uniad_b2d` and `vad_b2d`:
 torch 2.7.1+cu128, and the OpenMMLab 1.x stack compiled from source for the machine's GPU: mmcv-full 1.7.2,
-mmdet 2.28.2, mmsegmentation 0.29.1, mmdet3d 0.17.1. `adapters/models/uniad/setup.sh` builds it at
-`PADDOCK_VENV` (`paddock setup --model uniad`), then `paddock setup --model uniad_b2d` builds
-Bench2DriveZoo's own ops. Points to know:
+mmdet 2.28.2, mmsegmentation 0.29.1, mmdet3d 0.17.1. In this order:
+
+1. `paddock setup --repo Bench2DriveZoo`. The nuScenes models need it too: mmdet3d 0.17.1's tarball lacks two
+   `roiaware_pool3d` kernels, and the build copies Bench2DriveZoo's (the same 0.17.1 files). Its own LICENSE is
+   CC BY-NC-ND 4.0 (THIRD_PARTY_NOTICES.md). `setup.sh` checks for it before building anything.
+2. `paddock setup --model uniad` builds the env at `PADDOCK_VENV` (`adapters/models/uniad/setup.sh`).
+3. `paddock setup --model uniad_b2d` builds Bench2DriveZoo's own ops, for the two Bench2Drive checkpoints.
+
+Points to know:
 
 - The compiled ops are built for one GPU architecture, `TORCH_CUDA_ARCH_LIST` (default `12.0`, Blackwell).
   The repos' own pins (torch 1.9-1.12, mmcv-full 1.4) have no kernels for recent GPUs.
@@ -103,9 +109,10 @@ HUGSIM and Bench2Drive clients hold a plan between replans; the model steps agai
 **Horizon.** The plan is 3 s. `UNIAD_HORIZON_S` (unset by default) continues it by holding the last 0.5 s step,
 for NAVSIM, which scores 4 s. It is an extrapolation the model never made, so model.yaml lists it in
 `score_notes` and `ranked_with_note`, as METEOR's horizon is: a run that sets it is ranked, with the note
-"plan continued to 4.0 s by paddock; the model itself plans 3 s". Those two lines went in with the first
-stored NAVSIM runs (navtest `20261109T082522-c24426` and its navsim_v1 replay, navhard
-`20261110T092734-19b732`), which were made before them and so stay stored `valid: false`.
+"plan continued to 4.0 s by paddock; the model itself plans 3 s". Validity is decided when a record is
+written: the first stored NAVSIM runs (navtest `20261109T082522-c24426`, its navsim_v1 replay, navhard
+`20261110T092734-19b732`) were made before those lines, and were written again by
+`paddock run ... --resume <run id>`, which reuses every scored token and drives none.
 
 ## The plan
 
@@ -148,7 +155,7 @@ The model needs all six surround cameras (one learned embedding per camera slot)
 | [kitscenes](../benchmarks/kitscenes.md) | yes | the ring maps onto the six names; the 10 Hz history is fed every 0.5 s; canbus carries speed only |
 | [nuplan](../benchmarks/nuplan.md) | yes | six of its eight cameras (F0, L0, R0, B0, L2, R2; the side views L1 and R1 have no nuScenes slot); command always STRAIGHT; 10 Hz history fed every 0.5 s |
 | [neuroncap](../benchmarks/neuroncap.md) | yes | NeuRAD renders the six cameras and sends the real LIDAR_TOP. It asks every 0.1 s whatever `planning_hz` says, so the model steps every 0.5 s and the plan is held in between (below) |
-| [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md) | with `UNIAD_HORIZON_S = "4.0"` | NAVSIM scores 4 s and refuses a 3 s plan; the setting continues the last 0.5 s step (METEOR's rule), set in a `[models.uniad.benchmarks.navsim.env]` pairing. Its cameras map as nuPlan's; history is four frames at 2 Hz. A run that sets it is ranked with a note (above); the first stored runs predate that and are stored `valid: false` |
+| [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md) | with `UNIAD_HORIZON_S = "4.0"` | NAVSIM scores 4 s and refuses a 3 s plan; the setting continues the last 0.5 s step (METEOR's rule), set in a pairing for *each* NAVSIM benchmark, since a pairing matches the benchmark name exactly: `[models.uniad.benchmarks.navsim.env]`, `[models.uniad.benchmarks.navsim_v1.env]` and `[models.uniad.benchmarks.navhard.env]`, each with `UNIAD_HORIZON_S = "4.0"` (`paddock.toml.example`). Without it every token is refused. Its cameras map as nuPlan's; history is four frames at 2 Hz. A run that sets it is ranked with a note (above) |
 | comma2k19 | no | one camera; the other five slots would have to be invented |
 | [alpasim](../benchmarks/alpasim.md) | yes | its six cameras re-rendered as nuScenes' rig: 1600×900 undistorted pinholes at scene-0103's calibrated intrinsics and poses, CAM_BACK on the telephoto's id (`paddock_bridge_nuscenes_rig.yaml`), rendered every 0.5 s on the replan grid. Asked every 0.5 s, the 3.0 s warm-up sent to `/observe`; canbus carries ego-frame speed and the simulator's acceleration. The command comes from AlpaSim's route by the datasets' own rule (`route_command`; table above) |
 
@@ -192,11 +199,12 @@ What paddock does around the forward is CPU work, and `UNIAD_VAD_THREADS` (model
 collate -- while the model runs on this one, the others decode and convert the six cameras side by side, and
 OpenCV's own pool is held to as many (it otherwise takes all 32 cores of this box for VAD's resize). Frames
 are prepared strictly in order, one ahead, so each gets exactly the inputs it would get one at a time: the
-four golden tests stay at 0.000 m, and an A/B against the previous code on twelve keyframes gave identical
+four golden tests stay at 0.000 m, and an A/B against preparing one frame at a time (commit 08a4b52's parent) on twelve keyframes gave identical
 plans (0.0 m) for single calls, windows and in-order passes. Per call, old → new, two rounds on the shared
 card: `/infer` (reset + one keyframe) 1,544 / 1,863 → 1,167 / 1,031 ms; a five-keyframe window (nuScenes'
 default) 8.19 / 8.64 → 5.06 / 5.11 s; a keyframe of an in-order pass 1.76 / 1.63 → 0.96 / 0.96 s.
-`UNIAD_VAD_THREADS=1` prepares on the model's thread, one camera after another, as before.
+`UNIAD_VAD_THREADS=1` prepares on the model's thread, one camera after another.
 
-Not verified: plan quality on any benchmark (no sweep has been scored here); `setup.sh` on a clean machine;
+Not verified by these tests: plan quality on any benchmark (the golden test checks the inputs and the forward,
+not the driving; scored runs are records under `results/<benchmark>/uniad/`); `setup.sh` on a clean machine;
 any GPU but sm_120.

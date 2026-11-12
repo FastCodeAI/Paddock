@@ -10,7 +10,8 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 | Paddock's adapters drive a model exactly as the original research code did | neuroNCAP head to head: both return `2.8269616956051293`. KITScenes, all 223 samples: 892 of 892 metrics identical at full float precision |
 | NAVSIM v2 scores are the official scorer's | 2,379 of 2,379 metrics identical, difference 0.0 |
 | NAVSIM v1 matches the paper | constant velocity reproduces the paper's navtest row term by term (20.65 against 20.6) |
-| The patches paddock applies are the ones it claims | CI applies every patch to its pinned upstream commit on every PR |
+| The patches paddock applies are the ones it claims | CI applies every patch under `patches/` to its pinned upstream commit on every PR. `uniad/env/mmdet3d-0.17.1.patch` edits a PyPI sdist, not a pinned repo, and only its setup run applies it |
+| UniAD's and VAD's adapters plan what the models' own pipeline and forward plan | `make check-uniad-vad`, opt-in on a GPU site, never in CI: 0.0 m on four nuScenes keyframes for all four checkpoints, given one ego pose per frame and the source's quaternion sign (`test_golden.py` gives the gaps that leaves). Measured on one card (sm_120); `uniad/setup.sh` has not been run end to end on a clean machine |
 | Nothing in the repo depends on one machine | `tests/test_portability.py` fails the build on a machine path; `tests/test_alt_site.py` resolves a different site's layout |
 
 ## Known issues
@@ -43,6 +44,12 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   they are ranked with ran on `1e0d5fea`. Nobody has shown the two images drive
   identically, and no committed fixture yet compares the bridge's inputs with each
   model's native AlpaSim driver.
+- **Adding a model can mean editing `src/paddock/viz/palette.py`.** A model with no
+  entry there is drawn in one of six colours picked by a hash of its name, and three
+  of the six are taken (constant velocity, AutoE2E, WA-JEPA). So about half of new
+  model names share a colour with a registered model, and `tests/test_viz.py` then
+  fails until `palette.py` gets an entry, which `CONTRIBUTING.md` says adding a model
+  must not need. A colour set in the model's own `model.yaml` would remove the conflict.
 
 - **Bench2Drive's ranked runs cover 50 of 220 routes and 14 of 44 scenario types.**
   They cannot be compared with published 220-route scores.
@@ -62,5 +69,10 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   models after (issue #158).
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
-- Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2 and sunnypilot.
+- Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.
+- A NAVSIM preflight that refuses a model whose plan is shorter than 4 s when no pairing sets its horizon
+  key (METEOR, UniAD, VAD and their Bench2Drive checkpoints). Today every token is refused at scoring time;
+  it needs `model.yaml` to name the horizon key, a core change.
+- Alpamayo 2 Edge on NAVSIM with nuPlan's 10 Hz frames, which it is built for. Its
+  NAVSIM cells are 2 Hz: the site that ran it holds no nuPlan 10 Hz data.
 - Failure-mode analysis, the same for every model and dataset.

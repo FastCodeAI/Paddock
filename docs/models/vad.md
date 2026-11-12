@@ -39,7 +39,9 @@ README links to the checkpoint; it differs from `VAD_base_e2e.py` only in loss w
 |---|---|---|
 | `<weights>/vad/VAD_base.pth` (707,221,363 bytes) | Google Drive id `1FLX-4LVm4z-RskghFbxGuYlcYOQmV5bS` (VAD-Base in the README; `gdown` fetches it) | `4086547b921fee23139b09f0b79fd53a8b66dd02dd791ea80454d8237cefe4c4` |
 
-The environment is UniAD's (`paddock setup --model uniad`; `[models.vad] venv` points at the same env).
+The environment is UniAD's, built in the order [uniad.md](uniad.md) gives: Bench2DriveZoo's checkout first, whose two
+`roiaware_pool3d` kernels the build copies (CC BY-NC-ND 4.0), then `paddock setup --model uniad`. `[models.vad] venv`
+points at the same env.
 
 ## What is VAD's own
 
@@ -69,9 +71,11 @@ own normalisation, in eval mode, with the CAN bus on.
 
 As [UniAD's](uniad.md#benchmarks): nuscenes, hugsim, bench2drive, kitscenes, nuplan, neuroncap and alpasim run
 (on neuroncap the plan is held between 0.5 s steps; on alpasim, UniAD's profile, flag for flag);
-navsim, navsim_v1 and navhard need `VAD_HORIZON_S = "4.0"`, which model.yaml lists in `score_notes` and
-`ranked_with_note` as UniAD's horizon is (the first stored NAVSIM runs predate those lines and stay stored
-`valid: false`); comma2k19 (one camera) does not.
+navsim, navsim_v1 and navhard need `VAD_HORIZON_S = "4.0"`, set in a pairing for each of the three
+(`[models.vad.benchmarks.navsim.env]` and likewise `navsim_v1` and `navhard`: a pairing matches the benchmark
+name exactly; `paddock.toml.example`); without it every token is refused. model.yaml lists the setting in
+`score_notes` and `ranked_with_note`, as UniAD's horizon is, so such a run is ranked with a note. comma2k19
+(one camera) does not run.
 
 ## Verification
 

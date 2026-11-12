@@ -26,7 +26,6 @@ ASSIGNED: dict[str, str] = {
     "alpamayo": "#7570b3",
     "drivejepa": "#1b9e77",
     "visionpilot": "#e7298a",
-    "sunnypilot": "#a6761d",
     "alpamayo2": "#66a61e",
     # Added when METEOR's hashed fallback (#9467bd) turned out to be
     # indistinguishable from alpamayo15's #7570b3 in the NAVSIM comparison.
@@ -51,6 +50,25 @@ ASSIGNED: dict[str, str] = {
     # the remaining hue: every other model and ground truth's blue stay at least
     # 11.8 apart from it under colour blindness (OKLab x100).
     "autoe2e": "#17becf",
+    # The hash gave alpamayo2edge the floor's #666666 too. A deep purple, kin to
+    # alpamayo15's #7570b3 because it is the same family, and the most separated
+    # of the candidates tried: under colour blindness it stays 20.0 from
+    # visionpilot's #e7298a, its nearest, and 25.1 from alpamayo15 (OKLab x100).
+    "alpamayo2edge": "#3f007d",
+    # The hash gave uniad #9467bd, the purple METEOR left because it could not be
+    # told from alpamayo15's; vad #e377c2, two steps from visionpilot's pink;
+    # vad_b2d wajepa's #8c564b; and uniad_b2d #bcbd22, 1.3 from METEOR's #e6ab02
+    # under deuteranopia. By the same measure as above (OKLab x100, nearest model
+    # under colour blindness, then ground truth's blue), each at least 1.8:1
+    # against both chart surfaces: uniad 10.1 from wajepa, 23.4 from ground truth;
+    # vad 10.0 from autoe2e, 28.3; vad_b2d 10.5 from alpamayo2edge, 10.6;
+    # uniad_b2d 10.1 from autoe2e, 10.8 (34 with normal vision). The palette is
+    # crowded enough that no colour clears 20 from ground truth and 8 from
+    # every model at once.
+    "uniad": "#900000",
+    "vad": "#70d0a0",
+    "vad_b2d": "#5e3c99",
+    "uniad_b2d": "#f000f0",
 }
 
 #: Drawn from for models with no assigned colour.
