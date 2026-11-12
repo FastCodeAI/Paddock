@@ -69,8 +69,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261112T004207-8048ec",
+  "notes": "Superseded by 20261112T004207-8048ec: Same settings and numbers as the 12 Nov run; kept for the record.",
   "ingested_from": ""
 }
