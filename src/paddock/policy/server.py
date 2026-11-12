@@ -44,8 +44,9 @@ def _plan_reach(result: dict) -> list[tuple[float, float]]:
     nearest that time, read from ``plan``, every point at the model's own spacing; the
     seconds say which point it was, should a plan end sooner. Not from ``trajectory``:
     that holds a plan's first six points whatever their spacing, which is 3 s of a plan
-    0.5 s apart and 0.6 s of alpamayo2edge's, 0.1 s apart (#200). For a plan 0.5 s apart
-    the two points are the first and last ``trajectory`` holds, as before.
+    0.5 s apart and 0.6 s of one 0.1 s apart: alpamayo2edge's (#200), and qwendrive's and
+    alpamayo15's on AlpaSim. For a plan 0.5 s apart the two points are the first and last
+    ``trajectory`` holds, as before.
     """
     try:
         plan = result["plan"]
