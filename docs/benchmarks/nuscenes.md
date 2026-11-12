@@ -270,6 +270,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
+| Alpamayo 2 Edge | 0.455 | 1.058 | 1.870 | 1.128 | 0.630 | 0.957 | 0.920 |
 | Drive-JEPA | 0.957 | 2.158 | 3.917 | 2.344 | 1.328 | 1.996 | 1.628 |
 | VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
@@ -280,6 +281,11 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision
 is predicted ego-footprint overlap with annotated boxes, not an observed crash.
+
+Alpamayo 2 Edge (run `20261111T231928-e4e2d6`) was built for frames 0.1 s apart and is
+given the 2 Hz keyframes every row gets; its plan, 64 points 0.1 s apart, is read at its
+own points at every 0.5 s. [Its page](../models/alpamayo2edge.md#nuscenes) says how its
+input is built.
 
 ⧗ AutoE2E (`kitscenes-epoch-5`, run `20261023T004711-eedbe2`, valid) is fed the
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
