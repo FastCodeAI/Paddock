@@ -39,7 +39,9 @@ README links to the checkpoint; it differs from `VAD_base_e2e.py` only in loss w
 |---|---|---|
 | `<weights>/vad/VAD_base.pth` (707,221,363 bytes) | Google Drive id `1FLX-4LVm4z-RskghFbxGuYlcYOQmV5bS` (VAD-Base in the README; `gdown` fetches it) | `4086547b921fee23139b09f0b79fd53a8b66dd02dd791ea80454d8237cefe4c4` |
 
-The environment is UniAD's (`paddock setup --model uniad`; `[models.vad] venv` points at the same env).
+The environment is UniAD's, built in the order [uniad.md](uniad.md) gives: Bench2DriveZoo's checkout first, whose two
+`roiaware_pool3d` kernels the build copies (CC BY-NC-ND 4.0), then `paddock setup --model uniad`. `[models.vad] venv`
+points at the same env.
 
 ## What is VAD's own
 

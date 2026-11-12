@@ -42,16 +42,22 @@ the plugin's must be registered with `force=True` (UniAD 2.0 did the same).
 | file | source | sha256 |
 |---|---|---|
 | `uniad_base_e2e.pth` (996,345,538 bytes) | `github.com/OpenDriveLab/UniAD/releases/download/v1.0.1/uniad_base_e2e.pth` | `0ad0c2f5dc9788a41c313305779ea49346aeb742d1f6bb5ad25c46f9beffc990` |
-| `motion_anchor_infos_mode6.pkl` | the UniAD v1.0 release assets (the repo does not track it) | `45761de4a965c590318987f43af7e7f50b8e043f9a2832a91246f4fd39bb57bb` |
+| `motion_anchor_infos_mode6.pkl` | `github.com/OpenDriveLab/UniAD/releases/download/v1.0/motion_anchor_infos_mode6.pkl` (`docs/DATA_PREP.md`; the repo does not track it) | `45761de4a965c590318987f43af7e7f50b8e043f9a2832a91246f4fd39bb57bb` |
 
 The config names the anchors relative to the working directory; `UNIAD_MOTION_ANCHORS` in model.yaml points
 the motion head at the weights folder instead.
 
 **Environment.** One conda env (Python 3.9) serves `uniad`, `vad`, `uniad_b2d` and `vad_b2d`:
 torch 2.7.1+cu128, and the OpenMMLab 1.x stack compiled from source for the machine's GPU: mmcv-full 1.7.2,
-mmdet 2.28.2, mmsegmentation 0.29.1, mmdet3d 0.17.1. `adapters/models/uniad/setup.sh` builds it at
-`PADDOCK_VENV` (`paddock setup --model uniad`), then `paddock setup --model uniad_b2d` builds
-Bench2DriveZoo's own ops. Points to know:
+mmdet 2.28.2, mmsegmentation 0.29.1, mmdet3d 0.17.1. In this order:
+
+1. `paddock setup --repo Bench2DriveZoo`. The nuScenes models need it too: mmdet3d 0.17.1's tarball lacks two
+   `roiaware_pool3d` kernels, and the build copies Bench2DriveZoo's (the same 0.17.1 files). Its own LICENSE is
+   CC BY-NC-ND 4.0 (THIRD_PARTY_NOTICES.md). `setup.sh` checks for it before building anything.
+2. `paddock setup --model uniad` builds the env at `PADDOCK_VENV` (`adapters/models/uniad/setup.sh`).
+3. `paddock setup --model uniad_b2d` builds Bench2DriveZoo's own ops, for the two Bench2Drive checkpoints.
+
+Points to know:
 
 - The compiled ops are built for one GPU architecture, `TORCH_CUDA_ARCH_LIST` (default `12.0`, Blackwell).
   The repos' own pins (torch 1.9-1.12, mmcv-full 1.4) have no kernels for recent GPUs.
