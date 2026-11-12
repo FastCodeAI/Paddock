@@ -699,11 +699,14 @@ rows. See [docs/models/uniad.md](../models/uniad.md) and
 [docs/models/vad.md](../models/vad.md).
 
 Qwen-Drive's AlpaSim cell is the same 30 scenes, referee scorer and 20 Hz
-control step, driven through **paddock's bridge** on its native driver's
-settings: three f-theta cameras and a model call every 1.5 s. Ranked with the
-other 30-scene rows. It ran on simulator image `6dad7728`, where the one-camera
-rows ran on `1e0d5fea`; nobody has shown the two images drive identically. Run `results/alpasim/qwendrive/20261027T215528-d231d8`,
-valid. See `docs/models/qwendrive.md#on-alpasim-through-the-bridge`.
+control step, driven through **paddock's bridge** with three f-theta cameras and
+a model call every **0.5 s**, its declared `planning_hz` 2.0. Ranked with the
+other 30-scene rows. Run `results/alpasim/qwendrive/20261110T062329-602ee2`,
+valid: `scene_score` 0.5350. The same bridge calling it every 1.5 s, the native
+driver's setting, scored 0.7001 (`20261027T215528-d231d8`, superseded by the
+2 Hz run): 17 of 30 scenes at full score against 8, with five at-fault
+collisions in both. The 1.5 s run ran on simulator image `6dad7728`, where the
+one-camera rows ran on `1e0d5fea`. See `docs/models/qwendrive.md#on-alpasim-through-the-bridge`.
 
 ### AlpaSim (nuRec)
 
@@ -726,8 +729,8 @@ support matrix quotes — the same drivers under the same referee score:
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | Alpamayo 1.5, through the bridge | `4cam-20Hz` | **0.7952** | **+0.3076** | 0.8434 | 0.657 | 1 / 30 | 3 / 30 | 4 / 30 |
 | OpenPilot | `1cam-20Hz` | 0.7726 | +0.2850 | 0.7238 | 0.671 | 0 / 30 | 6 / 30 | 3 / 30 |
-| Qwen-Drive, through the bridge | `3cam-20Hz` | 0.7001 | +0.2125 | 0.7873 | 0.631 | 5 / 30 | 10 / 30 | 2 / 30 |
 | VisionPilot | `1cam-20Hz` | 0.6289 | **+0.1413** | 0.6355 | 0.570 | 4 / 30 | 11 / 30 | 1 / 30 |
+| Qwen-Drive, through the bridge, a call every 0.5 s | `3cam-20Hz` | 0.5350 | +0.0474 | 0.6022 | 0.564 | 5 / 30 | 13 / 30 | 3 / 30 |
 | *floor* | *`1cam-20Hz`* | *0.4876* | *—* | *0.5411* | *0.447* | *2 / 30* | *8 / 30* | *5 / 30* |
 | METEOR ⬡ | `6cam-20Hz` | 0.4232 | −0.0644 | 0.4301 | 0.469 | 1 / 30 | 10 / 30 | 5 / 30 |
 | Drive-JEPA | `1cam-20Hz` | 0.4209 | −0.0667 | 0.5091 | 0.465 | 7 / 30 | 12 / 30 | 5 / 30 |

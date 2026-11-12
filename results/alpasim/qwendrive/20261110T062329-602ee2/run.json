@@ -1,0 +1,123 @@
+{
+  "run_id": "20261110T062329-602ee2",
+  "site": "fastcode-navvrat-alpasim-native",
+  "benchmark": "alpasim",
+  "model": "qwendrive",
+  "mode": "closed_loop",
+  "started_utc": "2026-11-10T18:13:16+00:00",
+  "duration_s": 461.0,
+  "repo_sha": null,
+  "dataset": {
+    "name": "",
+    "n_samples": 30,
+    "sequences_sha256": "f110e944b9145544",
+    "n_expected": 30,
+    "n_failed": 0,
+    "n_reused": 29
+  },
+  "config": {
+    "scene": null,
+    "runs": 1,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "scene_set": "public_2601_30scenes",
+    "startup_timeout_s": 900,
+    "scorer_repo_sha": "affc2ea",
+    "renderer": "nurec",
+    "topology": "1gpu",
+    "driver_profile": "qwendrive",
+    "driver_config": "paddock_bridge_qwendrive",
+    "bridge_args": [
+      "--camera-name",
+      "camera_front_wide_120fov=CAM_FRONT",
+      "--camera-name",
+      "camera_cross_left_120fov=CAM_FRONT_LEFT",
+      "--camera-name",
+      "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+      "--named-cameras-only",
+      "--replan-every-us",
+      "500000",
+      "--frame-interval-us",
+      "50000",
+      "--force-gt-us",
+      "3000000",
+      "--waypoint-dt",
+      "0.1",
+      "--observe-between-replans",
+      "--canbus-ego-frame",
+      "--send-route",
+      "--send-scene-id"
+    ],
+    "scenes_csv": "public_2601_30scenes_26p01.csv",
+    "replan_log": true,
+    "declared_env": {
+      "QWENDRIVE_ATTN": "sdpa",
+      "QWENDRIVE_CHECKPOINT": "{weights}/Qwen-Drive-1.0-4B",
+      "QWENDRIVE_MODE": "direct",
+      "QWENDRIVE_NUM_SAMPLES": "1",
+      "QWENDRIVE_PLANNER": "planner-sft",
+      "QWENDRIVE_VIEWS": "ring"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "Qwen-Drive-1.0",
+      "sha": null,
+      "pinned_sha": "28091c1"
+    },
+    "paddock": {
+      "sha": "d81acb8b04fdcd8bc1b06898ecbcb42507293981",
+      "dirty": false
+    },
+    "policy": {
+      "planner": "planner-sft",
+      "mode": "direct",
+      "views": "ring",
+      "cameras": [
+        "CAM_FRONT",
+        "CAM_FRONT_LEFT",
+        "CAM_FRONT_RIGHT"
+      ],
+      "blank_views": [],
+      "num_samples": 1,
+      "attn": "sdpa",
+      "seed": null,
+      "history_span_s": 2.5,
+      "request_dt_s": 0.05,
+      "frames_repeated_total": 0,
+      "frames_off_grid_total": 0,
+      "last_frame_gaps_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_command": "LEFT",
+      "infer_seconds_mean": 0.957,
+      "reasoning": "",
+      "planner_sha256": "dcf5989ed292799e77f539b21e5d8b701566676c1c5d13038135e97f96e2d7b4",
+      "units_check_reach_m": 51.56,
+      "short_plans_total": 0,
+      "short_plans_last": [],
+      "alpasim": true,
+      "scene_id": "clipgt-b44a4a44-0d00-4795-8a66-7acb0fdf46a2",
+      "route_command": "LEFT",
+      "command_hold": {
+        "held": "LEFT",
+        "transitions": 1,
+        "calls_held_back": 2
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "resumed: 29 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}

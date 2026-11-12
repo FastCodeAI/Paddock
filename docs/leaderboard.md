@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
 116 runs across 10 benchmarks.
-67 run(s) excluded as invalid — shown at the end, never averaged in.
+68 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -11,8 +11,8 @@
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | alpamayo15 | 20261029T200113-9d900c | 30 | 0.795 | 0.843 | 0.100 | 0.033 | 0.133 | 0.657 | 2.679 |
 | openpilot | openpilot_020_30scenes | 30 | 0.773 | 0.724 | 0.200 | 0.000 | 0.100 | 0.671 | 1.787 |
-| qwendrive | 20261027T215528-d231d8 | 30 | 0.700 | 0.787 | 0.333 | 0.167 | 0.067 | 0.631 | 2.177 |
 | visionpilot | visionpilot_v2_30scenes | 30 | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
+| qwendrive | 20261110T062329-602ee2 | 30 | 0.535 | 0.602 | 0.433 | 0.167 | 0.100 | 0.564 | 1.662 |
 | constant_velocity | cv_023_20hz_30scenes | 30 | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
 | meteor | meteor_011_published_30scenes | 30 | 0.423 | 0.430 | 0.333 | 0.033 | 0.167 | 0.469 | 1.694 |
 | drivejepa | drivejepa_014_20hz_30scenes | 30 | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
@@ -245,6 +245,7 @@
 - **comma2k19/drivejepa_free/20261106T053407-587a3e** — Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026. Superseded by drivejepa/20261111T074533-0f26ee: The row it pointed at, drivejepa/20261106T192049-391e2d, is retired too: Drive-JEPA's rows are its momentum-aware model now, so this one points at that run.
 - **nuscenes/drivejepa/20261105T201953-308dc5** — Superseded by 20261111T061849-382fec: Drive-JEPA's rows are its momentum-aware model now: 20261111T061849-382fec plans each scene's keyframes in order on one node (streamed per scene, 4,485 of 5,119 keyframes fed). Momentum was on in this run but never acted: 0 of 5,119 plans were given a previous plan, because each open-loop sample reset the node.
 - **comma2k19/meteor/20261030T001935-0b8d0b** — Superseded by 20261106T064120-226c00: Re-run on 6 Nov 2026 with the clone at its pinned dc193a81 and scored against the ground truth in the car's frame; this row came from a clone at 8567eb0 and was scored against a ground truth in the camera's frame. The plans are the same in both runs.
+- **alpasim/qwendrive/20261027T215528-d231d8** — Superseded by 20261110T062329-602ee2: Qwen-Drive asked every 0.5 s, its declared planning_hz 2.0, as the node is built to be called; this run asked every 1.5 s, the native driver's setting
 - **navsim_v1/autoe2e/20261027T185517-5c7949** — no model process ran: 12146 plans replayed from navsim/autoe2e/20261009T055926-3ceb18 (that run: epdms 0.5002); the same plans, this benchmark's scorer Superseded by 20261104T210206-3022fb: this replay recorded 2 Hz OpenScene history and 1.5 s, but its plans were made at 10 Hz from nuPlan with 6.5 s; re-made with the right record, every score identical
 - **comma2k19/autoe2e/20261020T213543-417344** — Superseded by 20261106T073744-1b4fe1: Re-run on 6 Nov 2026 with its past path in the car's frame (#143) and scored against the ground truth in the car's frame (issue #141); this row was shown its past path and scored in the camera's frame.
 - **neuroncap/wajepa/20261015T234134-916e11** — 3 of the 20 official scenario-scene pairs; a subset, not a neuroNCAP score (stationary 10 scenes, frontal 5 scenes, side 5 scenes)

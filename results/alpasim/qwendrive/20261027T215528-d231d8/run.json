@@ -180,8 +180,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261110T062329-602ee2",
+  "notes": "Superseded by 20261110T062329-602ee2: Qwen-Drive asked every 0.5 s, its declared planning_hz 2.0, as the node is built to be called; this run asked every 1.5 s, the native driver's setting",
   "ingested_from": ""
 }

@@ -101,14 +101,14 @@ driver did, not the way it does for the other benchmarks:
 
 | Input | On AlpaSim |
 |---|---|
-| when the model is called | every 1.5 s (30 steps) from the end of the warm-up, on a grid; between calls the bridge re-times the last plan and re-anchors it to the car |
+| when the model is called | every 0.5 s (10 steps), its declared `planning_hz` 2.0, from the end of the warm-up, on a grid; between calls the bridge re-times the last plan and re-anchors it to the car. The native driver called it every 1.5 s (30 steps) |
 | what the node hears | every 50 ms step: warm-up frames and the steps between calls go to `/observe`. A frame cadence other than 50 ms is refused |
 | frames | the newest, and the frame nearest each of 0.5, 1.0, 1.5 s before it; a frame more than 50 ms off its slot is refused rather than stood in for |
 | ego rows | the recorded step nearest each 0.1 s slot (not interpolated), placed by the full 3-D relative pose |
 | velocity | forward and sideways speed as the simulator reports them, each row in its own frame. AlpaSim reports zero velocity and yaw rate while it replays the warm-up; the bridge replaces those from the poses when they move faster than 1 m/s, so a car really standing still keeps its zero |
 | acceleration | the change in velocity over 0.1 s plus the turning term: forward `dv_fwd/dt − ω·v_lat`, sideways `dv_lat/dt + ω·v_fwd`. The simulator also reports an acceleration; it is not used, because the native driver did not use it |
 | command | from the route AlpaSim holds, by the native three-answer rule: the point 20 m along the route, the net heading change to it and the same change median-filtered must all lie more than 3 m to one side to say LEFT or RIGHT. No route, or answers on both sides, is "unknown" (one-hot unknown, text "straight") |
-| command hold | a new command must come back on three model calls in a row before the model is told it. The hold is updated only when the model is called, as natively, so a turn reaches the model 3 s after the route first shows it, and a change that lasts less than three calls (4.5 s of driving) never reaches it. This is kept on purpose because it is what the native runs did; the native code's comment says 150 ms, which is not what it does |
+| command hold | a new command must come back on three model calls in a row before the model is told it. The hold is updated only when the model is called, as natively, so at one call every 0.5 s a turn reaches the model 1 s after the route first shows it, and a change that lasts less than three calls (1.5 s of driving) never reaches it. Natively, at 1.5 s a call, those were 3 s and 4.5 s. This is kept on purpose because it is what the native runs did; the native code's comment says 150 ms, which is not what it does |
 | noise seed | `42 + sha256(scene id)[:8] mod 1,000,000`, per scene, as natively. `QWENDRIVE_SEED` is not read on AlpaSim |
 | output | all 50 points, 0.1 s apart (the profile sets the bridge's `--waypoint-dt 0.1`, and the bridge refuses a plan spaced otherwise) |
 
@@ -133,15 +133,22 @@ Differences from the native runs that remain:
   The command hold therefore starts at the first call after the warm-up rather
   than at step 30.
 
-The run on the 30 scenes is `results/alpasim/qwendrive/20261027T215528-d231d8`:
-valid, one rollout per scene, `scene_score` **0.7001** (progress 0.787), five
-at-fault collisions and two off-road events. The native runs on the same
-simulator image scored 0.6672, three of their scenes ending on the forward-reach
-refusal above; with one rollout per scene the two are level. The native runs
+The run on the 30 scenes is `results/alpasim/qwendrive/20261110T062329-602ee2`:
+valid, one rollout per scene, a model call every 0.5 s, `scene_score` **0.5350**
+(progress 0.602), five at-fault collisions, 13 scenes with any collision and
+three off-road events. It ran on paddock `d81acb8`, which sets that rhythm.
+
+The same bridge calling the model every 1.5 s, the native driver's setting, scored
+0.7001 (progress 0.787, five at-fault collisions, two off-road):
+`20261027T215528-d231d8`, superseded by the 0.5 s run. Full-score scenes went
+from 17 to 8 of 30 with the faster calls. The native driver's own runs, also a
+call every 1.5 s, on the same simulator image as the 1.5 s bridge run, scored
+0.6672, three of their scenes ending on the forward-reach refusal above; with one
+rollout per scene those two are level. The native runs
 were made by the native driver outside paddock and are not in `results/`,
 so the 0.6672 cannot be re-checked from this repository.
 
-The run's `run.json` names paddock commit `a074fe5`. That is this route's
+The 1.5 s run's `run.json` names paddock commit `a074fe5`. That is this route's
 build commit before it was rebased onto `main`, and no branch holds it. In the
 commit that added this route to `main` (`caffc85`) the files this route changed
 differ from it only in comments, so check out that one to reproduce the run.

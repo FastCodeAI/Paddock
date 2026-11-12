@@ -207,7 +207,7 @@ navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20261104T205054-df25d5", marks = "A" }
 bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
-alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8" }
+alpasim = { run = "alpasim/qwendrive/20261110T062329-602ee2", note = "2 Hz" }  # one call every 0.5 s, its declared planning_hz; the 1.5 s run scored 0.700
 
 [cells.autoe2e]
 nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # camera encoder trained on nuScenes train
