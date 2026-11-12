@@ -68,21 +68,19 @@ it differs.
   whether it drives through paddock's bridge or its own simulator driver, and
   whether its Bench2Drive routes end early as failed drives are never reasons to
   leave a cell unranked.
-- **Ranked, though some Bench2Drive routes end early.** In the 50-route column,
-  AutoE2E's, METEOR's and OpenPilot's runs end a route after 30 s without progress
-  or at 4x the expert's time, and score it as it stood, as a failed drive; the rest
-  of that column drove every route to Bench2Drive's own end. That can move a score
+- **Ranked, though some Bench2Drive routes end early.** In the Bench2Drive column,
+  Alpamayo 1.5's, AutoE2E's, METEOR's and OpenPilot's runs end a route after 30 s
+  without progress or at 4x the expert's time, and score it as it stood, as a failed
+  drive; the rest of that column drove every route to Bench2Drive's own end. That can move a score
   either way: a car that would have crept on, or finished just after the cut,
   scores what it had, and one left to drive on could have collected more
   penalties ([Ending routes early](docs/benchmarks/bench2drive.md#ending-routes-early)).
-- **Ranked, though fed what the model is built for.** 50-route Bench2Drive cells
-  marked 2 Hz, 5 Hz or 10 Hz are driven at the model's native inference rate, where
-  the rest of that column runs at 20 Hz over the same 50 routes. Drive-JEPA, Alpamayo
-  and Qwen-Drive score higher there than at 20 Hz; those gains are
-  partly more exposure. Alpamayo's and Qwen-Drive's means are over 49 routes:
-  route 3800 crashes CARLA at their rate. Qwen-Drive's 2 Hz is its camera rate
-  only: it reads 16 ego positions 0.1 s apart, and at 2 Hz 12 of them are
-  interpolated. NAVSIM cells marked 10 Hz
+- **Ranked, though fed what the model is built for.** Bench2Drive cells marked
+  2 Hz, 5 Hz or 10 Hz are driven at the model's native inference rate, where the
+  rest of that column is asked every 20 Hz tick. On the 50 routes, Drive-JEPA,
+  Alpamayo and Qwen-Drive scored higher at their own rate than at 20 Hz; those gains
+  are partly more exposure. Qwen-Drive's 220-route run hands it a frame every 0.1 s
+  between its 2 Hz plans, so the 16 ego positions it reads are real. NAVSIM cells marked 10 Hz
   get nuPlan's 10 Hz frames, where 2 Hz models such as Drive-JEPA get OpenScene's
   2 Hz. AutoE2E on KITScenes is given the scene's map and a route matched to the
   logged drive, upstream's validation protocol (without the route it scores
@@ -99,22 +97,16 @@ it differs.
 
 Before comparing numbers:
 
-- **Three columns use part of a benchmark, so don't compare them with published
-  scores.** Bench2Drive's "50 of 220 routes" column covers 14 of its 44 scenario
-  types. AlpaSim is 30 of the 913 scenes in `public_2601`. NAVSIM v2 is
+- **Two columns use part of a benchmark, so don't compare them with published
+  scores.** AlpaSim is 30 of the 913 scenes in `public_2601`. NAVSIM v2 is
   `navtest`, stage one only; its public leaderboard uses `navhard`, two stages.
-- **Bench2Drive has two columns.** The one headed "216 of 220 routes" is every
-  model driven the same way over all 220 routes but the four set aside for every
-  model (CARLA crashes on route 11715 whichever model drives, and crashed on 3800,
-  23695 and 24071 on every attempt by Alpamayo 1.5):
-  each model at its own rate, routes ended after 30 s without progress or at 4x
-  the expert's time, and three tries per route
-  ([The 220-route protocol](docs/benchmarks/bench2drive.md#the-220-route-protocol)).
-  It fills as models are run; a dash is a model not run yet. The "50 of 220
-  routes" column stays until every model has its 220-route cell. The two are
-  ranked separately. Bench2Drive's own success rate, abilities, efficiency and
-  comfort for each 220-route cell are in the `upstream_scores.json` beside its
-  record
+- **Bench2Drive is all 220 routes,** every route scored, each model at its own
+  rate and up to three tries per route. Two ways of ending a route are in it:
+  OpenPilot, Alpamayo 1.5, AutoE2E and METEOR ran under the protocol that ends a
+  route 30 s after the car last made progress or at 4x the expert's time
+  ([The 220-route protocol](docs/benchmarks/bench2drive.md#the-220-route-protocol)),
+  and the others ran to Bench2Drive's own end of each route. Patch 0003 makes the
+  routes CARLA used to crash on run
   ([Bench2Drive — 220 routes](docs/benchmarks/bench2drive.md#bench2drive--220-routes)).
 - **Both NAVSIM columns are open loop.** The plan is simulated for 4 s to score it,
   but the model never sees what happened, so errors do not compound.
@@ -255,7 +247,7 @@ Paddock ships no weights and no datasets.
 | [nuPlan](docs/benchmarks/nuplan.md) | open loop | ADE | [nuPlan](https://www.nuscenes.org/nuplan) | [nuPlan](https://arxiv.org/abs/2106.11810) |
 | [NAVSIM v2](docs/benchmarks/navsim.md) | open loop, plan simulated for scoring; `navtest`, stage one | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
 | [NAVSIM v1](docs/benchmarks/navsim_v1.md) | open loop, plan simulated for scoring | PDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [NAVSIM](https://arxiv.org/abs/2406.15349) |
-| [Bench2Drive](docs/benchmarks/bench2drive.md) | closed loop, CARLA; 50 of 220 routes | driving score | [Thinklab-SJTU/Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
+| [Bench2Drive](docs/benchmarks/bench2drive.md) | closed loop, CARLA; all 220 routes | driving score | [Thinklab-SJTU/Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
 | [neuroNCAP](docs/benchmarks/neuroncap.md) | closed loop, NeuRAD | NCAP score | [atonderski/neuro-ncap](https://github.com/atonderski/neuro-ncap) | [NeuroNCAP](https://arxiv.org/abs/2404.07762) |
 | [AlpaSim](docs/benchmarks/alpasim.md) | closed loop, NuRec; 30 of 913 scenes | scene score | [NVlabs/alpasim](https://github.com/NVlabs/alpasim) | |
 | [HUGSIM](docs/benchmarks/hugsim.md) | closed loop, Gaussian splatting | HD-Score | [hyzhou404/HUGSIM](https://github.com/hyzhou404/HUGSIM) | [HUGSIM](https://arxiv.org/abs/2412.01718) |
