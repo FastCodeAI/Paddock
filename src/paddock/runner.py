@@ -201,6 +201,36 @@ def _declared_env(model_spec: ModelSpec) -> dict[str, str]:
     return {k: _portable_value(str(v)) for k, v in sorted(model_spec.runtime.env.items()) if k not in tuning}
 
 
+def _sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 24), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _names_the_declared_file(cfg: SiteConfig, model_spec: ModelSpec, key: str, value: str) -> bool:
+    """Whether a site value for `key` names a file byte-identical to the one model.yaml declares for it.
+
+    A site that copies a checkpoint to a faster disk and points the model at the copy runs the declared
+    model: same bytes, another path. Decided by content (size, then sha256), never by name, so a finetune
+    saved under the released file's name is still an override.
+    """
+    declared = model_spec.runtime.env.get(key)
+    if declared is None:
+        return False
+    context = model_spec.context(cfg)
+    try:
+        mine, theirs = Path(cfg.resolve(value, **context)), Path(cfg.resolve(declared, **context))
+    except Exception:  # noqa: BLE001 -- an unresolvable value is an override like any other
+        return False
+    if not (mine.is_file() and theirs.is_file()):
+        return False
+    if mine.resolve() == theirs.resolve():
+        return True
+    return mine.stat().st_size == theirs.stat().st_size and _sha256_of(mine) == _sha256_of(theirs)
+
+
 def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     """Why a site `[models.<name>.env]` block keeps this run from being ranked.
 
@@ -221,6 +251,10 @@ def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
     the node the same way (`runtime.env.build()` applies it last, over a site
     value), so it is held to the same rule: `ALPAMAYO_NAV=0 paddock run ...` is
     the no-nav baseline, not the released model.
+
+    A site value that names a file byte-identical to the declared one (a checkpoint
+    copied to a faster disk) restates the declared value too
+    (`_names_the_declared_file`).
     """
     override = cfg.models.get(model_spec.name)
     site = dict(override.env) if override is not None and override.env else {}
@@ -230,7 +264,13 @@ def _env_override_reasons(cfg: SiteConfig, model_spec: ModelSpec) -> list[str]:
 
     reasons = []
     for source, given in (("site", {k: v for k, v in site.items() if k not in shell}), ("shell", shell)):
-        keys = sorted(k for k, v in given.items() if k not in allowed and declared.get(k) != v)
+        keys = sorted(
+            k
+            for k, v in given.items()
+            if k not in allowed
+            and declared.get(k) != v
+            and not _names_the_declared_file(cfg, model_spec, k, v)
+        )
         if keys:
             reasons.append(
                 f"{source} env override may change what was measured: {', '.join(keys)} "
