@@ -8,7 +8,7 @@
 | Dataset | `kitscenes` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/kitscenes/`](../../src/paddock/adapters/benchmarks/kitscenes/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -24,32 +24,38 @@ paddock run --bench kitscenes --model openpilot             # full n=223
 
 ## The sample list is the benchmark
 
-All models are scored on one shared keyframe list, configured per site:
-
-```toml
-[benchmarks.kitscenes]
-sample_list = "/path/to/kitscenes_e2e_final.pkl"
-```
+All models are scored on one shared keyframe list,
+[`sample_list.csv`](../../src/paddock/adapters/benchmarks/kitscenes/sample_list.csv)
+in the adapter: one row per keyframe, with its `scene_id`, `keyframe_index`,
+`split` and `driving_command` (`left`, `straight` or `right`). A site that
+downloads KITScenes with `paddock data fetch kitscenes` has nothing to set.
 
 Benchmark-level, not model-level, deliberately: two models scored on different
 keyframes are not comparable however close the counts look. `paddock run
 --dry-run` reports how many of the list this site's tiers can serve, and
 `samples()` refuses to run a partial set rather than silently scoring fewer.
 
-That file is not a hand-written list. It is the output of the Drive-JEPA run
-that went first, kept because whichever 223 keyframes it happened to score
-became the set every later model had to match. Reading it as a sample list uses
-`scene_id`, `keyframe_index` and `split` -- and, only under `command_source =
-"gt"`, `driving_command` ([The route hint](#the-route-hint)) -- and ignores the
-predictions sitting beside them; `paddock ingest` reads the same file for the
-predictions, which is how Drive-JEPA has a row on this benchmark without a
-paddock run.
+The list is not hand-written. It is copied from `kitscenes_e2e_final.pkl`, the
+output of the Drive-JEPA run that went first, kept because whichever 223
+keyframes it happened to score became the set every later model had to match.
+The copy keeps the four columns the harness reads -- `driving_command` only
+under `command_source = "gt"` ([The route hint](#the-route-hint)) -- and drops
+the predictions sitting beside them; `paddock ingest` reads the original file
+for those, which is how Drive-JEPA has a row on this benchmark without a
+paddock run. Both give the `sequences_sha256` every stored run carries,
+`80665529bea7f500`, and a test checks the tracked file against those runs.
 
-The list is not in this repository yet, so a site that downloads KITScenes
-with `paddock data fetch kitscenes` still cannot score a model on it; issue
-[#178](https://github.com/FastCodeAI/Paddock/issues/178) tracks publishing it.
+A site can still name another list, a `.csv` like this one or that `.pkl`:
 
-### The seven rows, and where each came from
+```toml
+[benchmarks.kitscenes]
+sample_list = "/path/to/kitscenes_e2e_final.pkl"   # optional
+```
+
+A run over any other list carries a different `sequences_sha256` in its
+`run.json`, which is how to tell it from a run over these 223.
+
+### The eight rows, and where each came from
 
 | model | run | n | ADE | source |
 |---|---|---:|---:|---|
@@ -59,9 +65,10 @@ with `paddock data fetch kitscenes` still cannot score a model on it; issue
 | openpilot | `20261008T004723-a369d1` | 223 | 1.248 | a paddock run; base front camera, 55° cut, height 1.22, pitch −1.7°, route as desire ([⊜](#notes-on-the-matrix-cells)) |
 | meteor | `20260914T215457-ab0586` | 223 | 1.879 | a paddock run; six of its eight cameras |
 | drivejepa | `legacy-kitscenes_e2e_final` | 223 | 2.364 | `inference/kitscenes_e2e_final.pkl` |
+| alpamayo2edge | `20261111T230906-22b8a7` | 223 | 0.752 | a paddock run; the route as text (`command_source = "gt"`), as Alpamayo 1.5's matrix cell (`legacy-full-nav`) is; five ring cameras in its six slots, the front twice; see below |
 | autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
 
-All seven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All eight carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
 
 openpilot's row is its configured run. Its other ranked runs on the same 223
@@ -88,6 +95,22 @@ Caveats the hash cannot express:
   here is a zero-shot transfer result, which is why it sits last on this
   benchmark and first on NAVSIM. The roof-pod and windshield rigs differ in a way
   no camera transform can undo.
+- **Alpamayo 2 Edge is given the route as Alpamayo 1.5's matrix cell is.** Its
+  run sets `command_source = "gt"`, and its adapter writes the command as Edge's
+  navigation sentence ("Turn left", "Continue straight"), the input Alpamayo 1.5's
+  `nav` arm had. The site that ran it had a copy of the list without
+  `driving_command`, so the column was rebuilt there with Drive-JEPA's own rule
+  (`drivejepa/kitscenes_adapter.py::_driving_command`: the pose 40 frames, 4 s,
+  ahead; more than 5 m to a side is a turn), by
+  `tools/benchmarks/kitscenes/driving_command.py`. It gives the 21 left and 18 right
+  turns of [The route hint](#the-route-hint); a 50-frame horizon gives 23 and 24.
+  Only the counts were compared, not each keyframe's command with the original
+  list's. The same model told "Continue straight" on every keyframe (`20261111T223048-778679`)
+  scores 0.762. Seeded, the two runs agree to the bit on the 184 keyframes whose
+  command is straight; on the 39 turns the route moves ADE from 1.068 to 1.012 m
+  (paired bootstrap 95% interval −0.172 to +0.014). Edge returns 64 points 0.1 s
+  apart, and is scored on its own points at 0.5, 1.0, ... s (`plan_on_grid`). Its
+  training data names no KITScenes or KIT data, so the row carries no A mark.
 - **Camera geometry, and no route hint at all.** Qwen-Drive is the only row read
   on three cameras: the ring's front, front-left and front-right, at
   +60.9 / +0.97 / −58.5 degrees and ~87° horizontally, against the ~70° nuPlan
@@ -194,6 +217,17 @@ different measurement from a `straight` one. It hashes to its own run id with
 `command_source` in its `config`, the key and values `paddock ingest` already
 records Drive-JEPA's row under. `straight` adds no key, so every run made before
 the setting existed keeps its id and `--resume`.
+
+A `gt` run also records which commands it was given, as `commands` in its
+`config`: how many keyframes were told left, straight and right, and a hash of
+every keyframe's command. Each site has its own copy of the list, and
+`sequences_sha256` covers only the keyframe ids. So without it, a list whose
+column was built by another rule would give the same config and the same run
+id, and a different score: looking 50 frames (5 s) ahead instead of 40 makes 47
+keyframes turns, not 39. A copy of the list without the column can be given
+Drive-JEPA's by `tools/benchmarks/kitscenes/driving_command.py`. The `gt` records
+made before this key existed, openpilot's runs and Drive-JEPA's ingested row, do
+not have it.
 
 A `gt` run is ranked like any other, and its `config` says it was given the
 route. It is the same signal Drive-JEPA's row (`--command gt`) and Alpamayo's
@@ -513,6 +547,7 @@ adapted, and is the one row given the scene's map and an oracle route (see
 |---|---:|---:|
 | OpenPilot | 1.248 ⊜ | 2.355 ⊜ |
 | Alpamayo 1.5 | 1.002 | 2.158 |
+| Alpamayo 2 Edge | 0.752 | 1.393 |
 | Drive-JEPA | 2.364 | 4.199 |
 | VisionPilot | 1.475 ∗ | 2.968 ∗ |
 | METEOR | 1.879 ◇ | 4.034 ◇ |

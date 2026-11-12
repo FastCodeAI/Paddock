@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-99 runs across 9 benchmarks.
+101 runs across 9 benchmarks.
 58 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -95,6 +95,8 @@
 
 | model | run | n | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | inference_seconds ↓ | baseline_ade_drivejepa ↓ | min_ade@6 ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo2edge | 20261111T230906-22b8a7 | 223 | 0.752 | 0.400 | 0.847 | 1.393 | - | - | - |
+| alpamayo2edge | 20261111T223048-778679 | 223 | 0.762 | 0.400 | 0.855 | 1.423 | - | - | - |
 | qwendrive | 20260914T220841-5a91fd | 223 | 0.806 | 0.289 | 0.852 | 1.777 | - | - | - |
 | autoe2e | 20261020T220642-d63624 | 223 | 0.837 | 0.274 | 0.885 | 1.886 | - | - | - |
 | autoe2e | 20261020T220509-dee848 | 223 | 0.847 | 0.280 | 0.897 | 1.903 | - | - | - |

@@ -264,7 +264,9 @@ serialize = true
 
 # [benchmarks.kitscenes]
 # The shared keyframe list every model is scored on. It *is* the benchmark:
-# two models scored on different lists are not comparable.
+# two models scored on different lists are not comparable. Leave it unset to
+# score the 223 keyframes in adapters/benchmarks/kitscenes/sample_list.csv,
+# which every stored run scored; name another .csv or .pkl only on purpose.
 # sample_list = "/path/to/kitscenes_e2e_final.pkl"
 #
 # Height of the KITScenes reference frame (the roof pod) above the road, in

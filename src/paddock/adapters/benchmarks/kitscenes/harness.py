@@ -20,8 +20,10 @@ drive a route is matched to (`map`, `route`): inputs only a policy that reads
 
 from __future__ import annotations
 
+import csv
 import os
 import pickle
+from collections import Counter
 from collections.abc import Container, Iterator
 from pathlib import Path
 
@@ -32,6 +34,7 @@ from paddock.benchmark import OpenLoopBenchmark, Sample
 from paddock.metrics import pdm
 from paddock.metrics import trajectory as M
 from paddock.policy.protocol import CANBUS_VELOCITY, Command, Observation, Trajectory
+from paddock.results import store
 
 #: Source frames of history fed before the scored keyframe. 48 at the dataset's
 #: 10 Hz is 4.8 s, which is what fills openpilot's 24-deep feature buffer at the
@@ -112,6 +115,48 @@ COMMAND_SOURCES = ("straight", "gt")
 #: and reads as STRAIGHT, the same as `command_source = "straight"`.
 LIST_COMMANDS = (Command.LEFT, Command.STRAIGHT, Command.RIGHT)
 
+#: The names a .csv sample list gives `driving_command`, in the one-hot's order.
+ONE_HOT_COMMANDS = ("left", "straight", "right", "unknown")
+
+#: The shared list of 223 keyframes every KITScenes run is scored on, tracked so
+#: a site that downloads the data can score it. Its rows are the `scene_id`,
+#: `keyframe_index`, `split` and `driving_command` of `kitscenes_e2e_final.pkl`,
+#: the output of the first Drive-JEPA run, which was the list before this file
+#: existed; both give every stored run's `sequences_sha256`, 80665529bea7f500.
+#: `[benchmarks.kitscenes] sample_list` replaces it; see `_sample_list`.
+SAMPLE_LIST = Path(__file__).with_name("sample_list.csv")
+
+
+def read_sample_list(path: Path) -> list[dict]:
+    """The rows of a sample list: a .csv like `SAMPLE_LIST`, or Drive-JEPA's .pkl.
+
+    A .csv row comes back in the .pkl's shape -- an int `keyframe_index`, a
+    one-hot `driving_command` -- so the rest of the harness reads one form. An
+    empty command is left out, as it is from a .pkl row without one; a name
+    that is not a command stops here, rather than reading as no hint.
+    """
+    if path.suffix != ".csv":
+        return pickle.loads(path.read_bytes())
+    rows: list[dict] = []
+    with path.open(newline="") as fh:
+        for line, raw in enumerate(csv.DictReader(fh), start=2):
+            row = {
+                "scene_id": raw["scene_id"],
+                "keyframe_index": int(raw["keyframe_index"]),
+                "split": raw["split"],
+            }
+            command = (raw.get("driving_command") or "").strip().lower()
+            if command and command not in ONE_HOT_COMMANDS:
+                raise ValueError(
+                    f"{path}:{line}: driving_command = {command!r}, expected one of "
+                    f"{', '.join(ONE_HOT_COMMANDS)}"
+                )
+            if command:
+                row["driving_command"] = [int(name == command) for name in ONE_HOT_COMMANDS]
+            rows.append(row)
+    return rows
+
+
 #: Which of the rig's two forward cameras is the protocol's CAM_FRONT:
 #: `[benchmarks.kitscenes] front_camera`.
 #:
@@ -145,8 +190,40 @@ MAP_FORMAT = "lanelet2_osm"
 ROUTE_SOURCES = ("oracle", "none")
 
 
+def grid_stride(dt: float) -> int | None:
+    """How many of a plan's points make one `INTERVAL_S` step, or None if they never land on it.
+
+    A plan 0.5 s apart is scored point for point (stride 1); one 0.1 s apart has a
+    point at every 0.5 s time, every fifth (stride 5). Any other spacing would have
+    to be interpolated, which `metrics.trajectory` rules out for a prediction: it
+    would score a smoothed plan, not the one the model gave.
+    """
+    if dt <= 0:
+        return None
+    stride = round(INTERVAL_S / dt)
+    return stride if stride >= 1 and abs(stride * dt - INTERVAL_S) < 1e-6 else None
+
+
+def plan_on_grid(prediction: Trajectory) -> np.ndarray:
+    """The plan's own points at 0.5, 1.0, ... s, (N, 2). Nothing is interpolated."""
+    stride = grid_stride(prediction.dt)
+    if stride is None:
+        raise ValueError(f"a plan {prediction.dt:g} s apart has no points on the {INTERVAL_S:g} s grid")
+    return prediction.xy[stride - 1 :: stride]
+
+
 class KitScenesBenchmark(OpenLoopBenchmark):
     # ---- readiness ------------------------------------------------------
+
+    def model_problems(self, model, limit: int | None = None) -> list[str]:
+        """Refuse a plan spacing with no points on the 0.5 s grid, before the model loads."""
+        if grid_stride(model.waypoint_dt) is None:
+            return [
+                f"{model.name} plans {model.waypoint_dt:g} s apart; KITScenes scores its own "
+                f"points at every {INTERVAL_S:g} s and does not interpolate a plan, so the "
+                f"spacing must divide {INTERVAL_S:g} s"
+            ]
+        return []
 
     def preflight(self) -> list[str]:
         problems: list[str] = []
@@ -216,7 +293,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         """
         if self._command_source() != "gt":
             return []
-        rows = pickle.loads(self._sample_list().read_bytes())
+        rows = read_sample_list(self._sample_list())
         missing = sum(1 for row in rows if "driving_command" not in row)
         if not missing:
             return []
@@ -227,22 +304,19 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         ]
 
     def _sample_list(self) -> Path:
-        """The shared keyframe list every KITScenes run is scored on.
+        """The shared keyframe list every KITScenes run is scored on: `SAMPLE_LIST`.
 
         A benchmark-level setting, not a model one: the list *is* the benchmark.
         Two models scored on different lists are not comparable, so it cannot be
-        something an individual model supplies.
+        something an individual model supplies. A site can name another list, a
+        .csv or a .pkl; `sequences_sha256` says whether a run scored the same one.
 
             [benchmarks.kitscenes]
             sample_list = "/path/to/kitscenes_e2e_final.pkl"
         """
         raw = self.setting("sample_list")
         if not raw:
-            raise RuntimeError(
-                "[benchmarks.kitscenes] sample_list is not set in paddock.toml. "
-                "It is the shared keyframe list every model is scored on "
-                "(kitscenes_e2e_final.pkl). See docs/benchmarks/kitscenes.md."
-            )
+            return SAMPLE_LIST
         path = Path(raw)
         if not path.exists():
             raise RuntimeError(f"[benchmarks.kitscenes] sample_list does not exist: {path}")
@@ -256,7 +330,7 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         question at every site. Reported rather than silently truncated: a run
         over 180 of the 223 is not comparable with one over all of them.
         """
-        rows = pickle.loads(self._sample_list().read_bytes())
+        rows = read_sample_list(self._sample_list())
         on_disk: dict[str, str] = {}
         for root in self.dataset.roots:
             for split in ("val", "overlap_train_val", "train", "test"):
@@ -472,10 +546,12 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         front camera, and a withheld map or route are the same kind of
         difference, but each is recorded only when it departs from the default,
         so every run made before the setting existed keeps its id and `--resume`.
+        Under `gt`, the commands themselves are recorded too; see `_commands_given`.
         """
         config: dict = {"ground_offset_m": self._ground_offset()}
         if self._command_source() != "straight":
             config["command_source"] = self._command_source()
+            config["commands"] = self._commands_given()
         if self._front_camera() != "ring":
             config["front_camera"] = self._front_camera()
         if not self._map():
@@ -483,6 +559,28 @@ class KitScenesBenchmark(OpenLoopBenchmark):
         if self._route() != "oracle":
             config["route"] = self._route()
         return config
+
+    def _commands_given(self) -> dict:
+        """Under `gt`, which command each keyframe is given: the counts, and a hash of all of them.
+
+        `command_source = "gt"` says only where the commands come from. They are
+        the sample list's `driving_command` column, which each site builds for
+        itself (`tools/benchmarks/kitscenes/driving_command.py`), and
+        `sequences_sha256` covers the keyframe ids, not their commands. Without
+        this, two lists built by different rules would give the same config, the
+        same run id and a different score: looking 5 s ahead instead of
+        Drive-JEPA's 4 s makes 47 of the 223 keyframes turns, not 39. Read through
+        `_command`, so the hash is of what the model was actually told.
+        """
+        rows = pickle.loads(self._sample_list().read_bytes())
+        given = {self._sample_id(row): self._command(row) for row in rows}
+        counts = Counter(given.values())
+        return {
+            "left": counts[Command.LEFT],
+            "straight": counts[Command.STRAIGHT],
+            "right": counts[Command.RIGHT],
+            "sha256": store.sequence_hash([f"{sample} {command.name}" for sample, command in given.items()]),
+        }
 
     def model_run_config(self, model) -> dict:
         """Which ring cameras this model was given: the ones it declares.
@@ -588,15 +686,19 @@ class KitScenesBenchmark(OpenLoopBenchmark):
     def score(self, sample: Sample, prediction: Trajectory) -> dict[str, float]:
         """The metric definition the published n=223 tables were computed with."""
         ground_truth = np.asarray(sample.ground_truth, dtype=np.float64)
-        metrics = M.displacement_errors(prediction.xy, ground_truth[:, :2], INTERVAL_S, EVAL_HORIZON_S)
+        # The same array as prediction.xy for a plan 0.5 s apart, every model before
+        # alpamayo2edge, so their scores do not move.
+        grid = plan_on_grid(prediction)
+        metrics = M.displacement_errors(grid, ground_truth[:, :2], INTERVAL_S, EVAL_HORIZON_S)
         horizon = int(round(EVAL_HORIZON_S / INTERVAL_S))
-        longitudinal, lateral = M.longitudinal_lateral(prediction.xy[:horizon], ground_truth[:horizon, :2])
+        longitudinal, lateral = M.longitudinal_lateral(grid[:horizon], ground_truth[:horizon, :2])
         metrics["longitudinal_mae"] = longitudinal
         metrics["lateral_mae"] = lateral
         # The two PDM terms a plan and its recorded future can fill; the gate
         # reads them in the same rows as NAVSIM's (`pdm:` in benchmark.yaml).
+        # Comfort reads the whole plan at its own spacing, as nuScenes' does.
         metrics.update(
-            pdm.plan_terms(prediction.xy[:horizon], ground_truth[:horizon, :2], prediction.xy, prediction.dt)
+            pdm.plan_terms(grid[:horizon], ground_truth[:horizon, :2], prediction.xy, prediction.dt)
         )
         return metrics
 
