@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-101 runs across 9 benchmarks.
+102 runs across 9 benchmarks.
 58 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -75,6 +75,7 @@
 
 | model | run | n | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | scored_horizon_s | ade@1s ↓ | ade@2s ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo2edge [1] | 20261112T012152-9b1e09 | 10165 | 0.438 | 0.130 | 0.462 | 1.013 | 6.000 | 0.086 | 0.225 |
 | qwendrive | 20261106T030530-7d9fd3 | 10165 | 0.589 | 0.212 | 0.615 | 1.316 | 5.000 | 0.154 | 0.326 |
 | alpamayo15 | 20261106T005600-6c52a2 | 10165 | 0.819 | 0.238 | 0.888 | 1.864 | 4.000 | 0.152 | 0.427 |
 | openpilot | 20261106T003719-5cde54 | 10165 | 0.843 | 0.407 | 0.938 | 1.611 | 10.000 | 0.299 | 0.548 |
@@ -83,6 +84,8 @@
 | visionpilot | 20261106T003749-c10a7f | 10165 | 3.592 | 1.372 | 4.010 | 7.415 | 4.000 | 0.964 | 2.126 |
 | drivejepa | 20261106T192049-391e2d | 10165 | 18.754 | 10.328 | 21.648 | 32.893 | 4.000 | 7.474 | 13.080 |
 | meteor | 20261106T064120-226c00 | 10165 | 30.167 | 16.702 | 35.804 | 51.507 | 3.000 | 11.841 | 21.621 |
+
+- [1] alpamayo2edge: slots with no source camera fed black frames; the front and telephoto real
 
 ## hugsim
 
