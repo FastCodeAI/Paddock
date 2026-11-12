@@ -57,10 +57,11 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 ## Next
 
-- Bench2Drive over all 220 routes, one column of its own, made the same way for
-  every model ("The 220-route protocol" in docs/benchmarks/bench2drive.md):
-  openpilot's, METEOR's, AutoE2E's and Alpamayo 1.5's cells are in; the other
-  models after (issue #158).
+- Bench2Drive's 220-route column under one end condition. Four of its nine records
+  end a route early (30 s without progress, or 4x the expert's time) and five run each
+  route to Bench2Drive's own end ("Bench2Drive — 220 routes" in
+  docs/benchmarks/bench2drive.md); driving the five again with the early stop, or the
+  four without it, would put every cell under one protocol (issue #158).
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.

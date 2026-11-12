@@ -92,7 +92,7 @@ name = "Drive-JEPA"
 [[model]]
 key = "visionpilot"
 name = "VisionPilot"
-marks = "P"  # every cell in the row; S is on each cell but comma2k19, the one re-run since the CURV_SCALE fix
+marks = "P"  # every cell in the row; S only where a cell predates the CURV_SCALE fix
 
 [[model]]
 key = "meteor"

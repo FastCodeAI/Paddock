@@ -62,8 +62,9 @@ it differs.
   OpenPilot on Bench2Drive drives through openpilot's own longitudinal planner
   and its driver-resume nudge, which stands in for a driver pressing resume
   once the car has stood 3 s with no lead.
-- **S — stale; a re-run will change it.** Every VisionPilot figure but
-  comma2k19's and KITScenes' predates the `CURV_SCALE` fix.
+- **S — stale; a re-run will change it.** A VisionPilot figure marked S
+  predates the `CURV_SCALE` fix; the others were re-run since, and AlpaSim's
+  driver never had the bug.
 - **What never leaves a cell unranked.** How many cameras a model is given,
   whether it drives through paddock's bridge or its own simulator driver, and
   whether its Bench2Drive routes end early as failed drives are never reasons to

@@ -658,8 +658,12 @@ record's routes under `--runs`, and the routes taken from another record are not
 
 Every ranked Bench2Drive number made before November 2026 is over the same 50
 routes. Those cover 14 of the 44 scenario types, so none of them can be compared
-with a published score over all 220. A 220-route record is made the same way for
-every model, so the column it fills compares like with like:
+with a published score over all 220. The protocol below is how a 220-route record is
+made. Four of the column's nine records follow it all (OpenPilot, Alpamayo 1.5, AutoE2E,
+METEOR). The other five (VisionPilot, Drive-JEPA, Qwen-Drive, UniAD, VAD) follow it but
+for three rows: no early stop, so each route runs to Bench2Drive's own end; a shorter
+route timeout (5400 s, 10800 s for UniAD and VAD under GPU contention); and the label
+`pooled220` for the first three. *Bench2Drive — 220 routes* says which is which.
 
 | | |
 |---|---|
@@ -879,6 +883,10 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 
 ### Notes on the matrix cells
 
+The matrix's Bench2Drive column is the 220-route records (*Bench2Drive — 220 routes*,
+below), each cell its model's own rate. The ◆, ※ and ♣ notes and the 50-route figures in
+this section describe the 50-route column it replaced, and are kept as that column's record.
+
 ◆ Historical Bench2Drive mean driving score on 24 routes (04–06 Sep 2026),
 one run per route; route 11715 was excluded after CARLA crashes. These are
 driving scores, not per-ability scores. OpenPilot ≈ is the **unassisted
@@ -890,7 +898,7 @@ controller fixes. The assisted and expansion recordings are reported
 separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
 never pooled into one mean. See [Bench2Drive protocol](bench2drive.md).
 
-VisionPilot's cell is its 20 Hz run over **all 50 routes**, 47.82
+VisionPilot's 50-route cell was its 20 Hz run over **all 50 routes**, 47.82
 ([run](../../results/bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009/run.json)):
 the historical 24 (49.85, 03–04 Sep) and the 26 expansion routes (45.95, 09 Sep),
 with the set-speed latch fix in place for both.
@@ -985,8 +993,10 @@ What to read with them:
 
 - **Two ways of ending a route.** OpenPilot, Alpamayo 1.5, AutoE2E and METEOR ran under the protocol above: a route
   ends 30 s after the car last made 3 m of progress, or at 4x Think2Drive's time (*Ending routes early*), and is
-  scored as it stood. VisionPilot, Drive-JEPA, Qwen-Drive, UniAD and VAD ran before that was set, with no early stop:
-  every route ran until Bench2Drive's own rules ended it (blocked, off route, out of time or finished). A route's
+  scored as it stood. VisionPilot, Drive-JEPA, Qwen-Drive, UniAD and VAD ran with no early stop: every route
+  ran until Bench2Drive's own rules ended it (blocked, off route, out of time or finished). For the first three
+  that is because their sweep began before the rule was set; UniAD and VAD (9-12 Nov) were run the same way to
+  match them. A route's
   score can differ between the two when a car that stalls for 30 s would have moved on.
 - **Two sites for four of them.** The early-stop records hold 216 routes driven at `a100-gpu-vm-002` (6-9 Nov 2026,
   Bench2Drive 7ec25d1 + patches 0001-0002), taken from each record's `upstream_scores.json` rows (*Routes from a
@@ -1233,7 +1243,7 @@ The baseline is not one experiment. All five targets were driven over the same
 
 This fixes the target speed rather than holding the zero speed at route start;
 the path is straight in the ego frame, not a route-following reference. The
-**48.31 ♣** in the support matrix is the 3 m/s target over all 50 routes
+**48.31 ♣**, constant velocity's cell in the 50-route column, is the 3 m/s target over all 50 routes
 (RC 74.65); the same setting scores 47.94 over the *historical 24* (RC 74.68), and
 the two are separate runs in the store:
 [all 50](../../results/bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac/run.json)
