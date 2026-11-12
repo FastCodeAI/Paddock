@@ -406,7 +406,7 @@ per-tick `log.csv`, and the analysis record (`recorder.py`):
 
 | file | what |
 |---|---|
-| `ticks.jsonl` | one line per tick: the node's whole reply (every waypoint, every `extras` field), what it was sent besides pixels (command, navigation, the `route_xy` polyline, speed), the actuation and `/infer` latency, and state the model never sees: actors within 60 m, the lane under the ego, progress along the route, the next light and stop sign |
+| `ticks.jsonl` | one line per tick: the six plan points the controller followed, 0.5 s apart (for a model that plans 0.5 s apart, the reply's `trajectory`; for Alpamayo 2 Edge, every fifth of its 64 points, so its other 58 are in no record), every `extras` field of the reply, what it was sent besides pixels (command, navigation, the `route_xy` polyline, speed), the actuation and `/infer` latency, and state the model never sees: actors within 60 m, the lane under the ego, progress along the route, the next light and stop sign |
 | `route_plan.json` | the leaderboard's route at its own 1 m spacing, with the lights and stop signs on it |
 | `actors.jsonl` | blueprint, role and extent of each actor, once |
 | `model_<camera>/` | quarter-size thumbnails of every camera the model reads, at 10 Hz (openpilot's pair as `model_road` / `model_wide`) |
