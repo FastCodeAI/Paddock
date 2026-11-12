@@ -18,7 +18,9 @@ runtime:
     # it does move plans: on KITScenes (223 samples, Nov 2026) no CUDA plan was
     # identical to its CPU plan, the median largest point difference was 2 mm,
     # 10 of 223 differed by over 0.5 m somewhere (at most 4.66 m), and ADE was
-    # 1.4712 m on CUDA against 1.4746 m on CPU. A site that sets it stays ranked,
+    # 1.4712 m on CUDA against 1.4746 m on CPU (runs 20261111T190040-4f6c61 and
+    # 20261111T194209-c71101 at fastcode-shakaal, kept outside results/; the CPU
+    # one has the stored KITScenes record's config, 20261105T191932-c71101). A site that sets it stays ranked,
     # with `score_notes` printed beside the run (`ranked_with_note`). Rows
     # recorded on CUDA before that rule existed stay ranked too.
     #
