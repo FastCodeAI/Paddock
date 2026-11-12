@@ -56,15 +56,19 @@ ASSIGNED: dict[str, str] = {
     # visionpilot's #e7298a, its nearest, and 25.1 from alpamayo15 (OKLab x100).
     "alpamayo2edge": "#3f007d",
     # The hash gave uniad #9467bd, the purple METEOR left because it could not be
-    # told from alpamayo15's, and vad #e377c2, two steps from visionpilot's pink;
-    # vad_b2d drew as wajepa's #8c564b. Picked by the same measure as above, each
-    # at least 1.8:1 against both chart surfaces and 20 from ground truth's blue
-    # under colour blindness: uniad's dark red is 10.1 from wajepa's brown, its
-    # nearest; vad's mint 10.0 from autoe2e's cyan; vad_b2d's violet 10.5 from
-    # alpamayo2edge (OKLab x100). uniad_b2d's hashed #bcbd22 collides with nothing.
+    # told from alpamayo15's; vad #e377c2, two steps from visionpilot's pink;
+    # vad_b2d wajepa's #8c564b; and uniad_b2d #bcbd22, 1.3 from METEOR's #e6ab02
+    # under deuteranopia. By the same measure as above (OKLab x100, nearest model
+    # under colour blindness, then ground truth's blue), each at least 1.8:1
+    # against both chart surfaces: uniad 10.1 from wajepa, 23.4 from ground truth;
+    # vad 10.0 from autoe2e, 28.3; vad_b2d 10.5 from alpamayo2edge, 10.6;
+    # uniad_b2d 10.1 from autoe2e, 10.8 (34 with normal vision). The palette is
+    # crowded enough that no colour clears 20 from ground truth and 8 from
+    # every model at once.
     "uniad": "#900000",
     "vad": "#70d0a0",
     "vad_b2d": "#5e3c99",
+    "uniad_b2d": "#f000f0",
 }
 
 #: Drawn from for models with no assigned colour.
