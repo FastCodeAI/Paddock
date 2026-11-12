@@ -4,8 +4,8 @@
   "benchmark": "navsim",
   "model": "vad",
   "mode": "open_loop",
-  "started_utc": "2026-11-10T09:58:55+00:00",
-  "duration_s": 20702.6,
+  "started_utc": "2026-11-12T12:50:31+00:00",
+  "duration_s": 99.5,
   "repo_sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
   "dataset": {
     "name": "navsim",
@@ -39,8 +39,8 @@
     "declared_env": {
       "MPLBACKEND": "Agg",
       "PYTHONNOUSERSITE": "1",
-      "VAD_CHECKPOINT": "{weights}VAD_base.pth",
-      "VAD_CONFIG": "{repo}VAD_base_stage_2.py"
+      "VAD_CHECKPOINT": "{weights}/vad/VAD_base.pth",
+      "VAD_CONFIG": "{repo}/projects/configs/VAD/VAD_base_stage_2.py"
     },
     "model_env": {
       "VAD_HORIZON_S": "4.0"
@@ -55,13 +55,13 @@
       "at_pin": true
     },
     "paddock": {
-      "sha": "ea97b04fbf5ab26982c53d8fdf8a59562cee3616",
+      "sha": "933f093fd33d48d419ae0cb3f18bffeab99e473e",
       "dirty": false
     }
   },
   "status": "complete",
-  "valid": false,
+  "valid": true,
   "superseded_by": "",
-  "notes": "site env override may change what was measured: VAD_HORIZON_S (values in config.model_env)",
+  "notes": "",
   "ingested_from": ""
 }
