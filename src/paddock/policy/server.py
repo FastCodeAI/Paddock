@@ -31,16 +31,33 @@ logger = logging.getLogger(__name__)
 LOG_EVERY = 100
 
 
-def _plan_reach(result: dict) -> tuple[float, float]:
-    """(|first waypoint|, |last waypoint|) in metres from a wire response; a
-    plan whose first point never leaves the origin is a car that never engages,
-    and that is exactly what a node log needs to show."""
+#: Seconds ahead the heartbeat reads a plan at: the first and last of the six points 0.5 s
+#: apart that a closed-loop simulator drives, so the line means the same for every model.
+REACH_AT_S = (0.5, 3.0)
+
+
+def _plan_reach(result: dict) -> list[tuple[float, float]]:
+    """How far a wire response's plan reaches: (metres, seconds ahead) at each of REACH_AT_S.
+
+    A plan whose 0.5 s point never leaves the origin is a car that never engages,
+    and that is exactly what a node log needs to show. Each is the plan's own point
+    nearest that time, read from ``plan``, every point at the model's own spacing; the
+    seconds say which point it was, should a plan end sooner. Not from ``trajectory``:
+    that holds a plan's first six points whatever their spacing, which is 3 s of a plan
+    0.5 s apart and 0.6 s of alpamayo2edge's, 0.1 s apart (#200). For a plan 0.5 s apart
+    the two points are the first and last ``trajectory`` holds, as before.
+    """
     try:
-        wps = result["trajectory"]
-        first, last = wps[0], wps[-1]
-        return float((first[0] ** 2 + first[1] ** 2) ** 0.5), float((last[0] ** 2 + last[1] ** 2) ** 0.5)
-    except (KeyError, IndexError, TypeError, ValueError):
-        return float("nan"), float("nan")
+        plan = result["plan"]
+        waypoints, dt = plan["waypoints"], float(plan["dt"])
+        reach = []
+        for seconds in REACH_AT_S:
+            i = min(len(waypoints), max(1, round(seconds / dt))) - 1
+            x, y = float(waypoints[i][0]), float(waypoints[i][1])
+            reach.append(((x**2 + y**2) ** 0.5, (i + 1) * dt))
+        return reach
+    except (KeyError, IndexError, TypeError, ValueError, ZeroDivisionError):
+        return [(float("nan"), seconds) for seconds in REACH_AT_S]
 
 
 def build_app(policy: Policy, model: str | None = None, nonce: str | None = None):
@@ -83,13 +100,15 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         # and a route scored "blocked" with nothing to say why. First call and
         # every LOG_EVERY after: cadence, cost and how far the plan reaches.
         if calls["n"] == 1 or calls["n"] % LOG_EVERY == 0:
-            first, last = _plan_reach(result)
+            (near, near_s), (far, far_s) = _plan_reach(result)
             logger.info(
-                "infer #%d: mean %.0f ms, plan reach %.2f m (first) / %.2f m (last)",
+                "infer #%d: mean %.0f ms, plan reach %.2f m at %.1f s / %.2f m at %.1f s",
                 calls["n"],
                 calls["ms"] / calls["n"],
-                first,
-                last,
+                near,
+                near_s,
+                far,
+                far_s,
             )
         return result
 
