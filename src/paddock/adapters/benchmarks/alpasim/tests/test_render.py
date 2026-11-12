@@ -167,6 +167,8 @@ def test_the_bar_says_how_the_scored_part_ended_and_every_speed_is_the_cars_own(
     assert R._outcome(astray, R._stop_frame(astray), 48.0) == ("score 0.75", "4 m off the route at 15 s")
     done = _metrics(1.0, 16.6, dist_to_gt_trajectory=4.1, progress=1.0)
     assert R._outcome(done, R._stop_frame(done), 62.0)[1] == "passed the end of the route at 20 s"
+    # A video with no record of the scene: the bar says so, and nothing guesses a stop.
+    assert R._outcome({}, R._stop_frame({}), None) == ("", "no record of this scene")
     clean = _metrics(1.0, 16.85, dist_to_gt_trajectory=0.9)
     assert R._stop_frame(clean) is None
     assert R._outcome(clean, None, None) == ("score 1.00", "scored to the end")
@@ -254,3 +256,24 @@ def test_render_sample_writes_one_video_on_one_clock(tmp_path: Path) -> None:
     assert len(frames) == 80 + round(R.HOLD_S * R.FPS)
     # a froze, dimmed, at frame 71: by the end its tile is darker than b's, which played on.
     assert frames[-1][10:30, 5:40].mean() < frames[-1][10:30, 53:88].mean() - 30
+
+
+@pytest.mark.skipif(not FFMPEG, reason="needs ffmpeg: set PADDOCK_FFMPEG or put one on PATH")
+def test_a_run_with_a_record_and_no_video_still_takes_a_tile(tmp_path: Path) -> None:
+    pytest.importorskip("PIL")
+    scene = _scene("aaaaaaa1")
+    rollout = tmp_path / "alpasim" / "a" / "a-run" / scene / "rollouts" / scene / "r1"
+    rollout.mkdir(parents=True)
+    frames = (_alpasim_frame((29, 516, 872, 992), value=200) for _ in range(20))
+    _encode(frames, rollout / f"{scene}_r1_camera_front_wide_120fov_default.mp4", 900, 1000, fps=20)
+    with_video = _run("a", {"aaaaaaa1": _metrics(1.0, 16.85)})
+    scored_only = _run("b", {"aaaaaaa1": _metrics(0.0, 2.0, offroad=1.0)})  # a record, no video
+    neither = _run("c", {"aaaaaaa2": _metrics(1.0)})  # no record of this scene and no video
+    cfg = SimpleNamespace(runs=tmp_path)
+    written = R.render_sample([with_video, scored_only, neither], f"alpasim/{scene}", tmp_path / "out", cfg)
+    frame = _decode(written[0], 1920, 406)[0]  # 3 columns of 640x360 under 64-pixel bars
+    assert frame[100:400, 20:620].mean() > 150  # a's video
+    assert abs(frame[100:200, 660:1260].mean() - 31) < 6  # b's tile: the dark "no video kept" picture
+    assert frame[100:400, 1300:1900].mean() < 25  # c has neither, so no third tile
+    with pytest.raises(LookupError, match="no run here has a video"):
+        R.render_sample([scored_only, neither], f"alpasim/{scene}", tmp_path / "out", cfg)

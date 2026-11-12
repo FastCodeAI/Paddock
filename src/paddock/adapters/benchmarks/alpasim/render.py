@@ -174,6 +174,7 @@ class _Tile:
     outcome: str
     frames: list[np.ndarray]
     stop: int | None  # the first frame that is not scored; None when the drive is scored to its end
+    has_video: bool = True  # False: the run scored the scene and kept no video; one still frame says so
 
 
 def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
@@ -198,13 +199,15 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
         )
     scene = m["scene"]
 
+    # A run takes a tile when it has a video of the scene or a record of it. Leaving out a run
+    # that scored the scene would put seven tiles under a caption that counts eight scores.
     found = []
     for run in runs:
-        record = next((r for r in run.samples if r.get("sample_id") == sample_id), {})
-        video = _video(cfg.runs / run.benchmark / run.model / run.run_id / scene, scene, record)
-        if video is not None:
-            found.append((run, video, record.get("metrics", {})))
-    if not found:
+        record = next((r for r in run.samples if r.get("sample_id") == sample_id), None)
+        video = _video(cfg.runs / run.benchmark / run.model / run.run_id / scene, scene, record or {})
+        if video is not None or record is not None:
+            found.append((run, video, (record or {}).get("metrics", {})))
+    if not any(video for _, video, _ in found):
         raise LookupError(
             f"no run here has a video of {sample_id} "
             f"({scene}/rollouts/{scene}/<id>/*_{CAMERA}_default.mp4; AlpaSim writes it when "
@@ -219,6 +222,11 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
     tile_h = tile_w * 9 // 16
     tiles = []
     for run, video, metrics in found:
+        if video is None:
+            score, outcome = _outcome(metrics, _stop_frame(metrics), None)
+            blank = np.asarray(_no_video(tile_w, tile_h))
+            tiles.append(_Tile(run.label, palette.color(run.model), score, outcome, [blank], None, False))
+            continue
         # One model at a time: a whole 900x1000 video is about 1 GB decoded, a tile's worth 150 MB.
         whole = _decode(video, *FRAME, ffmpeg)
         if not whole:
@@ -237,8 +245,9 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
 
     height = rows * (BAR + tile_h) + STRIP
     # The clip ends when the last model's scored part does; an unscored tail shows nothing.
-    last = max(len(t.frames) - 1 if t.stop is None else t.stop for t in tiles)
-    first_stop = min(len(t.frames) if t.stop is None else t.stop for t in tiles)
+    playing = [t for t in tiles if t.has_video]
+    last = max(len(t.frames) - 1 if t.stop is None else t.stop for t in playing)
+    first_stop = min(len(t.frames) if t.stop is None else t.stop for t in playing)
     title = f"AlpaSim · scene {_short(scene)}"
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -250,6 +259,17 @@ def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
     still = _compose(tiles, max(first_stop - 1, 0), cols, tile_w, tile_h, height, title)
     Image.fromarray(still).save(poster, quality=85)
     return [video_path, poster]
+
+
+def _no_video(width: int, height: int):
+    """The picture for a run that scored the scene and kept no video of it."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    tile = Image.new("RGB", (width, height), (30, 31, 36))
+    font = ImageFont.load_default(size=round(23 * width / 640))
+    text = "no video kept for this run"
+    ImageDraw.Draw(tile).text((width // 2, height // 2), text, font=font, fill=(150, 152, 160), anchor="mm")
+    return tile
 
 
 def _video(scene_dir: Path, scene: str, record: dict) -> Path | None:
@@ -396,6 +416,9 @@ def _outcome(metrics: dict, stop: int | None, speed_kmh: float | None) -> tuple[
 
     Every speed is the car's own. Times are on the video's clock.
     """
+    if not metrics:
+        # A video with no record: nothing says what it scored or when its scoring stopped.
+        return "", "no record of this scene"
     score = metrics.get("scene_score")
     head = "" if score is None else f"score {float(score):.2f}"
     why = _ended(metrics)
