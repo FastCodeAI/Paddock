@@ -1313,8 +1313,9 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # the spacing every horizon index is counted in. How far the pair
         # actually reached comes back as `scored_horizon_s`.
         out = MC.score_trajectory(pred, gt, interval_s=scored.dt, eval_horizon_s=EVAL_HORIZON_S)
-        # Comfort and the lead-vehicle check read the whole plan at its own
-        # spacing, as KITScenes' and nuScenes' comfort terms do.
+        # The lead-vehicle check reads the whole plan at its own spacing. Comfort
+        # is handed the whole plan too, but `metrics.comfort` moves a plan finer
+        # than 0.5 s onto the 0.5 s grid before measuring, as on every benchmark.
         out.update(AUX.score(sample, prediction, pred, gt))
         out.update(SC.score(out, pred, gt, interval_s=scored.dt, eval_horizon_s=EVAL_HORIZON_S))
         return out

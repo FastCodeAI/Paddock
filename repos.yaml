@@ -21,11 +21,6 @@ repos:
     sha: 4c7f1a6e1
     description: comma2k19 dataset toolkit; the ECEF pose maths and EON camera model under adapters/benchmarks/comma2k19
 
-  sunnypilot:
-    url: https://github.com/sunnypilot/sunnypilot.git
-    sha: 0b1ed0d047
-    description: openpilot fork; not yet evaluated
-
   alpamayo1.5:
     url: https://github.com/NVlabs/alpamayo1.5.git
     sha: 7a8f1c7

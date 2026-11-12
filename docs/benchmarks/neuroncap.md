@@ -582,9 +582,22 @@ debugging aid must not be able to lose one.
 does not change what was measured, and putting it there would give the same
 sweep two different run ids depending on whether videos were wanted.
 
-For all four models side by side on one clock, see
-`tools/benchmarks/neuroncap/comparison_video.py` — it reads frames rather than
-videos, so it needs `video = "keep"`.
+For every model side by side on one clock, `paddock render --bench neuroncap
+--sample neuroncap/0103/frontal/run_0` lays out each run's `FC_TRAJ.mp4` for
+that episode, which the default `encode` mode keeps (`render_sample` in
+[render.py](../../src/paddock/adapters/benchmarks/neuroncap/render.py)). An
+episode stops at a collision, so on one clock a tile that dims early is a model
+that crashed early.
+
+The website's neuroNCAP videos are made the same way, by
+`python -m tools.site.videos neuroncap`, from the runs the results table shows.
+Which episodes it shows is decided by `showcase` in the same file, never by
+hand: the hardest scenario of each kind (frontal, side, stationary), then the
+one where the models disagree most, each in its most typical run.
+
+The older `tools/benchmarks/neuroncap/comparison_video.py` does this for
+pre-paddock output: it reads frames rather than videos, so it needs
+`video = "keep"`.
 
 ### Reading a model's reasoning back off a sweep
 

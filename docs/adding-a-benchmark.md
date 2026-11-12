@@ -299,6 +299,28 @@ the CLI exits non-zero, so name what *is* available rather than only what is
 not — the usual cause is a run whose artifacts under `[roots] runs` were cleaned
 up, and a bare "not found" sends the reader looking in the wrong place.
 
+### Videos for the website
+
+The website shows a few videos per benchmark, each with every model on the same
+sample. A benchmark joins by adding one more hook beside `render_sample`:
+
+```python
+def showcase(runs: list[LoadedRun], n: int = 4) -> list[dict]:
+    """The samples to show, in order: [{"sample": ..., "title": ..., "caption": ...}]."""
+```
+
+Pick by a rule written in the code, and say the rule in each caption: clips
+picked by hand drift toward a model's best moments. neuroNCAP's takes the
+hardest scenario of each kind, then the one where the models disagree most
+([neuroncap/render.py](../src/paddock/adapters/benchmarks/neuroncap/render.py)).
+`render_sample` must then write an `.mp4` (H.264 with `-movflags +faststart`,
+so a browser starts playing at once) and a `.jpg` poster.
+
+`python -m tools.site.videos <name> --out DIR` runs both hooks on the runs the
+results table shows, and writes the videos with the `[[video]]` entries for
+`tools/site/media.toml`. The videos go to Hugging Face, never into git; the
+steps are in [tools/site/videos.py](../tools/site/videos.py).
+
 ## Step 9 — verify and document
 
 ```bash
