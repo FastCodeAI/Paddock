@@ -23,9 +23,13 @@ runtime:
     ALPAMAYO2_EDGE_HISTORY: "hermite"
     ALPAMAYO2_EDGE_SAMPLES: "1"
     ALPAMAYO2_EDGE_SEED: "43"
+    # A slot whose camera the source never sends stops the plan. comma2k19 sets
+    # "black" (score_notes below): it records one camera of Edge's six.
+    ALPAMAYO2_EDGE_ABSENT_CAMERAS: "refuse"
   # Read from the shell that launches `paddock run`, so `ALPAMAYO2_EDGE_HISTORY=linear
   # paddock run ...` reaches the node. Any of these set to something other than
-  # the declared value stores the run valid: false, except SAVE_REASONING.
+  # the declared value stores the run valid: false, except SAVE_REASONING, and
+  # ABSENT_CAMERAS, which stays ranked with its note.
   env_passthrough:
     - ALPAMAYO2_EDGE_FRAMES
     - ALPAMAYO2_EDGE_HISTORY
@@ -33,6 +37,7 @@ runtime:
     - ALPAMAYO2_EDGE_SEED
     - ALPAMAYO2_EDGE_NAV_DISTANCE_M
     - ALPAMAYO2_EDGE_SAVE_REASONING
+    - ALPAMAYO2_EDGE_ABSENT_CAMERAS
   # Only adds the rationale to each plan's extras; the plan is the same.
   tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING]
 
@@ -99,5 +104,14 @@ capabilities:
     #    public driving set is named, and no NAVSIM or nuPlan data is claimed.
     - dataset: nvidia-physical-ai
 
+# Settings that change what a score means; the leaderboard prints the line under a
+# ranked run that set one to anything but its declared value.
+score_notes:
+  ALPAMAYO2_EDGE_ABSENT_CAMERAS: "slots with no source camera fed {value} frames; the front and telephoto real"
+# Of those, what a site may set and stay ranked. comma2k19 cannot be scored without
+# it: one recorded camera, and the vendor requires all six slots.
+ranked_with_note: [ALPAMAYO2_EDGE_ABSENT_CAMERAS]
+
 # One key: two `benchmarks:` lines keep only the last.
-benchmarks: [navsim, navsim_v1, kitscenes, nuscenes]
+# comma2k19 needs ALPAMAYO2_EDGE_ABSENT_CAMERAS=black (see above).
+benchmarks: [navsim, navsim_v1, kitscenes, nuscenes, comma2k19]
