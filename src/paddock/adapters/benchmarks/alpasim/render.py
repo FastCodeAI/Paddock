@@ -107,13 +107,13 @@ def showcase(runs, n: int = 4) -> list[dict]:
     With another `n`, the first half (rounded up) are the hardest. Each model drives a scene
     once, so there is no most typical run to choose. Returns [{"sample", "title", "caption"}].
     """
-    scores: dict[str, dict[str, dict]] = {}
-    for run in runs:
+    scores: dict[str, dict[int, dict]] = {}
+    for k, run in enumerate(runs):  # by position, so two runs of one model are two scores
         for record in run.samples:
             m = _SAMPLE.fullmatch(record.get("sample_id", ""))
             metrics = record.get("metrics", {})
             if m and metrics.get("scene_score") is not None:
-                scores.setdefault(m["scene"], {})[run.model] = metrics
+                scores.setdefault(m["scene"], {})[k] = metrics
     full = {scene: by for scene, by in scores.items() if len(by) == len(runs)}
     if not full:
         raise LookupError(
@@ -135,6 +135,11 @@ def showcase(runs, n: int = 4) -> list[dict]:
         return statistics.pstdev(values(scene))
 
     left = [scene for scene in full if watchable(scene)]
+    if not left:
+        raise LookupError(
+            f"none of the {len(full)} AlpaSim scenes these {len(runs)} runs all scored has three models "
+            "scored for 5 seconds or more, so there is nothing to show"
+        )
     hardest = sorted(left, key=lambda s: (hardness(s), s))[: n - n // 2]
     left = [scene for scene in left if scene not in hardest]
     split = sorted(left, key=lambda s: (-spread(s), hardness(s), s))[: n // 2]
@@ -275,13 +280,15 @@ def _video(scene_dir: Path, scene: str, record: dict) -> Path | None:
     """AlpaSim's own video of this scene: `<scene>/rollouts/<scene>/<id>/..._default.mp4`.
 
     A scene that was retried has one folder per attempt. The record names the attempt that
-    was scored when it knows; otherwise the last finished one is it.
+    was scored when it knows; otherwise the last one finished is it, by when AlpaSim wrote
+    its `_complete` mark. The folders' names are ids, and do not sort by time.
     """
     videos = sorted((scene_dir / "rollouts" / scene).glob(f"*/*_{CAMERA}_default.mp4"))
     wanted = record.get("native_id", {}).get("rollout_id")
     if wanted:
         videos = [v for v in videos if v.parent.name == wanted]
     finished = [v for v in videos if (v.parent / "_complete").exists()]
+    finished.sort(key=lambda v: (v.parent / "_complete").stat().st_mtime)
     return (finished or videos or [None])[-1]
 
 
@@ -423,7 +430,7 @@ def _outcome(metrics: dict, stop: int | None, speed_kmh: float | None) -> tuple[
     why = _ended(metrics)
     if not why or stop is None:
         return head, "scored to the end" if score is not None else ""
-    at = f"at {stop / FPS:.0f} s"
+    at = f"at {math.floor(stop / FPS + 0.5)} s"  # halves go up; `:.0f` would send 10.5 to 10
     if why == "collision":
         # "collided", not "hit a car": the record does not say what was hit, and it can be a truck.
         what = "collided" if metrics.get("collision_at_fault") else "was hit"

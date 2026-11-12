@@ -115,6 +115,58 @@ def test_showcase_considers_only_scenes_every_run_scored() -> None:
         R.showcase([a, b, _run("c", {"aaaaaaa3": _metrics(0.5)})])
 
 
+def test_showcase_counts_two_runs_of_one_model_and_says_when_nothing_is_watchable() -> None:
+    scenes = {"aaaaaaa1": _metrics(0.0), "aaaaaaa2": _metrics(1.0)}
+    again = LoadedRun("a", "alpasim", "a-second-run", {}, {}, _run("a", scenes).samples)
+    # Two rows of the table can be one model (a released and a retrained checkpoint).
+    assert _picked([_run("a", scenes), again, _run("b", scenes)]) == ["aaaaaaa1", "aaaaaaa2"]
+    with pytest.raises(LookupError, match="three models scored for 5 seconds or more"):
+        R.showcase([_run("a", scenes), _run("b", scenes)])  # two runs can never be three
+
+
+def test_a_retried_scene_shows_the_attempt_that_finished_last(tmp_path: Path) -> None:
+    import os
+
+    scene = _scene("aaaaaaa1")
+    name = f"{scene}_x_camera_front_wide_120fov_default.mp4"
+    for attempt, finished_at in (("zzzz", 1_000), ("aaaa", 2_000), ("mmmm", None)):
+        folder = tmp_path / scene / "rollouts" / scene / attempt
+        folder.mkdir(parents=True)
+        (folder / name).touch()
+        if finished_at:
+            (folder / "_complete").touch()
+            os.utime(folder / "_complete", (finished_at, finished_at))
+    # "zzzz" sorts last by name and "mmmm" never finished: "aaaa" finished last.
+    assert R._video(tmp_path / scene, scene, {}).parent.name == "aaaa"
+    # A record that names its attempt wins.
+    assert R._video(tmp_path / scene, scene, {"native_id": {"rollout_id": "zzzz"}}).parent.name == "zzzz"
+    assert R._video(tmp_path / "nowhere", scene, {}) is None
+
+
+#: (duration_frac_20s, the step of the event that ended scoring) for four drives of the
+#: results table's runs. The fraction is from each run's results-summary.json; the step is
+#: the first one where AlpaSim's own metrics.parquet has collision_any, offroad or
+#: dist_to_gt_trajectory >= 4 after the hand-over, read on 2026-11-12 (scorer affc2ea).
+REAL_STOPS = [
+    (0.33249999999999996, 194),  # Alpamayo 1.5 20261029T200113-9d900c, bae463d3: off the road
+    (0.3825, 214),  # Qwen-Drive 20261027T215528-d231d8, 8023dce5: collision
+    (0.63, 313),  # OpenPilot openpilot_020 (own driver), 8023dce5: collision, not its fault
+    (0.0225, 70),  # METEOR meteor_011 as shipped (own driver), 04749bb9: 4 m from the route
+]
+
+
+@pytest.mark.parametrize(("fraction", "step"), REAL_STOPS)
+def test_the_stop_frame_is_the_step_alpasim_recorded_the_event_at(fraction: float, step: int) -> None:
+    """The stop is read from the summary's fraction; AlpaSim's step-by-step file has the event there."""
+    assert R._stop_frame({"duration_frac_20s": fraction, "collision_rate": 1.0}) == step
+
+
+def test_a_stop_on_the_half_second_rounds_up() -> None:
+    off = _metrics(0.0, 7.45, offroad=1.0)  # frame 210, 10.5 s
+    assert R._stop_frame(off) == 210
+    assert R._outcome(off, 210, None) == ("score 0.00", "left the road at 11 s")
+
+
 def test_render_sample_says_what_it_looked_for(tmp_path: Path) -> None:
     run = _run("a", {"aaaaaaa1": _metrics(1.0)})
     cfg = SimpleNamespace(runs=tmp_path)
@@ -251,6 +303,10 @@ def test_render_sample_writes_one_video_on_one_clock(tmp_path: Path) -> None:
         runs.append(_run(model, {"aaaaaaa1": metrics}))
     written = R.render_sample(runs, f"alpasim/{scene}", tmp_path / "out", SimpleNamespace(runs=tmp_path))
     assert [p.name for p in written] == ["scene-aaaaaaa1.mp4", "scene-aaaaaaa1.jpg"]
+    import subprocess
+
+    probe = subprocess.run([FFMPEG, "-i", str(written[0])], capture_output=True, text=True, check=False)
+    assert " 20 fps" in probe.stderr  # AlpaSim's rate, not the 10 neuroNCAP's helper defaults to
     frames = _decode(written[0], 192, 39)
     # b is scored to its last frame (80 frames), then the last frame holds for 1.5 s at 20 a second.
     assert len(frames) == 80 + round(R.HOLD_S * R.FPS)
