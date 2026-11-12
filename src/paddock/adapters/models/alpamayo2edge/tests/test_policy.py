@@ -418,7 +418,8 @@ def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_throu
 def test_model_yaml_caps_the_nodes_cpu_threads_with_a_speed_only_setting() -> None:
     """Torch takes every core by default, and on a box shared with CARLA the vendor's processor
     then took 1.4 s a plan against 0.18 s with 4 threads. OMP_NUM_THREADS is the runner's own
-    speed-only key for every model: in no run id, and a site's value keeps its run ranked."""
+    speed-only key for every model: the value in model.yaml is in no run id, and a site's value
+    keeps its run ranked."""
     from paddock.runner import THREAD_ENV, _declared_env
 
     spec = _spec()
