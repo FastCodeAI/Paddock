@@ -422,6 +422,9 @@ class Tracked(NamedTuple):
     routes: dict[str, dict[str, Any]]
     #: Its run.json's ``superseded_by``: the run that replaced it, when one did.
     superseded_by: str = ""
+    #: True when that run is a pool of this record (its ``config.source_records`` names it): the record
+    #: stopped ranking because a pool of its rows replaced it, not because of anything in them.
+    replaced_by_its_pool: bool = False
 
 
 def _differing(mine: dict[str, Any], stored: dict[str, Any]) -> list[str]:
@@ -552,6 +555,7 @@ def read_tracked(record_dir: Path, model: str) -> Tracked:
         when = datetime.fromisoformat(started) if started else None
     except ValueError:
         when = None
+    superseded_by = str(run.get("superseded_by") or "")
     return Tracked(
         name=name,
         site=str(run.get("site") or ""),
@@ -561,8 +565,22 @@ def read_tracked(record_dir: Path, model: str) -> Tracked:
         valid=bool(run.get("valid", True)),
         sha256=hashlib.sha256(raw).hexdigest(),
         routes=routes,
-        superseded_by=str(run.get("superseded_by") or ""),
+        superseded_by=superseded_by,
+        replaced_by_its_pool=_a_pool_of(record_dir, superseded_by, name),
     )
+
+
+def _a_pool_of(record_dir: Path, superseded_by: str, name: str) -> bool:
+    """Whether the run ``superseded_by`` names (beside ``record_dir``, as the store keeps it) pooled ``name``."""
+    if not superseded_by:
+        return False
+    other, _, run_id = superseded_by.rpartition("/")
+    path = record_dir.parent.parent / (other or record_dir.parent.name) / run_id / "run.json"
+    try:
+        sources = (json.loads(path.read_text()).get("config") or {}).get("source_records") or {}
+    except (OSError, ValueError):
+        return False
+    return name in sources
 
 
 def ingest(
@@ -849,9 +867,15 @@ def ingest(
             f"so the {len(taken)} route(s) from tracked records carry none and metrics.json counts them "
             "missing, as for a route --resume reused."
         )
-    # A record superseded by this very pool stops ranking because this pool replaces it, not
-    # because of anything in its rows: pooling it again must give the same run, notes and all.
-    unranked = [rec.name for rec in used_records if not rec.valid and rec.superseded_by != run_id]
+    # A record superseded by a pool of its own rows -- this one, pooled again, or an earlier one -- stopped
+    # ranking because that pool replaced it, not because of anything in its rows: pooling it again must give
+    # the same run, notes and all, and a pool under another config (a route driven again, a new label) must
+    # still rank. Superseded by anything else, it keeps the pool from ranking.
+    unranked = [
+        rec.name
+        for rec in used_records
+        if not rec.valid and rec.superseded_by != run_id and not rec.replaced_by_its_pool
+    ]
     if unranked:
         note = (note + " " if note else "") + (
             f"tracked record(s) {', '.join(unranked)} do not rank (valid: false; their notes say why), "

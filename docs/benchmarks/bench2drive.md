@@ -629,8 +629,10 @@ are read differently:
   template variable dropped (`{weights}/meteor/x.onnx` stored as `{weights}x.onnx`, #173). When it is
   exactly the runs' `declared_env` through that cut, it is the same `model.yaml` env: the runs' whole
   paths are recorded and the notes say so. Any other difference is two settings, as between runs.
-- A record superseded by the pool it feeds (`paddock supersede ... --by <the pool>`) still supplies its
-  rows, so pooling again gives the same run. Superseded by any other run, it stops the pool ranking.
+- A record superseded by a pool of its own rows (`paddock supersede ... --by <the pool>`, a run whose
+  `config.source_records` names it) still supplies its rows: pooling again gives the same run, and a pool
+  under another config (a route driven again, a new label) still ranks. Superseded by any other run, it
+  stops the pool ranking.
 
 Every pooled route names where it came from:
 - a raw run: its `native_id` gives the `run_id` and the sha256 of its `results.json`;

@@ -303,6 +303,13 @@ def test_a_record_superseded_by_the_pool_it_feeds_gives_that_pool_again(tmp_path
     assert again.valid, again.notes
     assert (again.run_id, again.notes) == (first.run_id, first.notes)
 
+    # A pool under another config (here only the label) still ranks: the record was replaced by a pool of it.
+    ((other_label, metrics2, samples2),) = bench2drive.ingest(
+        root, model="openpilot", site="s", routes=routes, tracked=[record], run_label="again"
+    )
+    assert other_label.run_id != first.run_id
+    assert other_label.valid, other_label.notes
+
     _edit(record / "run.json", lambda r: r.update(superseded_by="full220-0000000000000000-000000"))
     ((other, _, _),) = bench2drive.ingest(root, model="openpilot", site="s", routes=routes, tracked=[record])
     assert not other.valid
