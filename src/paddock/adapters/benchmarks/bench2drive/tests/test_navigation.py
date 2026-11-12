@@ -14,6 +14,7 @@ import numpy as np
 from paddock.adapters.benchmarks.bench2drive import recorder
 from paddock.adapters.benchmarks.bench2drive.navigation import LANE_CHANGE_HORIZON_M, lane_change_ahead
 from paddock.adapters.benchmarks.bench2drive.tests.test_infer_rate import _client
+from paddock.policy.protocol import Trajectory
 
 OPTIONS = (
     ["LANEFOLLOW"] * 32
@@ -67,8 +68,8 @@ class _Requests:
 
     def post(self, url, json, timeout):
         self.bodies.append(json)
-        plan = [[i + 1.0, 0.0] for i in range(6)]
-        return types.SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"trajectory": plan})
+        plan = Trajectory([[i + 1.0, 0.0] for i in range(6)], dt=0.5).to_wire()
+        return types.SimpleNamespace(raise_for_status=lambda: None, json=lambda: plan)
 
 
 def test_the_client_sends_the_lane_change_ahead_of_where_the_car_is(agent_module) -> None:

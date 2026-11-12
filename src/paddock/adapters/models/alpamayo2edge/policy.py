@@ -19,6 +19,7 @@ Settings, read from the environment; model.yaml declares the defaults:
     ALPAMAYO2_EDGE_SEED            43        set before every plan
     ALPAMAYO2_EDGE_NAV_DISTANCE_M  unset     a distance for turns the source gives none
     ALPAMAYO2_EDGE_SAVE_REASONING  0         1 keeps the rationale in each plan's extras
+    ALPAMAYO2_EDGE_THREADS         4         torch's CPU threads in the node; speed only
 
 The seed is set before every plan, so a plan depends on its input alone -- not on
 the node, the order, a retry or a resumed run. It is still one draw of the model's
@@ -83,6 +84,11 @@ class Settings:
     seed: int = 43
     nav_distance_m: float | None = None
     save_reasoning: bool = False
+    #: torch's CPU threads (`torch.set_num_threads`). Torch takes every core by default,
+    #: and the vendor's processor then spends 1.4 s packing a plan's 22 frames on a
+    #: 48-core box shared with CARLA, where 4 threads take 0.18 s and 16 take 0.07 s.
+    #: The packed pixels and the plan are bit-identical at 2, 4, 8, 16 and 48 threads.
+    threads: int = 4
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -107,6 +113,9 @@ class Settings:
         nav_distance_m = float(nav) if nav is not None else None
         if nav_distance_m is not None and not nav_distance_m >= 0:
             raise ValueError(f"{PREFIX}NAV_DISTANCE_M must be a distance in metres, got {nav!r}")
+        threads = int(get("THREADS") or cls.threads)
+        if threads < 1:
+            raise ValueError(f"{PREFIX}THREADS must be at least 1, got {threads}")
         return cls(
             frames=frames,
             history=history,
@@ -114,6 +123,7 @@ class Settings:
             seed=int(get("SEED") or cls.seed),
             nav_distance_m=nav_distance_m,
             save_reasoning=(get("SAVE_REASONING") or "0") == "1",
+            threads=threads,
         )
 
 
@@ -228,8 +238,13 @@ class Alpamayo2EdgePolicy(Policy):
         if self.model is not None:
             return
         # torch and the vendor package exist only in the model's own environment.
+        import torch
         from alpamayo2_edge.checkpoint import load_model
         from alpamayo2_edge.helper import get_processor
+
+        # Set on the thread that plans: the node calls load() and then serves /infer on the
+        # same thread (policy/server.py), and OpenMP's thread count is per thread.
+        torch.set_num_threads(self.settings.threads)
 
         checkpoint = os.environ.get(CHECKPOINT_ENV)
         if not checkpoint:
@@ -243,6 +258,9 @@ class Alpamayo2EdgePolicy(Policy):
     def reset(self) -> None:
         """Forget the sequence. Resized frames stay cached by file for the next one."""
         self._frames: list[Observation] = []
+        #: This sequence's frames that came as pixels (a closed-loop client), resized, by the
+        #: time they were taken: the next sequence's clock may start again at the same time.
+        self._held: dict[tuple, np.ndarray] = {}
 
     def _record(self, obs: Observation) -> None:
         """Keep one observation. One stamped no later than the last is the same frame
@@ -259,13 +277,19 @@ class Alpamayo2EdgePolicy(Policy):
 
     # -- input --------------------------------------------------------------------
 
-    def _warp(self, frame: Observation, camera: str, hfov: float | None, memo: dict) -> np.ndarray:
-        """One camera of one frame, cropped for its slot: once per call, and across calls once per file."""
+    def _warp(self, frame: Observation, camera: str, hfov: float | None) -> np.ndarray:
+        """One camera of one frame, cropped for its slot, once.
+
+        A file is known by its path, across sequences. Pixels sent in the body (a
+        closed-loop client) are known by the time they were taken, which `_record`
+        keeps strictly increasing within a sequence: at 10 Hz a plan reads 22 frames,
+        16 of them read by an earlier plan, and resizing one is 30-40 ms.
+        """
         intrinsics = np.asarray(frame.camera2image[camera], dtype=np.float64)
         fx, cx, cy = float(intrinsics[0, 0]), float(intrinsics[0, 2]), float(intrinsics[1, 2])
         path = frame.image_paths.get(camera)
-        key = (path, hfov, fx, cx, cy) if path else (id(frame), camera, hfov)
-        cache = self._warped if path else memo
+        cache = self._warped if path else self._held
+        key = (path, hfov, fx, cx, cy) if path else (frame.timestamp_us, camera, hfov, fx, cx, cy)
         if key in cache:
             self._warp_hits += 1
             if path:
@@ -302,7 +326,6 @@ class Alpamayo2EdgePolicy(Policy):
             raise RuntimeError("no frame has been recorded")
         frames = self._frames
         now_us = frames[-1].timestamp_us
-        memo: dict = {}
         images, ids, stamps, chosen_times = [], [], [], {}
         for camera_id, camera, hfov in inputs.SLOTS:
             carrying = [frame for frame in frames if _has(frame, camera)]
@@ -316,11 +339,15 @@ class Alpamayo2EdgePolicy(Policy):
             )
             chosen = [carrying[i] for i in picks]
             for frame in chosen:
-                images.append(self._warp(frame, camera, hfov, memo))
+                images.append(self._warp(frame, camera, hfov))
                 ids.append(camera_id)
                 stamps.append(frame.timestamp_us)
             chosen_times[camera_id] = [round((frame.timestamp_us - now_us) / 1e6, 3) for frame in chosen]
             self._slot_geometry(camera_id, chosen[-1], camera, hfov)
+        # Kept for the 2 s the slots look back, 21 frames at 10 Hz. An older frame that a slot
+        # reads again for want of a newer one, as on a source slower than 0.5 Hz, is resized again.
+        oldest_us = now_us - int(round((max(map(abs, inputs.FRONT_OFFSETS_S)) + inputs.JITTER_S) * 1e6))
+        self._held = {key: image for key, image in self._held.items() if key[0] >= oldest_us}
         times = [frame.timestamp_us / 1e6 for frame in frames]
         poses = np.stack([np.asarray(frame.ego2world, dtype=np.float64) for frame in frames])
         # Measured velocity, ego frame -> world frame (NAVSIM's EgoStatus, the CAN bus elsewhere).
@@ -443,6 +470,8 @@ class Alpamayo2EdgePolicy(Policy):
             ),
             "warp_cache": {
                 "entries": len(self._warped),
+                # This sequence's frames that came as pixels, kept while a slot may still read them.
+                "held": len(self._held),
                 "hits": self._warp_hits,
                 "misses": self._warp_misses,
             },
