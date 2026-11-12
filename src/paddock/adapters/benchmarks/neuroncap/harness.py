@@ -244,15 +244,17 @@ class NeuroNcapBenchmark(ClosedLoopBenchmark):
 
     # ---- preflight -----------------------------------------------------
 
-    def model_problems(self, model, limit: int | None = None) -> list[str]:
+    def input_problems(self, model) -> list[str]:
         """Refuse a plan spacing with no points on the 0.5 s grid, before the model loads.
 
         The engine drives six points as 0.5 s apart (`WAYPOINT_DT`), and the node
         sends a plan's own points at those times (`Trajectory.to_wire`). A spacing
         that does not divide 0.5 s has none to send, and `to_wire` would refuse the
         first plan -- an hour into a sweep, after the renderer and the checkpoint.
+        `input_problems`, not `model_problems`: the runner asks only this one of a
+        closed-loop benchmark, before any dry run or launch.
         """
-        if grid_stride(model.waypoint_dt) is None:
+        if grid_stride(model.waypoint_dt, WAYPOINT_DT) is None:
             return [
                 f"{model.name} plans {model.waypoint_dt:g} s apart; neuroNCAP drives a plan's own "
                 f"points at every {WAYPOINT_DT:g} s and does not interpolate one, so the spacing "
