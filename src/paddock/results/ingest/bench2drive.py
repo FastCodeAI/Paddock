@@ -51,12 +51,12 @@ their own: driven through a camera rig other than paddock's (``camera_rig``,
 then in the pooled config), or with a setting the model's ``model.yaml``
 declares set to another value.
 
-**A route set aside for every model is neither expected nor lost.** The routes in
-``harness.SET_ASIDE`` failed in the simulator on every attempt by whichever model drives
-(11715), or by Alpamayo 1.5 at its declared 10 Hz (3800, 23695, 24071), so they measure no
-model: such a route leaves the pool before anything is read from it, its id goes in
-``config.routes_set_aside`` and its reason in the notes -- the list as it stands when the
-pool is made, so every model's pool of the same routes says the same. A full-set pool
+**A route set aside for every model is neither expected nor lost.** A route in
+``harness.SET_ASIDE`` failed in the simulator on every attempt (the list is empty since patch
+0003 made 11715, 3800, 23695 and 24071 run), so it measures no model: such a route leaves the
+pool before anything is read from it, its id goes in ``config.routes_set_aside`` and its reason
+in the notes -- the list as it stands when the pool is made, so every model's pool of the same
+routes says the same. A full-set pool
 asks for ``routes = "all"``: with ``routes`` left out the expected set is what the trees
 hold, and a route a sweep never drove would leave no trace.
 

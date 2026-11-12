@@ -603,8 +603,10 @@ is refused. Each row is measured by the same code as a `results.json`
 ones the raw file would give, with one exception. `duration_s` is the evaluator's
 wall-clock time, and the rows do not hold it, so a route taken from a record carries
 `null` there and `metrics.json` counts it in `duration_s.n_missing`. That is how a route
-reused by `--resume` is counted. Wall-clock time is not a measurement of the drive, and
-nothing in the leaderboard reads it.
+reused by `--resume` is counted. Wall-clock time is not a measurement of the drive, but the
+leaderboard prints its mean: for a pool that took routes from a record, that mean is over the
+routes driven here only (4 of 220 for each of the four two-site records), and
+`duration_s.n_missing` says how many it leaves out.
 
 That is exact only when the rows describe the record completely, so the ingest refuses,
 by name, a record that has any of these problems:
@@ -974,7 +976,8 @@ table below still withholds.
 
 ### Bench2Drive — 220 routes
 
-All 220 routes of `bench2drive220.xml`, every route scored, on CARLA 0.9.15 with patch 0003, each model at
+All 220 routes of `bench2drive220.xml`, every route scored, on CARLA 0.9.15 (patch 0003 in the evaluator wherever a
+route needed it: *Patch 0003* below), each model at
 its own rate. Each record is `paddock ingest`'s pool (`routes = "all"`); the support matrix's Bench2Drive column.
 
 | Model | Rate | Ends early | DS ↑ | RC ↑ (%) | Infraction penalty ↑ | With collision ↓ (%) | Record |

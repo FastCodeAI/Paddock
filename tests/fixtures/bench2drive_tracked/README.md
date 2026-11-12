@@ -23,7 +23,9 @@ Each holds `run.json`, `metrics.json`, and the `upstream_scores.json` that
 tests check that each record's rows reproduce its own `metrics.json`, every block except
 `duration_s`, which the rows do not hold. They are copies because this branch is based on
 PR #167, which predates them on `main`. Once both are on one branch, the copies and the
-originals must stay identical.
+originals must hold the same `upstream_scores.json` and `metrics.json`. Their `run.json` may
+differ in what `paddock supersede` changes (`valid`, `superseded_by`, `notes`): #167
+supersedes the originals by their 220-route pools, and the copies stay as the records were made.
 
 ## `five_routes_upstream_scores.json`: the five routes in `../bench2drive_upstream`
 
