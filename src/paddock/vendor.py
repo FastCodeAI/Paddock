@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from paddock.config import REPO_ROOT, SiteConfig
-from paddock.registry import ModelSpec, Registry, RepoSpec
+from paddock.registry import BenchmarkSpec, ModelSpec, Registry, RepoSpec
 
 PATCHES_DIR = REPO_ROOT / "patches"
 
@@ -272,6 +272,20 @@ def _build_env(cfg: SiteConfig, repo: Path | None, venv: Path) -> dict[str, str]
     return env
 
 
+def _bench_venv(spec: BenchmarkSpec, cfg: SiteConfig, repo: Path | None) -> Path | None:
+    """Where a benchmark's own interpreter goes: the env its `python` setting names.
+
+    Every closed-loop harness reads its interpreter from `[benchmarks.<name>]
+    python`, so that is honoured first; a site without one gets `.venv` in the
+    benchmark's clone, the way a model's env defaults to its repo's.
+    """
+    override = cfg.benchmarks.get(spec.name)
+    python = override.get("python") if override is not None else None
+    if python:
+        return Path(python).expanduser().parent.parent
+    return repo / ".venv" if repo is not None else None
+
+
 def run_model_setup(
     spec: ModelSpec,
     cfg: SiteConfig,
@@ -281,15 +295,44 @@ def run_model_setup(
     echo: Callable[[str], None] = print,
 ) -> int:
     """Run the model's setup.sh, streaming its output; its exit code, or 0 if skipped."""
-    script = spec.directory / "setup.sh"
-    if not script.exists():
-        echo(f"{spec.name} has no setup.sh at {script}")
+    return _run_setup(spec.name, spec.directory / "setup.sh", _venv(spec, cfg), cfg, repo, dry_run, echo)
+
+
+def run_benchmark_setup(
+    spec: BenchmarkSpec,
+    cfg: SiteConfig,
+    repo: Path | None,
+    *,
+    dry_run: bool = False,
+    echo: Callable[[str], None] = print,
+) -> int:
+    """Run the benchmark's setup.sh, which builds the interpreter its harness launches."""
+    if not (spec.directory / "setup.sh").exists():
+        echo(f"{spec.name} has no setup.sh at {spec.directory / 'setup.sh'}; its page says how to set it up")
         return 1
-    venv = _venv(spec, cfg)
+    venv = _bench_venv(spec, cfg, repo)
+    if venv is None:
+        echo(f"{spec.name}: set [benchmarks.{spec.name}] python to where its interpreter should go")
+        return 1
+    return _run_setup(spec.name, spec.directory / "setup.sh", venv, cfg, repo, dry_run, echo)
+
+
+def _run_setup(
+    name: str,
+    script: Path,
+    venv: Path,
+    cfg: SiteConfig,
+    repo: Path | None,
+    dry_run: bool,
+    echo: Callable[[str], None],
+) -> int:
+    if not script.exists():
+        echo(f"{name} has no setup.sh at {script}")
+        return 1
     if venv.resolve() == Path(sys.prefix).resolve():
         # A site may point a light model at paddock's own environment (see
         # constant_velocity/setup.sh); running the script would rebuild it.
-        echo(f"{spec.name}: setup.sh not run -- its venv is paddock's own ({venv}), which it must not touch")
+        echo(f"{name}: setup.sh not run -- its venv is paddock's own ({venv}), which it must not touch")
         return 0
     shown = " ".join(
         f"{k}={shlex.quote(str(v))}"
@@ -304,7 +347,7 @@ def run_model_setup(
     sys.stdout.flush()
     code = subprocess.run(["bash", str(script)], env=_build_env(cfg, repo, venv), cwd=REPO_ROOT).returncode
     if code != 0:
-        echo(f"{spec.name}: setup.sh exited {code}")
+        echo(f"{name}: setup.sh exited {code}")
     return code
 
 
@@ -316,6 +359,7 @@ def setup(
     *,
     repo: str | None = None,
     model: str | None = None,
+    bench: str | None = None,
     dry_run: bool = False,
     echo: Callable[[str], None] = print,
     registry: Registry | None = None,
@@ -324,16 +368,25 @@ def setup(
     """`paddock setup`: 0 when every selected repo is at its pin and patched.
 
     1 when any repo needs a person (a mismatch, a patch that will not apply, a
-    failed clone) or the model's setup.sh fails; 2 for a selection that names
+    failed clone) or the model's or benchmark's setup.sh fails; 2 for a selection that names
     nothing. Every selected repo is attempted, so one run reports all of them.
     """
     registry = registry or Registry.load()
-    if repo and model:
-        echo("give --repo or --model, not both: --model already selects that model's repo")
+    if sum(bool(x) for x in (repo, model, bench)) > 1:
+        echo("give one of --repo, --model and --bench, not both: each already selects its repo")
         return 2
 
-    spec = None
-    if model:
+    spec: ModelSpec | BenchmarkSpec | None = None
+    if bench:
+        spec = registry.benchmarks.get(bench)
+        if spec is None:
+            echo(f"unknown benchmark {bench!r}; known: {', '.join(sorted(registry.benchmarks)) or 'none'}")
+            return 2
+        if spec.repo and spec.repo not in registry.repos:
+            echo(f"benchmark {bench!r} names repo {spec.repo!r}, which repos.yaml does not list")
+            return 2
+        selected = [registry.repos[spec.repo]] if spec.repo else []
+    elif model:
         spec = registry.models.get(model)
         if spec is None:
             echo(f"unknown model {model!r}; known: {', '.join(sorted(registry.models)) or 'none'}")
@@ -368,9 +421,13 @@ def setup(
             echo(f"{spec.name}: setup.sh not run, because its repo is not ready")
         else:
             repo_path = cfg.repo(spec.repo) if spec.repo else None
-            failed = run_model_setup(spec, cfg, repo_path, dry_run=dry_run, echo=echo) != 0
+            if isinstance(spec, BenchmarkSpec):
+                code = run_benchmark_setup(spec, cfg, repo_path, dry_run=dry_run, echo=echo)
+            else:
+                code = run_model_setup(spec, cfg, repo_path, dry_run=dry_run, echo=echo)
+            failed = code != 0
 
-    if not repo and not model:
+    if not repo and not model and not bench:
         for line in _checkouts_elsewhere(cfg, registry):
             echo(line)
     if dry_run:

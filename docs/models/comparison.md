@@ -16,20 +16,20 @@ narrative half: provenance, licences, and the things that do not fit a schema.
 
 ## Inputs
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
-|---|---|---|---|---|---|---|---|
-| **Camera views @ freq** | front, 2 frames 0.5 s apart (JEPA encoder); back, front, left, right at the current frame (BEV stage) | 4 (front_left, front_wide, front_right, front_tele), 4 frames 0.1 s apart; paddock crops the tele slot out of CAM_FRONT. Rig is 7-cam. AR1 paper used 2 | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 6 surround (front, front-left, front-right, rear-left, rear, rear-right), 8 frames 0.5 s apart | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so on a monocular source (comma2k19) the side slots get black frames; `QWENDRIVE_VIEWS=replicate` or `crop` fill them from the road camera instead, and the policy then re-declares `cameras` to match |
-| **Per-camera input** | 512×256 | 448×280 (→160 tokens/img); triplane tokenizer fixes 288 tokens/timestep regardless of camera count | 512×256 (medmodel); 1024×512 (bigmodel) | 1024×512 (2:1) all three nets; AutoDrive adds a 50° centre crop | 768×432 uint8 RGB | 512×512 (squashed); the current front also 1024×1024 | pixel budget on a 32 px grid: current ~720p (921,600 px), history ~320p (174,080 px) |
-| **Other inputs** | ego state (NAVSIM protocol) | text prompt; egomotion history (3D translation + 9D rotation, multi-timestep); optional route | desire/nav command, 512-d feature history. **No speed channel at all** | vehicle speed | ego speed; optional LiDAR raster / SD map / driving command in the checkpoint, none in the released ONNX | 256-d egomotion history (6.4 s @ 10 Hz); optional route raster + 14-channel semantic map (450×300 @ 0.4 m; paddock sends the route where the benchmark has one, never the map); per-frame camera projections | 16 ego poses @10 Hz (1.5 s) + velocity + acceleration; ego status [v, a, one-hot command]; nav command in the prompt |
+| | Drive-JEPA | Alpamayo 1.5 | Alpamayo 2 Edge | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
+|---|---|---|---|---|---|---|---|---|
+| **Camera views @ freq** | front, 2 frames 0.5 s apart (JEPA encoder); back, front, left, right at the current frame (BEV stage) | 4 (front_left, front_wide, front_right, front_tele), 4 frames 0.1 s apart; paddock crops the tele slot out of CAM_FRONT. Rig is 7-cam. AR1 paper used 2 | 6: cross left, front wide and cross right (120°), rear left and rear right (70°), front tele (30°); paddock crops the tele slot out of CAM_FRONT. Front wide and tele at −2, −1, −0.5, −0.1 and 0 s, the other four at −1, −0.1 and 0 s: 22 frames, each with its time in the prompt. Built for 10 Hz video; at 2 Hz each slot gets the newest frame at or before its time | 2 (road + wide), 2 frames, 20 Hz | 1 mono front, 52–55° HFOV, 1–2 MP, 10+ Hz on Orin | 8 surround (front/back wide, front/back narrow, 4 corners), single frame; paddock fills 6 of the 8 | 6 surround (front, front-left, front-right, rear-left, rear, rear-right), 8 frames 0.5 s apart | 3 (front, front-left, front-right), 4 frames each 0.5 s apart. `DrivingScene` refuses a missing view, so on a monocular source (comma2k19) the side slots get black frames; `QWENDRIVE_VIEWS=replicate` or `crop` fill them from the road camera instead, and the policy then re-declares `cameras` to match |
+| **Per-camera input** | 512×256 | 448×280 (→160 tokens/img); triplane tokenizer fixes 288 tokens/timestep regardless of camera count | 576×320 front wide and tele, 416×224 the other four (the vendor's resize); 2,892 image tokens in all | 512×256 (medmodel); 1024×512 (bigmodel) | 1024×512 (2:1) all three nets; AutoDrive adds a 50° centre crop | 768×432 uint8 RGB | 512×512 (squashed); the current front also 1024×1024 | pixel budget on a 32 px grid: current ~720p (921,600 px), history ~320p (174,080 px) |
+| **Other inputs** | ego state (NAVSIM protocol) | text prompt; egomotion history (3D translation + 9D rotation, multi-timestep); optional route | 20 ego poses @ 10 Hz (1.9 s; position + 3×3 rotation), as trajectory tokens; a route sentence, required ("Turn left in 25m"; NAVSIM gives no distance) | desire/nav command, 512-d feature history. **No speed channel at all** | vehicle speed | ego speed; optional LiDAR raster / SD map / driving command in the checkpoint, none in the released ONNX | 256-d egomotion history (6.4 s @ 10 Hz); optional route raster + 14-channel semantic map (450×300 @ 0.4 m; paddock sends the route where the benchmark has one, never the map); per-frame camera projections | 16 ego poses @10 Hz (1.5 s) + velocity + acceleration; ego status [v, a, one-hot command]; nav command in the prompt |
 
 ## Outputs and architecture
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
-|---|---|---|---|---|---|---|---|
-| **Output @ freq** | trajectory from an 8192-entry anchor vocabulary | trajectory @ 6.4 s + chain-of-causation trace; 99 ms end-to-end | 33 waypoints over 10 s @ 20 Hz + lane lines/lead | AutoSteer: ego-path waypoints in camera coords, **no time parameterisation**; AutoSpeed: CIPO boxes (3 classes); AutoDrive: CIPO distance + curvature + presence prob | K=3 × 6 waypoints @ 0.5 s (3 s) + mode logits + steer/accel/brake; plus 11 perception heads | 128-d = 64 steps × (accel, curvature), 6.4 s @ 10 Hz; paddock integrates them with upstream's rollout | 50 poses (x, y, heading) @10 Hz, 5 s; optional one-sentence rationale |
-| **Architecture** | V-JEPA-2-init ViT-L encoder + proposal-centric planner; MTD + momentum-aware selection | Cosmos-Reason2 + diffusion trajectory decoder (AR1: Cosmos-Reason VLM + traj decoder) | supercombo, a single ONNX graph | 3 separate conv nets, all YOLO-family 'n' variant | ResNet-34 + FPN per camera, depth-gated IPM lift to one 800×500 BEV @ 0.2 m, 12 task heads + refiners (`DepthSegIPMNetV52`) | ResNet-50 + BEVFormer V2 T8 (300×200 BEV, frozen for the KITScenes fine-tune), deformable map/route fusion, GRU planner | Qwen3.5-4B VLM (unchanged) + 1 B flow-matching Planning Expert reading its KV caches; separate BEV perception head |
-| **Parameters** | 307 M (encoder + planner) | **10 B** (34 B for Super) | **30.0 M** ᵐ, counted in the pinned ONNX (comma gives 26.6 M for this generation) | **28.1 M** — AutoSteer 8.22 + AutoSpeed 9.33 + AutoDrive 10.58 ᵐ | 54 M (refiner incl.) ᵖ | 79.9 M ᵖ | **5.58 B** (4.54 B VLM + 1.04 B expert, counted from the checkpoint; the 125 M perception head is not loaded for planning) |
-| **Size** | 1.23 GB fp32 / 0.61 fp16 ᶜ | 20 GB bf16 ᶜ | **0.061 GB** (`driving_supercombo.onnx`); 1.76 GB big variant; 0.0075 GB dmonitoring ᵐ | 0.112 GB fp32 / 0.028 INT8 ᵐ | 0.35 GB fp32 ONNX ᵐ; 2:4 sparse trunk | 0.32 GB fp32 ᶜ | 9.1 GB VLM + 2.1 GB per planner, bf16 ᶜ |
+| | Drive-JEPA | Alpamayo 1.5 | Alpamayo 2 Edge | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
+|---|---|---|---|---|---|---|---|---|
+| **Output @ freq** | trajectory from an 8192-entry anchor vocabulary | trajectory @ 6.4 s + chain-of-causation trace; 99 ms end-to-end | a one-sentence rationale, or `<NOMINAL>` when nothing calls for one; then 64 poses (position + rotation) @ 10 Hz, 6.4 s, from 10 flow-matching steps | 33 waypoints over 10 s @ 20 Hz + lane lines/lead | AutoSteer: ego-path waypoints in camera coords, **no time parameterisation**; AutoSpeed: CIPO boxes (3 classes); AutoDrive: CIPO distance + curvature + presence prob | K=3 × 6 waypoints @ 0.5 s (3 s) + mode logits + steer/accel/brake; plus 11 perception heads | 128-d = 64 steps × (accel, curvature), 6.4 s @ 10 Hz; paddock integrates them with upstream's rollout | 50 poses (x, y, heading) @10 Hz, 5 s; optional one-sentence rationale |
+| **Architecture** | V-JEPA-2-init ViT-L encoder + proposal-centric planner; MTD + momentum-aware selection | Cosmos-Reason2 + diffusion trajectory decoder (AR1: Cosmos-Reason VLM + traj decoder) | Cosmos3-Edge VLM (Nemotron-based text backbone, SigLIP2 vision encoder) + flow-matching action expert reading its KV cache | supercombo, a single ONNX graph | 3 separate conv nets, all YOLO-family 'n' variant | ResNet-34 + FPN per camera, depth-gated IPM lift to one 800×500 BEV @ 0.2 m, 12 task heads + refiners (`DepthSegIPMNetV52`) | ResNet-50 + BEVFormer V2 T8 (300×200 BEV, frozen for the KITScenes fine-tune), deformable map/route fusion, GRU planner | Qwen3.5-4B VLM (unchanged) + 1 B flow-matching Planning Expert reading its KV caches; separate BEV perception head |
+| **Parameters** | 307 M (encoder + planner) | **10 B** (34 B for Super) | **2.65 B** ᵐ (2.45 B VLM + 0.20 B expert, counted in the checkpoint; its model card gives the same total) | **30.0 M** ᵐ, counted in the pinned ONNX (comma gives 26.6 M for this generation) | **28.1 M** — AutoSteer 8.22 + AutoSpeed 9.33 + AutoDrive 10.58 ᵐ | 54 M (refiner incl.) ᵖ | 79.9 M ᵖ | **5.58 B** (4.54 B VLM + 1.04 B expert, counted from the checkpoint; the 125 M perception head is not loaded for planning) |
+| **Size** | 1.23 GB fp32 / 0.61 fp16 ᶜ | 20 GB bf16 ᶜ | **5.3 GB** bf16 ᵐ (two safetensors files) | **0.061 GB** (`driving_supercombo.onnx`); 1.76 GB big variant; 0.0075 GB dmonitoring ᵐ | 0.112 GB fp32 / 0.028 INT8 ᵐ | 0.35 GB fp32 ONNX ᵐ; 2:4 sparse trunk | 0.32 GB fp32 ᶜ | 9.1 GB VLM + 2.1 GB per planner, bf16 ᶜ |
 
 Note the four-order-of-magnitude spread in the size row, and then read the
 neuroNCAP column of the support matrix, where the top three are statistically
@@ -37,14 +37,22 @@ indistinguishable.
 
 ## Availability
 
-| | Drive-JEPA | Alpamayo 1.5 | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
-|---|---|---|---|---|---|---|---|
-| **Training code** | yes | yes (Apache-2.0) | **no** — comma trains offline and ships weights | yes | yes (Apache-2.0), + autolabel factory | yes | **no** — inference code only |
-| **Inference code** | yes | yes, + AlpaSim integration | yes (`modeld`, MIT) | yes (Python + C++, ONNX Runtime/TensorRT, ROS2/Zenoh) | yes (Python + C++ TensorRT runtimes; plain ONNX runs in onnxruntime) | yes | yes (Apache-2.0) |
-| **Checkpoints** | yes (HF) | yes — `nvidia/Alpamayo-R1-10B`, `nvidia/Alpamayo-1.5-10B`. **OpenMDW-1.1, non-commercial**; commercial on request | yes — git-LFS in repo, MIT | yes — `.pth` + ONNX fp32 + ONNX INT8, **Apache-2.0, commercial OK** | yes — `AutowareFoundation/meteor` (`.pt` + ONNX), **Apache-2.0** | yes — `AutowareFoundation/auto_e2e` v1.0 (`nuplan-epoch-5`, `kitscenes-epoch-5`); code Apache-2.0, checkpoint licence "other" (model card), BEVFormer initialisation NOASSERTION | yes — `Qwen/Qwen-Drive-1.0-4B` (VLM + planner-sft + planner-rl + perception), **Apache-2.0, commercial OK** |
+| | Drive-JEPA | Alpamayo 1.5 | Alpamayo 2 Edge | OpenPilot | VisionPilot | METEOR | AutoE2E | Qwen-Drive 1.0 |
+|---|---|---|---|---|---|---|---|---|
+| **Training code** | yes | yes (Apache-2.0) | **no** — the pinned repo is inference only; its README says the model supports fine-tuning | **no** — comma trains offline and ships weights | yes | yes (Apache-2.0), + autolabel factory | yes | **no** — inference code only |
+| **Inference code** | yes | yes, + AlpaSim integration | yes (Apache-2.0), PyTorch; an optional faster path needs FlashAttention 2 | yes (`modeld`, MIT) | yes (Python + C++, ONNX Runtime/TensorRT, ROS2/Zenoh) | yes (Python + C++ TensorRT runtimes; plain ONNX runs in onnxruntime) | yes | yes (Apache-2.0) |
+| **Checkpoints** | yes — `LinhanWang/Drive-JEPA`, a Hugging Face dataset repo tagged **CC0-1.0**, with no licence text | yes — `nvidia/Alpamayo-R1-10B`, `nvidia/Alpamayo-1.5-10B`. Licence **OpenMDW-1.1**, which is permissive, but the model card says "ready for **non-commercial** use", commercial on request | yes — `nvidia/Alpamayo2-Edge`, not gated. The Hub and the vendor's README list **OpenMDW-1.1**; the card in the pinned snapshot says the licence is still to be confirmed | yes — git-LFS in repo, MIT | yes — `.pth` + ONNX fp32 + ONNX INT8, **Apache-2.0** | yes — `AutowareFoundation/meteor` (`.pt` + ONNX), **Apache-2.0** | yes — `AutowareFoundation/auto_e2e` v1.0 (`nuplan-epoch-5`, `kitscenes-epoch-5`); checkpoints **CC BY-NC-SA 4.0, non-commercial**, by the model card's licence section, which overrides the "other" in the v1.0 release files; BEVFormer initialisation NOASSERTION | yes — `Qwen/Qwen-Drive-1.0-4B` (VLM + planner-sft + planner-rl + perception), **Apache-2.0** |
 
-The licence row is the one to read before planning a product. Alpamayo's weights
-are non-commercial by default; VisionPilot's and OpenPilot's are not.
+The checkpoint row is the one to read before planning a product. AutoE2E's
+weights are licensed for non-commercial use only. Alpamayo 1.5's licence is
+permissive, but its model card calls the weights non-commercial; the two
+disagree, so check with NVIDIA before relying on either. Alpamayo 2 Edge's own
+card leaves its licence to be confirmed. Drive-JEPA's, VisionPilot's and
+Qwen-Drive's weights carry permissive licences but were trained partly on data
+licensed for non-commercial use (the next table), and Waymo's licence, behind
+VisionPilot's OpenLane and Qwen-Drive's WOD-E2E, also covers models trained on
+its data. OpenPilot's (MIT) were trained on comma.ai's own recordings, and
+METEOR's (Apache-2.0) mostly on TIER IV's, from an ImageNet-trained backbone.
 
 ## Training data — the important table
 
@@ -52,6 +60,7 @@ are non-commercial by default; VisionPilot's and OpenPilot's are not.
 |---|---|---|
 | **Drive-JEPA** | encoder init from V-JEPA 2 (VideoMix22M: SSv2, Kinetics, HowTo100M, YT-Temporal-1B, ImageNet); then CoVLA + DrivingDojo + **OpenScene `trainval`**, 330 h (208 h in paper v1), front camera, 8-frame clips @512×256, 2 Hz, no labels | **NAVSIM `navtrain`**, with simulator-scored vocabulary targets (+ **CARLA** for Bench2Drive: no data, split or checkpoint released; paddock runs the NAVSIM-v2 checkpoint there) |
 | **Alpamayo 1.5** | VLM base Cosmos-Reason2-8B, itself post-trained from Qwen3-VL-8B-Instruct; NVIDIA internal driving: 80,000 h, >1 B images, US + EU (2,500+ cities / 25 countries per the AR1 paper); **17 public driving sets** on the model card, including **NAVSIM**-ReCogDrive, **NAVSIM**-Traj and five built on **nuScenes** (nuScenesQA, DriveLM, nuInstruct, OmniDrive, Talk2Car), splits not given | chain-of-causation traces: 700 K (AR1) / 3 M (1.5), about 10 % human, the rest VLM-labelled; RL with a reasoning reward (Cosmos-RL GRPO in AR1; whether 1.5's RL was closed loop is not stated) |
+| **Alpamayo 2 Edge** | VLM base Cosmos3-Edge (config.json `vlm_class`), pre-trained by NVIDIA on its own corpora | Stages not given. The model card on the Hub's main branch lists about 115,000 h of NVIDIA's own multi-camera driving with egomotion, about 3.7 M chain-of-causation rationales written by Alpamayo 2 Super, navigation instructions and VQA; the card in the pinned snapshot says TBD. NVIDIA's fine-tuning recipe lists the public PhysicalAI-AV chunks the model has not seen, which implies it saw others. **No NAVSIM or nuPlan data is claimed** |
 | **OpenPilot** | comma fleet, not released: the world model on 2.5 M minutes of video at 5 Hz; the vision model on fleet segments (500 k or 2.2 M: comma's posts disagree) | the policy trained entirely inside the learned simulator, a world model (openpilot 0.11's "WMI" model). The 400 k segments ≈ 6,670 h, 500 users and 87 k trips are the 2025 paper's experiment and field test, not this model |
 | **VisionPilot** | AutoSpeed: OpenLane (Waymo Open images), from scratch. AutoSteer: TuSimple + CurveLanes + OpenLane images with OpenLane-V labels, from scratch | AutoDrive: from AutoSpeed's backbone (shown in the weights), then **ZOD** Sequences frame pairs labelled by AutoSpeed, ZOD's radar and its steering angle |
 | **METEOR** | ResNet-34 from **ImageNet**; TIER IV Co-MLOps DRS recordings (Japan + a US subset) and a 7-camera minibus corpus @ 5 Hz, every label from CoMET (TIER IV's ensemble of 12 models, unnamed); Cosmos Transfer re-renders of those scenes train perception only. 953 GB / 12,595 scenes is the disk, not the training list | released v157: a 2:4-sparse fine-tune from v151 with the planner frozen and RL off (`rl_w 0.0`, read from the checkpoint); the GRPO stage is not shown to be in its ancestry |
@@ -146,16 +155,16 @@ retired; see [drivejepa.md](drivejepa.md#on-comma2k19).
 
 ### Drive-JEPA × nuplan — most of nuPlan mini is in its training logs
 
-**Drive-JEPA's nuPlan cell is adapted, not zero-shot.** Paddock's nuPlan
+**Drive-JEPA's nuPlan runs are adapted, not zero-shot.** Paddock's nuPlan
 benchmark scores nuPlan's `mini` split. NAVSIM's `navmini` scene filter names 62
 mini logs (`train_test_split/scene_filter/navmini.yaml`, vendored in Drive-JEPA at
 the pinned sha), and 52 of them are also `navtrain` logs. So Drive-JEPA's planner
 was fine-tuned on those drives, and its encoder was pre-trained on all of OpenScene
 `trainval`, which holds them too. The other 10 are `navtest` logs. Which of the 25
 scored anchors fall in the 52 is not known on this machine: the anchor list lives on
-the site that ran the benchmark. The nuPlan column is unranked and every run in it is
-stored `valid: false` already, so no rank changes; the A says why this number is not
-a zero-shot one.
+the site that ran the benchmark. nuPlan has no column in the support matrix yet and
+every run is stored `valid: false`, so no rank depends on this. When full runs bring the
+column back, Drive-JEPA's cell there needs the A.
 
 ### Qwen-Drive 1.0 × navsim
 
@@ -360,7 +369,7 @@ measurements.
 
 ### METEOR × bench2drive — a real-camera planner on CARLA's cameras, at its own rate
 
-METEOR's Bench2Drive cell, 1.05 over the 50 routes, is the released graph
+METEOR's Bench2Drive cell, 1.89 over all 220 routes (1.05 over the earlier 50), is the released graph
 zero-shot: it trained on none of CARLA's towns or renders. It shares the routes,
 the camera rig, the tracker and the early-stop rules with AutoE2E's cell, and is
 asked at its declared 5 Hz where AutoE2E is asked at 10. Against the 20 Hz cells
@@ -440,9 +449,10 @@ where the stack's own `lateral_fusion.hpp` has 0.21, so the planner saw a
 curvature 4.8x too large and its `sqrt(mu*g/|kappa|)` speed cap bound where it
 should not have. Fixed September 2026; on a 20-sample comma2k19 smoke the
 correction moved ADE@3s from 15.09 to 5.28. **Every VisionPilot figure in the
-support matrix but comma2k19's predates it** and will not be reproduced by a
-re-run — the closed-loop ones least, since urban scenes rarely reach the cap, and
-the KITScenes one most. The comma2k19 cell was re-run in November 2026. `docs/models/visionpilot.md` §"Curvature scale" has
+support matrix but comma2k19's and KITScenes' predates it** and will not be
+reproduced by a re-run, the closed-loop ones least, since urban scenes rarely reach
+the cap. Both of those cells were re-run in November 2026: KITScenes moved from
+1.534 to 1.475. `docs/models/visionpilot.md` §"Curvature scale" has
 the derivation; re-sweeping VisionPilot is an open item in `docs/ROADMAP.md`.
 
 ◊ METEOR plans **3 s**; NAVSIM scores **4 s**. A quarter of every scored plan is

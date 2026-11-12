@@ -36,6 +36,7 @@ CARLA and the Bench2Drive checkout are vendored outside the package; the
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -95,6 +96,19 @@ def every_tick(hz: float) -> bool:
     return hz <= 0 or hz >= SIM_HZ
 
 
+def observe_hz(native_input_hz: float | None, asked_hz: float) -> float:
+    """How often the client hands the node a frame between plans (POST /observe), Hz; 0 never.
+
+    A model asked for a plan slower than the rate its history is built on (``native_input_hz``) is
+    handed a frame at that rate in between, so its history holds real frames, not the planning
+    rate's. Qwen-Drive plans at 2 Hz and reads sixteen ego poses on a 0.1 s grid: asked at 2 Hz
+    with nothing in between, its pose history came 5x sparser than it was trained on. A model asked
+    every tick (``asked_hz`` 0), or at its own input rate, never observes.
+    """
+    native = float(native_input_hz or 0.0)
+    return native if asked_hz > 0 and native > asked_hz and not _same_rate(native, asked_hz) else 0.0
+
+
 def _same_rate(a: float, b: float) -> bool:
     """Two rates that ask the node on the same ticks."""
     return (every_tick(a) and every_tick(b)) or a == b
@@ -123,6 +137,11 @@ QUALITY_FLAG = "-quality-level"
 #: connection retry (`--connect-timeout` is the fix).
 CONNECT_TIMEOUT_FLAG = "--connect-timeout"
 KILL_ALL_LINE = "xargs -r kill -9"
+#: The scenario_runner file patch 0003 changes, and what it adds. Unpatched, a flow car that misses
+#: its sink keeps its collision sensor until a large map puts it to sleep 650 m from the hero, and
+#: CARLA 0.9.15 segfaults (route 11715 for every model).
+ATOMIC_BEHAVIORS = Path("scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py")
+FAR_CAR_GUARD = "def _remove_far_cars("
 
 #: Seconds each connection attempt to a just-launched CARLA may take before the
 #: evaluator asks again (patch 0002). It bounds one attempt, not the boot: the
@@ -166,7 +185,8 @@ EXPERT_TRAJ = "expert_traj.json"
 
 #: CARLA's client library as the 0.9.15 release ships it. Put on the client's
 #: path when present, as the checkout's own ``run_evaluation.sh`` does, so a
-#: site need not also ``pip install carla``.
+#: site need not also ``pip install carla`` -- unless the interpreter has a
+#: ``carla`` of its own (``_has_own_carla``).
 CARLA_EGG = Path("PythonAPI") / "carla" / "dist" / "carla-0.9.15-py3.7-linux-x86_64.egg"
 
 #: ``statistics_manager.FAILURE_MESSAGES`` in Bench2Drive 0.0.4 (7ec25d1). A
@@ -184,9 +204,10 @@ CRASH_STATUSES = frozenset(
     }
 )
 
-#: Routes left out of every model's numbers, with the reason. Each fails in the simulator
-#: on every attempt, whichever model drives, so it measures no model -- and a mean with it
-#: for one model and without it for another would not be over the same routes. Poor
+#: Routes left out of every model's numbers, with the reason. Each failed in the simulator
+#: on every attempt by whichever model drives (11715), or by Alpamayo 1.5 at its declared
+#: 10 Hz (3800, 23695, 24071), so it measures no model, and a mean with it for one
+#: model and without it for another would not be over the same routes. Poor
 #: driving is never a reason: a route the car is blocked on, deviates from, times out on or
 #: has ended early scores. Nor is a model's own node failing (an HTTP 500, out of memory):
 #: that is the model's to fix. A route joins after three attempts that failed in the
@@ -194,11 +215,15 @@ CRASH_STATUSES = frozenset(
 #: docs/benchmarks/bench2drive.md, "Routes set aside". ``--scene <id>`` still drives one, to
 #: see whether it still fails; a run that does is not a score (``invalid_reasons``).
 SET_ASIDE: dict[str, str] = {
-    # Five attempts at one site (7-8 Oct 2026, openpilot) and nine at another under three
-    # stacks: CARLA's CommonUnixCrashHandler logs Signal=11 at 53.65-54.0 s of game time each
-    # time. The client's traceback lands in route_scenario.spawn_parked_vehicles only because
-    # that is its first call to the server after the crash.
-    "11715": "CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives",
+    # 11715 (Town12 EnterActorFlow) was the first, from #159: CARLA's Signal=11 about 54 s in, on
+    # every attempt. Under gdb that was a flow car with a collision sensor put to sleep 650 m from
+    # the hero (ALargeMapManager::ConvertActiveToDormantActors -> ASensor::EndPlay). Patch 0003
+    # removes such a car first, as its sink would; with it 11715 scored for the three models of the
+    # 220-route sweep (Drive-JEPA, Qwen-Drive, VisionPilot; 8 Nov 2026).
+    # Three Town13 routes then crashed CARLA the same way at another site (3800, 23695, 24071: every
+    # attempt by Alpamayo 1.5 at its declared 10 Hz, 9 Nov 2026), and the four 216-route records made
+    # there set all four aside. Under patch 0003 the four routes scored for Alpamayo 1.5, AutoE2E,
+    # METEOR and openpilot here (12 Nov 2026), and for UniAD and VAD in their 220-route sweep.
 }
 
 #: Everything ``agent.py`` imports, checked in the client interpreter by
@@ -306,6 +331,21 @@ def patch_problems(evaluator_source: str, evaluator: Path) -> list[str]:
     return problems
 
 
+def scenario_patch_problems(behaviors_source: str, behaviors: Path) -> list[str]:
+    """Why ``behaviors_source`` is not scenario_runner's atomic_behaviors.py with patch 0003 applied.
+
+    Without it CARLA crashes on route 11715, which is no longer set aside, and on any flow route
+    where a car that missed its sink gets 650 m from the hero (patches/README.md).
+    """
+    if FAR_CAR_GUARD in behaviors_source:
+        return []
+    return [
+        f"{behaviors} has no far-car guard in ActorFlow, so CARLA crashes when a large map puts a flow "
+        f"car with a collision sensor to sleep (route 11715 every time); apply "
+        f"patches/Bench2Drive/0003-actorflow-remove-far-flow-cars-before-dormancy.patch (patches/README.md)"
+    ]
+
+
 def crash_reason(status: str) -> str | None:
     """The failure message if ``status`` marks a route that did not run, else None."""
     for reason in CRASH_STATUSES:
@@ -348,9 +388,18 @@ def parse_results(results_json: Path) -> dict[str, float]:
     Pure, so the golden test asserts it reproduces the score CARLA recorded.
     """
     checkpoint = json.loads(Path(results_json).read_text()).get("_checkpoint", {})
+    return parse_checkpoint(checkpoint, str(results_json))
+
+
+def parse_checkpoint(checkpoint: dict[str, Any], where: str) -> dict[str, float]:
+    """:func:`parse_results` on a ``_checkpoint`` already read; ``where`` names it in a refusal.
+
+    The ingest measures a route taken from a tracked record's ``upstream_scores.json`` row
+    through this too, so the two are one derivation, not two kept in step.
+    """
     all_records = checkpoint.get("records") or []
     if not all_records:
-        raise NotScored(f"{results_json}: no records in _checkpoint (the route did not score)")
+        raise NotScored(f"{where}: no records in _checkpoint (the route did not score)")
 
     records, crashed = [], []
     for record in all_records:
@@ -361,8 +410,7 @@ def parse_results(results_json: Path) -> dict[str, float]:
             records.append(record)
     if not records:
         raise NotScored(
-            f"{results_json}: {'; '.join(crashed)} -- "
-            f"the route did not run, so its scores are not a measurement"
+            f"{where}: {'; '.join(crashed)} -- the route did not run, so its scores are not a measurement"
         )
 
     def count(infractions: dict, key: str) -> int:
@@ -409,6 +457,11 @@ def ended_early(route_dir: Path) -> dict[str, float]:
         record = json.loads((Path(route_dir) / early_stop.RECORD).read_text())
     except (OSError, ValueError):
         return {}
+    return stop_shares(record)
+
+
+def stop_shares(record: Any) -> dict[str, float]:
+    """:func:`ended_early` on an ``early_stop.json`` already read; empty for anything but a record."""
     if not isinstance(record, dict):
         return {}
     reps = [r for r in (record.get("repetitions") or [record]) if isinstance(r, dict)] or [record]
@@ -628,6 +681,14 @@ def reap_carla(port: int, wait_s: float = 30.0) -> list[int]:
 # ---------------------------------------------------------------------------
 
 
+#: The three settings every run needs, and the command that makes each.
+_MAKES_SETTING = {
+    "python": "`paddock setup --bench bench2drive` builds a CARLA-client interpreter",
+    "carla_root": "`paddock data fetch carla` downloads CARLA 0.9.15 and its maps",
+    "repo": "`paddock setup --bench bench2drive` clones Bench2Drive at its pin",
+}
+
+
 class Bench2DriveBenchmark(ClosedLoopBenchmark):
     # ---- site settings: `self.setting(key)` / `self.settings` from the base ----
 
@@ -739,12 +800,34 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         carla_root, repo = self.carla_root, self.repo
         entries = [str(REPO_ROOT / "src")]
         if carla_root is not None:
-            if (carla_root / CARLA_EGG).exists():
+            if (carla_root / CARLA_EGG).exists() and not self._has_own_carla:
                 entries.append(str(carla_root / CARLA_EGG))
             entries.append(str(carla_root / "PythonAPI" / "carla"))
         if repo is not None:
             entries += [str(repo / "leaderboard"), str(repo / "scenario_runner")]
         return entries
+
+    @functools.cached_property
+    def _has_own_carla(self) -> bool:
+        """True when the client interpreter has a ``carla`` package installed.
+
+        The release's egg needs the system's libtiff.so.5, which newer systems
+        replace with libtiff.so.6, and a conda env supplies it itself. PyPI's
+        carla 0.9.15 wheel carries its own copy, so it is what
+        ``paddock setup --bench bench2drive`` installs. An egg on PYTHONPATH
+        would be imported ahead of that wheel, so it goes on only for an
+        interpreter without one. ``find_spec`` finds carla without running it;
+        whether it imports is preflight's check.
+        """
+        python = self.setting("python")
+        if not python:
+            return False
+        probe = "import importlib.util, sys; sys.exit(importlib.util.find_spec('carla') is None)"
+        try:
+            found = subprocess.run([str(python), "-I", "-c", probe], capture_output=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return found.returncode == 0
 
     def _environment(self, extra: dict[str, str]) -> dict[str, str]:
         """The evaluator's environment: the host passthrough set, plus ours.
@@ -774,13 +857,14 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         problems: list[str] = []
         if self.settings is None:
             return [
-                "no [benchmarks.bench2drive] section in paddock.toml; it needs `python`, "
-                "`carla_root` and `repo` (see docs/benchmarks/bench2drive.md)"
+                "no [benchmarks.bench2drive] section in paddock.toml; it needs `python` and "
+                "`repo` (`paddock setup --bench bench2drive` makes both) and `carla_root` "
+                "(`paddock data fetch carla`); see docs/benchmarks/bench2drive.md"
             ]
 
-        for key in ("python", "carla_root", "repo"):
+        for key, how in _MAKES_SETTING.items():
             if not self.setting(key):
-                problems.append(f"[benchmarks.bench2drive] {key} is not set in paddock.toml")
+                problems.append(f"[benchmarks.bench2drive] {key} is not set in paddock.toml; {how}")
 
         python = self.setting("python")
         if python and not Path(python).exists():
@@ -802,6 +886,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 (Path("leaderboard/leaderboard/leaderboard_evaluator.py"), "the evaluator"),
                 (Path("leaderboard/leaderboard/autoagents/autonomous_agent.py"), "the AutonomousAgent base"),
                 (Path("scenario_runner/srunner/scenariomanager/carla_data_provider.py"), "scenario_runner"),
+                (ATOMIC_BEHAVIORS, "scenario_runner's atomic behaviours"),
             ):
                 if not (repo / relative).exists():
                     problems.append(f"Bench2Drive checkout is missing {why}: {repo / relative}")
@@ -819,6 +904,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 )
             if evaluator is not None and evaluator.exists():
                 problems.extend(patch_problems(evaluator.read_text(errors="replace"), evaluator))
+            behaviors = repo / ATOMIC_BEHAVIORS
+            if behaviors.exists():
+                problems.extend(scenario_patch_problems(behaviors.read_text(errors="replace"), behaviors))
 
         routes = self.routes_file
         if routes is not None:
@@ -961,14 +1049,22 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         for every tick), so the record says the rate was an operator's: the run
         does not rank (``invalid_reasons``), and neither does a pool of such runs.
         A host that restates the model's own rate changes nothing.
+
+        A model asked slower than its ``native_input_hz`` is handed frames between plans at that
+        rate, recorded as ``observe_hz`` (:func:`observe_hz`).
         """
         declared = float(getattr(model, "planning_hz", 0.0) or 0.0)
         hz = infer_hz(declared)
+        # Frames between plans (``observe_hz``), recorded and hashed like the rate: Qwen-Drive with
+        # and without them reads different histories. Absent when none are handed, so every other
+        # model keeps its run id.
+        observed = observe_hz(getattr(model, "native_input_hz", 0.0), hz)
+        extra = {"observe_hz": observed} if observed else {}
         if _same_rate(hz, declared):
             self._host_rate = None
-            return {} if every_tick(declared) else {"infer_hz": declared}
+            return extra if every_tick(declared) else {"infer_hz": declared, **extra}
         self._host_rate = (hz, declared)
-        return {"infer_hz": 0.0 if every_tick(hz) else hz, "planning_hz": declared}
+        return {"infer_hz": 0.0 if every_tick(hz) else hz, "planning_hz": declared, **extra}
 
     def run_config(self) -> dict[str, Any]:
         """Site settings that change *what is measured*, for ``run.json``.
@@ -1230,6 +1326,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
         if hz := infer_hz(episode.config.get("planning_hz")):
             extra["PADDOCK_INFER_HZ"] = f"{hz:g}"
+            if observed := observe_hz(episode.config.get("native_input_hz"), hz):
+                extra["PADDOCK_OBSERVE_HZ"] = f"{observed:g}"
         # Segment mode (sim2real diagnostics: capture a recording, or replay it to T0 and then
         # swap the frames); see bench2drive/segment.py. Host-set like the timeout above; a run
         # with it is on the record and never ranks (`run_config`, `invalid_reasons`).

@@ -3,9 +3,12 @@ description: Bench2Drive closed-loop driving on CARLA 0.9.15 - the SJTU leaderbo
 mode: closed_loop
 
 # CARLA generates every scenario procedurally from the routes that ship with the
-# Bench2Drive checkout, so there is no external dataset to download. Where the
-# checkout and CARLA live is set in [benchmarks.bench2drive] in paddock.toml.
+# Bench2Drive checkout, so there is no dataset. Where the checkout and CARLA
+# live is set in [benchmarks.bench2drive] in paddock.toml. `paddock data fetch
+# carla` downloads CARLA, and `paddock setup --bench bench2drive` clones this
+# repo and builds the Python that drives CARLA (setup.sh).
 dataset: ""
+repo: Bench2Drive
 
 # CARLA Leaderboard driving score = route_completion x infraction_penalty.
 metrics: [driving_score, route_completion, infraction_penalty, collision_rate]

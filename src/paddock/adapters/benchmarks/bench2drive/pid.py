@@ -1,12 +1,12 @@
-"""Waypoints -> vehicle control: Bench2Drive's dual-PID tracker, vendored.
+"""Waypoints -> vehicle control: the dual-PID tracker Bench2Drive's baselines use, reimplemented.
 
 The Bench2Drive checkout ships no controller. The tracker its baselines drive
 with (TCP's, reused unchanged by the UniAD / VAD agents in Bench2DriveZoo's
 ``team_code/pid_controller.py``) lives in a *second* repository that a site set
 up from the Bench2Drive README does not have, so an import of it passes on the
-author's machine and fails on every other one. Paddock owns its own copy: the
-adapter runs from a plain checkout, and the control law under the score is
-pinned here where a change to it shows up in a diff.
+author's machine and fails on every other one. Paddock reimplements it here:
+the adapter runs from a plain checkout, and the control law under the score is
+pinned where a change to it shows up in a diff.
 
 Same law and constants as TCP (Wu et al., 2022):
 

@@ -70,7 +70,8 @@ weights = "..."   # model checkpoints
 
 Then a `[datasets.*]` section for each dataset you have — see
 [data-setup.md](data-setup.md). Leave out what you do not have; being incomplete
-is not an error, and `doctor` will tell you what each gap blocks.
+is not an error, and `doctor` will tell you what each gap blocks. Every one of
+them can be downloaded with `paddock data fetch`, which adds the section for you ([Downloading a dataset](data-setup.md#downloading-a-dataset)).
 
 Two things worth getting right now rather than later:
 
@@ -108,10 +109,11 @@ For every entry in [`repos.yaml`](../repos.yaml) this clones it into
 listed for it. It prints one line per repo -- name, path, and what it did -- and
 the exit code is the verdict.
 
-Plain `paddock setup` fetches every entry, including some that no model or
-benchmark uses yet, such as sunnypilot (3.7 GB of history). To fetch only what
-you will run, give `--repo NAME` for each one, or use `paddock setup --model
-NAME` (step 5), which fetches that model's repo and then builds its environment.
+Plain `paddock setup` fetches every entry, including two that no model uses:
+Alpamayo 2, not yet evaluated, and V-JEPA 2, of which Drive-JEPA and WA-JEPA
+carry their own copies. To fetch only what you will run, give `--repo NAME` for
+each one, or use `paddock setup --model NAME` (step 5), which fetches that
+model's repo and then builds its environment.
 
 **Existing clones are adopted, not re-cloned.** If you already have these repos
 checked out under `[roots.repos]`, paddock uses them where they are, and your

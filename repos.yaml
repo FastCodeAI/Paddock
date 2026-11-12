@@ -21,11 +21,6 @@ repos:
     sha: 4c7f1a6e1
     description: comma2k19 dataset toolkit; the ECEF pose maths and EON camera model under adapters/benchmarks/comma2k19
 
-  sunnypilot:
-    url: https://github.com/sunnypilot/sunnypilot.git
-    sha: 0b1ed0d047
-    description: openpilot fork; not yet evaluated
-
   alpamayo1.5:
     url: https://github.com/NVlabs/alpamayo1.5.git
     sha: 7a8f1c7
@@ -35,6 +30,11 @@ repos:
     url: https://github.com/NVlabs/alpamayo2.git
     sha: beb2977
     description: NVIDIA Alpamayo 2 Super (34B); not yet evaluated
+
+  alpamayo2-edge:
+    url: https://github.com/NVlabs/alpamayo2-edge.git
+    sha: 02f55a7
+    description: NVIDIA Alpamayo 2 Edge (2.65B) inference code, imported from src/ as a library
 
   alpasim:
     url: https://github.com/NVlabs/alpasim.git
@@ -66,6 +66,7 @@ repos:
     patches:
       - 0001-kill-only-own-carla-on-crash.patch
       - 0002-connect-timeout-for-a-booting-server.patch
+      - 0003-actorflow-remove-far-flow-cars-before-dormancy.patch
 
   HUGSIM:
     url: https://github.com/hyzhou404/HUGSIM.git

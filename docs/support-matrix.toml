@@ -10,7 +10,8 @@
 #   { value = 30.09, source = "docs/..." }  typed, for a figure with no stored run; the
 #                                           source page must show the same number
 #   "not run"                               a variant nobody ran here; a cell left out reads "—"
-# with, optionally, `marks` (the README's A P S R V) and `note` (shown under the number).
+# with, optionally, `marks` (A, P and S are in the README; R or V leaves a cell unranked)
+# and `note` (shown under the number).
 # A run must be the row's own model's; a cell that borrows another's names it with `model`.
 
 [[benchmark]]
@@ -36,32 +37,26 @@ header = "ADE@3s ↓ (m)"
 decimals = 3
 
 [[benchmark]]
-key = "nuplan"
-name = "nuPlan"
-loop = "open"
-header = "ADE ↓ (m), 25 anchors, not ranked"
-decimals = 3
-ranked = false
-
-[[benchmark]]
-key = "navsim"
-name = "NAVSIM v2"
-loop = "pseudo"
-header = "EPDMS ↑ (0–1)"
-decimals = 3
-
-[[benchmark]]
 key = "navsim_v1"
 name = "NAVSIM v1"
-loop = "pseudo"
+loop = "open"
 header = "PDMS ↑ (0–1)"
 decimals = 3
 
 [[benchmark]]
+key = "navsim"
+name = "NAVSIM v2"
+loop = "open"
+header = "EPDMS ↑ (0–1), navtest, stage one"
+decimals = 3
+
+# All 220 routes of bench2drive220.xml for every model (issue #158; "Bench2Drive — 220 routes" in
+# docs/benchmarks/bench2drive.md). The 50-route column it replaces covered 14 of the 44 scenario types.
+[[benchmark]]
 key = "bench2drive"
 name = "Bench2Drive"
 loop = "closed"
-header = "driving score ↑ (0–100)"
+header = "driving score ↑ (0–100), all 220 routes"
 decimals = 2
 
 [[benchmark]]
@@ -75,7 +70,7 @@ decimals = 2
 key = "alpasim"
 name = "AlpaSim"
 loop = "closed"
-header = "nuRec scene score ↑ (0–1)"
+header = "nuRec scene score ↑ (0–1), 30 of 913 scenes"
 decimals = 4
 
 [[model]]
@@ -87,13 +82,17 @@ key = "alpamayo15"
 name = "Alpamayo 1.5"
 
 [[model]]
+key = "alpamayo2edge"
+name = "Alpamayo 2 Edge"
+
+[[model]]
 key = "drivejepa"
 name = "Drive-JEPA"
 
 [[model]]
 key = "visionpilot"
 name = "VisionPilot"
-marks = "P"  # every cell in the row; S is on each cell but comma2k19, the one re-run since the CURV_SCALE fix
+marks = "P"  # every cell in the row; S only where a cell predates the CURV_SCALE fix
 
 [[model]]
 key = "meteor"
@@ -116,10 +115,9 @@ floor = true
 nuscenes = { run = "nuscenes/openpilot/20260908T110028-b71f4f" }
 kitscenes = { run = "kitscenes/openpilot/20261008T004723-a369d1", marks = "A" }
 comma2k19 = { run = "comma2k19/openpilot/20261106T003719-5cde54" }
-nuplan = { run = "nuplan/openpilot/20260917T220353-9e4f44" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
-bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", marks = "P" }  # routes can end early; it ranks
+bench2drive = { run = "bench2drive/openpilot/full220-86aa45e768a29a64-102db6", marks = "P" }  # routes can end early; it ranks
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
 
@@ -129,29 +127,33 @@ kitscenes = { run = "kitscenes/alpamayo15/legacy-full-nav" }
 comma2k19 = { run = "comma2k19/alpamayo15/20261106T005600-6c52a2" }
 navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
-bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", note = "10 Hz" }
+bench2drive = { run = "bench2drive/alpamayo15/full220-86aa45e768a29a64-600411", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the bridge, 30 scenes
 
+[cells.alpamayo2edge]
+# A model built for 0.1 s frames, on OpenScene's 2 Hz: it has not been run on nuPlan's
+# 10 Hz frames. The README says to compare it with Alpamayo 1.5's 2 Hz pair.
+navsim = { run = "navsim/alpamayo2edge/20261111T052918-f9f90a", note = "2 Hz" }
+navsim_v1 = { run = "navsim_v1/alpamayo2edge/20261111T070439-f19e8f", note = "2 Hz" }
+
 [cells.drivejepa]
-nuscenes = { run = "nuscenes/drivejepa/20260905T093335-4513d4", marks = "S" }
+nuscenes = { run = "nuscenes/drivejepa/20261105T201953-308dc5" }
 kitscenes = { run = "kitscenes/drivejepa/legacy-kitscenes_e2e_final" }
 comma2k19 = { run = "comma2k19/drivejepa/20261106T192049-391e2d" }  # three of its four views black; it reads only the front
-nuplan = { run = "nuplan/drivejepa/20260916T204900-6a17de", marks = "A" }  # 52 of nuPlan mini's 62 logs are navtrain logs
 navsim = { run = "navsim/drivejepa/20260902T173156-7e208f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
-bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", note = "2 Hz" }
+bench2drive = { run = "bench2drive/drivejepa/pooled220-86aa45e768a29a64-1507a1", note = "2 Hz" }
 neuroncap = { run = "neuroncap/drivejepa/20261012T224707-f11ac0" }
 alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
 
 [cells.visionpilot]
 nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5", marks = "S" }
-kitscenes = { run = "kitscenes/visionpilot/20260909T202724-153b04", marks = "S" }
+kitscenes = { run = "kitscenes/visionpilot/20261105T191932-c71101" }
 comma2k19 = { run = "comma2k19/visionpilot/20261106T003749-c10a7f" }
-nuplan = { run = "nuplan/visionpilot/20260917T220044-97873a", marks = "S" }
 navsim = { run = "navsim/visionpilot/20260902T175642-df5291", marks = "S" }
 navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583", marks = "S" }
-bench2drive = { run = "bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009", marks = "S" }
+bench2drive = { run = "bench2drive/visionpilot/pooled220-86aa45e768a29a64-9f3c17" }
 neuroncap = { run = "neuroncap/visionpilot/20260905T121810-155d36", marks = "S" }
 alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes", marks = "S" }
 
@@ -159,12 +161,11 @@ alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes", marks = 
 nuscenes = { run = "nuscenes/meteor/20260914T202122-4320bb" }
 kitscenes = { run = "kitscenes/meteor/20260914T215457-ab0586" }
 comma2k19 = { run = "comma2k19/meteor/20261106T064120-226c00" }  # the road camera in 2 of its 8 slots
-nuplan = { run = "nuplan/meteor/20260917T195335-1b447c" }
 navsim = { run = "navsim/meteor/20260914T234307-e56cfc", marks = "P" }
 navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
-bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", note = "5 Hz" }
+bench2drive = { run = "bench2drive/meteor/full220-86aa45e768a29a64-2144df", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
 
@@ -174,7 +175,7 @@ kitscenes = { run = "kitscenes/qwendrive/20260914T220841-5a91fd" }
 comma2k19 = { run = "comma2k19/qwendrive/20261106T030530-7d9fd3" }
 navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20261104T205054-df25d5", marks = "A" }
-bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", note = "2 Hz" }
+bench2drive = { run = "bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
 alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8" }
 
@@ -186,7 +187,7 @@ navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A", note = "1
 navsim_v1 = { run = "navsim_v1/autoe2e/20261104T210206-3022fb", marks = "A", note = "10 Hz" }
 # Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time, each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
-bench2drive = { run = "bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c", note = "10 Hz" }
+bench2drive = { run = "bench2drive/autoe2e/full220-86aa45e768a29a64-740c68", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 
@@ -194,9 +195,7 @@ alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
 kitscenes = { value = 1.381, source = "docs/benchmarks/kitscenes.md" }
 comma2k19 = { run = "comma2k19/constant_velocity/20261106T045541-d0cdb5" }
-nuplan = { run = "nuplan/constant_velocity/20260917T214417-f827db" }
 navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
-bench2drive = { run = "bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac" }
 neuroncap = { value = 0, source = "docs/benchmarks/neuroncap.md", note = "by construction" }
 alpasim = { run = "alpasim/constant_velocity/legacy-cv_023_20hz_30scenes" }

@@ -1,4 +1,4 @@
-"""The vendored dual-PID tracker, checked without CARLA.
+"""The reimplemented dual-PID tracker, checked without CARLA.
 
 Pins the sign conventions -- the one place a frame mix-up would send the car
 the wrong way with a perfectly valid-looking score -- and the brake rules.

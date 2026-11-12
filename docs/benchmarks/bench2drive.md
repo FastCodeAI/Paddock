@@ -8,20 +8,24 @@
 | Dataset | rendered by the simulator |
 | Primary metric | `driving_score` |
 | Adapter | [`adapters/benchmarks/bench2drive/`](../../src/paddock/adapters/benchmarks/bench2drive/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
 [Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) is a closed-loop
 end-to-end driving benchmark on **CARLA 0.9.15**. The model drives the official
-leaderboard's **220 short routes** (Towns 12/13/15, 44 scenario types × 5), one
-scenario per route, and is scored by the CARLA Leaderboard driving score.
+leaderboard's **220 short routes** (12 towns, 151 of the routes in Towns 12 and 13;
+44 scenario types × 5), one
+scenario per route, and is scored by the CARLA Leaderboard driving score. Every
+ranked number here uses 50 of those routes (Alpamayo 1.5 and Qwen-Drive score 49 at
+their own rates); see
+[The 50 routes are not a sample of the 220](#the-50-routes-are-not-a-sample-of-the-220).
 
 Closed-loop, like neuroNCAP: the model decides what happens next and errors
 compound. The model runs behind paddock's HTTP policy node; the adapter spawns the
 leaderboard evaluator per route and points a model-agnostic `AutonomousAgent`
 (`agent.py`) at that node. Waypoints come back on paddock's 0.5 s grid and are
-tracked by the Bench2Drive dual-PID controller, vendored in `pid.py` (see
+tracked by the Bench2Drive dual-PID controller, reimplemented in `pid.py` (see
 *Notes*).
 
 ## What it measures
@@ -87,8 +91,16 @@ crash. An attempt cut off by a restart leaves none.
 
 ## Site setup
 
-CARLA and the Bench2Drive checkout live wherever this machine keeps them; declare
-them in `paddock.toml` (never committed):
+Two commands put everything in place:
+
+```bash
+paddock data fetch carla --dest /data/carla0915   # CARLA 0.9.15 and the maps with Towns 12, 13 and 15; 15.8 GB
+paddock setup --bench bench2drive                 # Bench2Drive at its pin, and the Python that drives CARLA
+```
+
+Each prints the line it needs in `paddock.toml`. CARLA and the Bench2Drive
+checkout live wherever this machine keeps them; declare them in `paddock.toml`
+(never committed):
 
 ```toml
 [benchmarks.bench2drive]
@@ -119,27 +131,50 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 **How often the model is asked for a plan** is the model's own `planning_hz`
 (`model.yaml`, `capabilities`). The client asks the node once per
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
-without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz,
-Alpamayo 1.5 10 Hz. The rate is
+without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, Qwen-Drive 2 Hz, AutoE2E 10 Hz,
+METEOR 5 Hz, Alpamayo 1.5 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
 `PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
 own rate, the run records the declared rate beside it (`config.planning_hz`) and
 is stored `valid: false`: an operator's rate. A pooled record carries the rate
 too, and ranks at the model's own (*Pooling recorded routes*, below).
 
+**Between plans, a model asked slower than its history** (`native_input_hz` above the rate it is
+asked at) is handed a frame at that rate with `POST /observe`: the same body as `/infer`, no plan
+asked, the plan in force unchanged. Qwen-Drive plans at 2 Hz and reads sixteen ego poses on a
+0.1 s grid, so it observes at 10 Hz; asked at 2 Hz with nothing in between, its pose history came
+five times sparser than it was trained on (the native-rate campaign's QwenDrive row). The rate is
+recorded as `config.observe_hz` and hashed into the run id; a model that asks at its input rate
+(Alpamayo 1.5, AutoE2E) or declares none never observes, and its run id is unchanged.
+
 Prerequisites (all outside this repo):
 
 - **CARLA 0.9.15** installed at `carla_root` (`CarlaUE4.sh` must exist, and
-  `PythonAPI/carla/agents/` — the agent imports `RoadOption` from it). The
-  evaluator self-launches CARLA; you do not start it yourself.
+  `PythonAPI/carla/agents/` — the agent imports `RoadOption` from it), with the
+  additional maps imported: all 220 routes are in Towns 12, 13 and 15, which
+  ship separately. `paddock data fetch carla` downloads both from CARLA's own
+  host and unpacks the maps into the CARLA folder, which is all CARLA's
+  `ImportAssets.sh` does. The maps archive has its own copy of 3,221 of the
+  simulator's files, and CARLA's install keeps the maps' copy, so the command
+  unpacks the maps second and refuses the other order. The evaluator
+  self-launches CARLA; you do not start it yourself.
 - The **Bench2Drive checkout** at the revision pinned in `repos.yaml`
   (`leaderboard/` + `scenario_runner/` + the routes XML under `leaderboard/data/`).
   Nothing from Bench2DriveZoo is needed: the PID tracker its baselines use is
   vendored here.
 - A **CARLA-client interpreter** (`python` above) that can import `carla`,
-  `cv2`, `numpy` and `requests`. `carla` may be the pip package or the egg the
-  0.9.15 release ships under `PythonAPI/carla/dist/`, which the adapter puts on
-  the path itself. Python 3.8 is fine; `agent.py` and `pid.py` are kept 3.8-compatible.
+  `cv2`, `numpy` and `requests`. `paddock setup --bench bench2drive` builds one:
+  Python 3.8 with the versions in
+  [`client-requirements.txt`](../../src/paddock/adapters/benchmarks/bench2drive/client-requirements.txt),
+  which are those of the working environment on the machine Paddock is
+  developed on. It goes where `python` points, or in the clone's `.venv`, and
+  an existing environment there is left alone.
+  `carla` may be the pip package or the egg the 0.9.15 release ships under
+  `PythonAPI/carla/dist/`. The adapter puts the egg on the path only for an
+  interpreter with no `carla` of its own, because the egg needs the system's
+  `libtiff.so.5`, which newer systems no longer ship; PyPI's wheel, which the
+  setup installs, carries its own copy. `agent.py` and `pid.py` are kept
+  3.8-compatible.
 
 `paddock doctor` runs the adapter's `preflight()`, which checks all of the above
 — including a real import of everything `agent.py` needs, inside that
@@ -328,9 +363,10 @@ PADDOCK_CONFIG=<sweep>/paddock.toml python -m tools.benchmarks.bench2drive.upstr
 
 Bench2Drive's scorers need two packages in the CARLA-client interpreter that driving
 does not: `scipy`, which `efficiency_smoothness_benchmark.py` imports, and `networkx`,
-which CARLA's route planner imports for `ability_benchmark.py`. Install them there once
-(`<python> -m pip install scipy networkx`; this site's are scipy 1.5.4 and networkx
-2.2). Without them the tool stops and names the missing one.
+which CARLA's route planner imports for `ability_benchmark.py`.
+`paddock setup --bench bench2drive` installs both (scipy 1.5.4, networkx 2.2); an
+interpreter built by hand needs `<python> -m pip install scipy networkx`. Without them
+the tool stops and names the missing one.
 
 It finds the routes the way `paddock ingest` did, and refuses unless each is the very
 `results.json` the record pooled: the run and sha256 the ingest wrote for it to the
@@ -481,7 +517,7 @@ Two failure modes this exists for, both met on a 220-route sweep at one site:
   `campaign status` says whether it is a candidate for the routes set aside for
   every model. At that site route 23695 (Town13 `InterurbanAdvancedActorFlow`)
   crashed CARLA on all seven attempts, and 23708 (Town12) on two before one
-  scored.
+  scored. 23695 is now among the routes set aside (*Routes set aside*, below).
 
 Worker configs, logs (`logs/worker<slot>.log`) and a launch history
 (`workers.json`) live in `{runs}/bench2drive/_campaign/<model>/`. Every attempt
@@ -521,6 +557,7 @@ What it guarantees, and what each key is for:
 | `label` | the run id is `<label>-<route hash>-<config hash>`. The config hash is why five constant-velocity speed bands over the same 50 routes are five directories and not one overwritten one |
 | `model_env` | recorded in `config.model_env`, layered over what the source runs recorded. For the CV baseline it is the only machine-readable statement of which speed band a row is |
 | `setups` | the configuration each route was actually driven under, aggregated into `metrics.json`'s `by_group`. A run pooling more than one is written `valid: false` — its mean is not a measurement — and `paddock report` lists it as excluded instead of ranking it |
+| `tracked` | records in `results/`, each named `"bench2drive/<model>/<run_id>"` as the store keeps it. Each record's `upstream_scores.json` supplies the routes that no run under `runs` scored (*Routes from a record made at another site*, below). `runs` may be left out when every route comes from a record |
 
 Per route the ingest keeps the latest run id whose `results.json` *scores*: a
 crashed attempt never shadows its rerun, because `parse_results` refuses a route
@@ -541,12 +578,94 @@ every tick; before 23 Oct 2026, a rate set by hand reached the record only as
 Aggregates are recomputed by the store from the per-route metrics; nothing is
 transcribed from a report.
 
+### Routes from a record made at another site
+
+Sometimes a record is pooled at a site whose raw `results.json` files never leave it, and
+the routes it is missing are driven here. Its routes can still join a pool here, from the
+rows of the record's `upstream_scores.json` (*Efficiency and comfort*). That file is
+tracked beside the record, and it holds each route's driving score, route completion,
+infraction penalty and infraction counts, as read from the route's `results.json`. It also
+holds the reason, if any, the early stop ended the route.
+
+```toml
+[[ingest.bench2drive]]
+model   = "alpamayo15"
+runs    = "/path/to/paddock-runs/bench2drive/alpamayo15"   # the routes driven here
+label   = "full220"
+routes  = "all"
+tracked = ["bench2drive/alpamayo15/full220-836dda734659a86c-f81033"]
+```
+
+For each route, a route that scored under `runs` is used. Otherwise the route is taken
+from the record that holds it; a route held by two records, and scored by no run here,
+is refused. Each row is measured by the same code as a `results.json`
+(`harness.parse_checkpoint` and `harness.stop_shares`), so the route's metrics are the
+ones the raw file would give, with one exception. `duration_s` is the evaluator's
+wall-clock time, and the rows do not hold it, so a route taken from a record carries
+`null` there and `metrics.json` counts it in `duration_s.n_missing`. That is how a route
+reused by `--resume` is counted. Wall-clock time is not a measurement of the drive, but the
+leaderboard prints its mean: for a pool that took routes from a record, that mean is over the
+routes driven here only (4 of 220 for each of the four two-site records), and
+`duration_s.n_missing` says how many it leaves out.
+
+That is exact only when the rows describe the record completely, so the ingest refuses,
+by name, a record that has any of these problems:
+
+| refused | because |
+|---|---|
+| no `upstream_scores.json` | nothing holds its routes' rows. `python -m tools.benchmarks.bench2drive.upstream_scores` writes it, at the site where the raw results are |
+| rows that are not the record's own | a row count or route set (`dataset.sequences_sha256`) that differs from the record's, or a `record` or `model` field that names another record |
+| `n_runs` not pinned to 1 or `n_crashed` not pinned to 0 in its `metrics.json` | a row holds only the first record of its route, so it describes the route only when every route had one scored repetition and none that crashed |
+| `ended_*` blocks that some routes lack | a row's `ended_early: null` means either that the route went to Bench2Drive's own end or that it had no `early_stop.json`. Only blocks present for every route, or absent for every route, say which |
+| a row with a crashed status | it is not a measurement, as in a `results.json` |
+| rows that do not reproduce its `metrics.json` | the rows, aggregated as the store aggregates them, must give every block of the record's `metrics.json` and of its `by_split` except `duration_s` |
+
+Otherwise the record counts as one more source run. Its `config` goes through every
+agreement check above: the early stop, `declared_env`, the camera rig, `infer_hz`,
+`observe_hz` and `model_env`. As between two runs, `routes_file` and `waypoint_dt` that
+disagree are recorded as a list, and this does not by itself stop the pool from ranking.
+A record that does not rank (`valid: false`) stops the pool from ranking too. Two things
+are read differently:
+
+- A record pooled before #175 holds its `declared_env` as `scrub()` then cut it, the directories after a
+  template variable dropped (`{weights}/meteor/x.onnx` stored as `{weights}x.onnx`, #173). When it is
+  exactly the runs' `declared_env` through that cut, it is the same `model.yaml` env: the runs' whole
+  paths are recorded and the notes say so. Any other difference is two settings, as between runs.
+- A record superseded by a pool of its own rows (`paddock supersede ... --by <the pool>`, a run whose
+  `config.source_records` names it) still supplies its rows: pooling again gives the same run, and a pool
+  under another config (a route driven again, a new label) still ranks. Superseded by any other run, it
+  stops the pool ranking.
+
+Every pooled route names where it came from:
+- a raw run: its `native_id` gives the `run_id` and the sha256 of its `results.json`;
+- a record: its `native_id` gives the `record` and the sha256 of the record's
+  `upstream_scores.json`.
+
+`config.source_records` lists each record that contributed routes, with the site that
+pooled it and that file's sha256. The notes count the routes from each origin and name the
+sites. A route that no run here and no record scored keeps the reason the record gave in
+its own `routes_never_scored`.
+
+Each of the four 216-route records made at `a100-gpu-vm-002` (Alpamayo 1.5, AutoE2E,
+METEOR, openpilot), pooled again from its own rows, gives its own `metrics.json` exactly,
+every block except `duration_s`. So does VisionPilot's 220-route record, pooled from the
+rows the tool wrote for it here, compared with the same record pooled from its raw routes.
+`tests/test_ingest_bench2drive_tracked.py` checks this in CI, against the four records and
+against five routes whose raw files are in the repo.
+
+The pooled record cannot be given `upstream_scores.json` of its own yet: the tool finds a
+record's routes under `--runs`, and the routes taken from another record are not there.
+
 ## The 220-route protocol
 
 Every ranked Bench2Drive number made before November 2026 is over the same 50
 routes. Those cover 14 of the 44 scenario types, so none of them can be compared
-with a published score over all 220. A 220-route record is made the same way for
-every model, so the column it fills compares like with like:
+with a published score over all 220. The protocol below is how a 220-route record is
+made. Four of the column's nine records follow it all (OpenPilot, Alpamayo 1.5, AutoE2E,
+METEOR). The other five (VisionPilot, Drive-JEPA, Qwen-Drive, UniAD, VAD) follow it but
+for three rows: no early stop, so each route runs to Bench2Drive's own end; a shorter
+route timeout (5400 s, 10800 s for UniAD and VAD under GPU contention); and the label
+`pooled220` for the first three. *Bench2Drive — 220 routes* says which is which.
 
 | | |
 |---|---|
@@ -581,8 +700,12 @@ is lower by the share of routes set aside.
 ### Routes set aside
 
 A route is set aside for every model when the simulator fails on it on every
-attempt, whichever model drives. It then measures no model, and a mean with it for
-one model and without it for another is not over the same routes. Poor driving is
+attempt. On 11715 it fails whichever model drives. On 3800, 23695 and 24071 it
+failed on every attempt Alpamayo 1.5 made, each time at about the same point of the
+route; the other models' drives ended before that point, so their scores there are of
+drives that Alpamayo 1.5 could not finish. Either way the route measures no model, and
+a mean with it for one model and without it for another is not over the same routes.
+Poor driving is
 never a reason: a route the car is blocked on, deviates from, times out on or has
 ended early is scored. Neither is a failure of the model's own node (an HTTP 500,
 running out of memory): that is the model's to fix.
@@ -597,9 +720,39 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 - the ingest leaves it out of the pool, names it in `config.routes_set_aside`, and
   gives the reason in the notes.
 
-| Route | Scenario | Why | Evidence |
-|---|---|---|---|
-| 11715 | Town12 EnterActorFlow | CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives | five attempts at one site, 7–8 Oct 2026 (openpilot), each `CommonUnixCrashHandler: Signal=11` at 53.65–54.0 s of game time; nine at another under three stacks |
+No route is set aside at present.
+
+Route 11715 (Town12 EnterActorFlow) was the first, from #159. CARLA crashed with signal 11 about
+54 s in, on every attempt, whichever model drove: five attempts at one site (7–8 Oct 2026,
+openpilot), nine at another under three stacks. The client's traceback lands in
+`route_scenario.spawn_parked_vehicles` only because that is its first call to the server after the
+crash. Under gdb, with CARLA's own `CarlaUE4-Linux-Shipping.debug`, the server's stack is
+
+    ASensor::EndPlay                                  Sensor.cpp:120
+    AActor::Destroy  <- FCarlaActor::PutActorToSleep (the car's attached sensor)
+    UCarlaEpisode::PutActorToSleep
+    ALargeMapManager::ConvertActiveToDormantActors    LargeMapManager.cpp:817
+
+The evaluator sets `actor_active_distance = 650`, and a large map puts an actor that far from the hero
+to sleep with what is attached to it. `ActorFlow` attaches a collision sensor to every flow car; on
+11715 the cars from one source never turn towards their sink and drive straight on, and about 50 s
+later the first is 650 m away. Patch `0003` removes such a car at 600 m, sensor first, as the sink
+removes one (patches/README.md), and preflight refuses a checkout without it. Destroying only the
+sensor does not help: an A/B test with a scripted ego crashed at 56.7 s unpatched and with the sensor
+alone released, and ran clean to the route's end with the patch. With it, 11715 scores for
+Drive-JEPA, Qwen-Drive and VisionPilot, the three models of the 220-route sweep (8 Nov 2026).
+
+The same crash, once the ego falls far enough behind the flow, ended route 11755 (Town12
+EnterActorFlow) for every model and five Town13 flow routes (3785, 3800, 23695, 24041, 24071) on
+all three of Drive-JEPA's attempts. Those were never set aside; with the patch they score too. Each
+removal is printed in `evaluator.log` (`ActorFlow: removed flow car ...`), so a run shows whether
+the patch changed anything in it.
+
+Routes 3800, 23695 and 24071 (Town13) crashed CARLA the same way at another site, on every attempt
+Alpamayo 1.5 made at its declared 10 Hz (9 Nov 2026), and the four 216-route records made there set
+them and 11715 aside. With patch 0003 the four routes scored for Alpamayo 1.5, AutoE2E, METEOR and
+openpilot here (12 Nov 2026), and those records were pooled again over all 220 (*Bench2Drive — 220
+routes*). The patch removed a flow car on Alpamayo 1.5's 3800 and 23695 and AutoE2E's 23695 and 24071.
 
 ## Shared-machine behaviour
 
@@ -653,8 +806,9 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 | crash statuses fail the episode, poor outcomes score | status strings read from `statistics_manager.py` at 7ec25d1; parametrised test over all of them | **strong** |
 | evaluator flags, exit codes, checkpoint-at-startup, CARLA port and session | read from `leaderboard_evaluator.py` at 7ec25d1; launch path tested against a stand-in evaluator (`tests/test_harness.py`) | **strong** for the harness, argued for the real evaluator |
 | `agent.py` imports and runs its control path in the CARLA-client env | imported and exercised in the site's `b2d` env (Python 3.8, 0.9.15 egg) without a server | moderate |
+| the environment `paddock setup --bench bench2drive` builds can run the evaluator | built on one machine on 10 Nov 2026: preflight passes with it, and it imports the evaluator, all 37 scenario modules, the agent and both scorers; no route has been driven with it yet | moderate |
 | a model drives a route end to end through paddock | openpilot and VisionPilot completed routes (DS 100) through this adapter at one site; frames were at Low quality (see *Render quality*) and the run predates the crash-status and repetition handling above | moderate |
-| `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; not yet fed through the tool end to end | argued |
+| `metric_info.json` matches what the upstream tool reads | field names and layout taken from `get_metric_info` and `efficiency_smoothness_benchmark.read_from_json` at 7ec25d1; fed through the tool end to end for openpilot's 220-route record (`full220-836dda734659a86c-2803bd`): `efficiency_smoothness_benchmark.py` read all 216 routes' files and gave comfort 40.88%, the figure in *Bench2Drive — 220 routes*, both through `upstream_scores` and run on its own | **strong** |
 | crashed repetitions are dropped, not averaged | unit-tested over crashed, blocked and all-crashed triples | **strong** |
 | an edited CARLA launch line is refused | unit-tested against a stub evaluator with and without the flag | **strong** |
 | `--resume` reuses scored routes and drives the rest | unit-tested (scored, killed, torn, all-crashed, short of repetitions); on a real interrupted sweep it reused the 34 scored routes and drove the other 185 | **strong** |
@@ -668,11 +822,10 @@ failure on the simulator, with the evidence here. The list is `SET_ASIDE` in
 
 What every run here depends on, beyond the leaderboard's own rules.
 
-* **Route 11715 (Town12 EnterActorFlow) is set aside for every model** (*Routes
-  set aside*). CARLA crashes with signal 11 about 54 s in, on every attempt across
-  three stacks, regardless of ego speed. The client's traceback lands in
-  `route_scenario.spawn_parked_vehicles` only because that is its first call to
-  the server after the crash.
+* **Flow cars are removed 600 m from the hero** (patch `0003`, *Routes set aside*). Unpatched,
+  CARLA crashes with signal 11 when a large map puts a flow car with a collision sensor to sleep,
+  which is why route 11715 was set aside until 8 Nov 2026. The removal is printed in each route's
+  `evaluator.log`.
 * **Wire format:** the agent now sends `speed_limit` (m/s, from
   `hero.get_speed_limit()`) and the next junction maneuver as `nav_maneuver` /
   `nav_distance_m` (walked forward on the 1 m world plan). Both optional; only
@@ -732,6 +885,10 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 
 ### Notes on the matrix cells
 
+The matrix's Bench2Drive column is the 220-route records (*Bench2Drive — 220 routes*,
+below), each cell its model's own rate. The ◆, ※ and ♣ notes and the 50-route figures in
+this section describe the 50-route column it replaced, and are kept as that column's record.
+
 ◆ Historical Bench2Drive mean driving score on 24 routes (04–06 Sep 2026),
 one run per route; route 11715 was excluded after CARLA crashes. These are
 driving scores, not per-ability scores. OpenPilot ≈ is the **unassisted
@@ -743,7 +900,7 @@ controller fixes. The assisted and expansion recordings are reported
 separately in [OpenPilot, by recording set](#openpilot-by-recording-set); they are
 never pooled into one mean. See [Bench2Drive protocol](bench2drive.md).
 
-VisionPilot's cell is its 20 Hz run over **all 50 routes**, 47.82
+VisionPilot's 50-route cell was its 20 Hz run over **all 50 routes**, 47.82
 ([run](../../results/bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009/run.json)):
 the historical 24 (49.85, 03–04 Sep) and the 26 expansion routes (45.95, 09 Sep),
 with the set-speed latch fix in place for both.
@@ -816,6 +973,142 @@ no lead, so the cell is marked P; like AutoE2E's and METEOR's, it ranks. It
 replaces the unassisted estimate ◆
 (30.09), a reconstruction from the September recordings, whose 50-route mean the
 table below still withholds.
+
+### Bench2Drive — 220 routes
+
+All 220 routes of `bench2drive220.xml`, every route scored, on CARLA 0.9.15 (patch 0003 in the evaluator wherever a
+route needed it: *Patch 0003* below), each model at
+its own rate. Each record is `paddock ingest`'s pool (`routes = "all"`); the support matrix's Bench2Drive column.
+
+| Model | Rate | Ends early | DS ↑ | RC ↑ (%) | Infraction penalty ↑ | With collision ↓ (%) | Record |
+|---|---|---|---:|---:|---:|---:|---|
+| VisionPilot | every tick | no | 46.10 | 66.04 | 0.650 | 52.27 | [`pooled220-86aa45e768a29a64-9f3c17`](../../results/bench2drive/visionpilot/pooled220-86aa45e768a29a64-9f3c17/run.json) |
+| OpenPilot (P) | every tick | yes | 43.87 | 55.96 | 0.811 | 23.18 | [`full220-86aa45e768a29a64-102db6`](../../results/bench2drive/openpilot/full220-86aa45e768a29a64-102db6/run.json) |
+| Drive-JEPA (released NAVSIM v2 checkpoint, zero-shot) | 2 Hz | no | 40.74 | 52.67 | 0.827 | 24.09 | [`pooled220-86aa45e768a29a64-1507a1`](../../results/bench2drive/drivejepa/pooled220-86aa45e768a29a64-1507a1/run.json) |
+| Alpamayo 1.5 | 10 Hz | yes | 38.22 | 56.77 | 0.744 | 40.00 | [`full220-86aa45e768a29a64-600411`](../../results/bench2drive/alpamayo15/full220-86aa45e768a29a64-600411/run.json) |
+| Qwen-Drive, frames every 0.1 s between plans | 2 Hz | no | 27.41 | 61.70 | 0.467 | 78.64 | [`pooled220-86aa45e768a29a64-a23127`](../../results/bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127/run.json) |
+| UniAD (1.0 base, nuScenes-trained, zero-shot) | 2 Hz | no | 16.23 | 41.61 | 0.422 | 84.55 | [`full220-86aa45e768a29a64-fb1f0a`](../../results/bench2drive/uniad/full220-86aa45e768a29a64-fb1f0a/run.json) |
+| VAD (base, nuScenes-trained, zero-shot) | 2 Hz | no | 15.58 | 31.45 | 0.672 | 52.73 | [`full220-86aa45e768a29a64-6cb75d`](../../results/bench2drive/vad/full220-86aa45e768a29a64-6cb75d/run.json) |
+| AutoE2E | 10 Hz | yes | 14.29 | 27.72 | 0.547 | 80.00 | [`full220-86aa45e768a29a64-740c68`](../../results/bench2drive/autoe2e/full220-86aa45e768a29a64-740c68/run.json) |
+| METEOR | 5 Hz | yes | 1.89 | 5.30 | 0.926 | 11.82 | [`full220-86aa45e768a29a64-2144df`](../../results/bench2drive/meteor/full220-86aa45e768a29a64-2144df/run.json) |
+
+What to read with them:
+
+- **Two ways of ending a route.** OpenPilot, Alpamayo 1.5, AutoE2E and METEOR ran under the protocol above: a route
+  ends 30 s after the car last made 3 m of progress, or at 4x Think2Drive's time (*Ending routes early*), and is
+  scored as it stood. VisionPilot, Drive-JEPA, Qwen-Drive, UniAD and VAD ran with no early stop: every route
+  ran until Bench2Drive's own rules ended it (blocked, off route, out of time or finished). For the first three
+  that is because their sweep began before the rule was set; UniAD and VAD (9-12 Nov) were run the same way to
+  match them. A route's
+  score can differ between the two when a car that stalls for 30 s would have moved on.
+- **Two sites for four of them.** The early-stop records hold 216 routes driven at `a100-gpu-vm-002` (6-9 Nov 2026,
+  Bench2Drive 7ec25d1 + patches 0001-0002), taken from each record's `upstream_scores.json` rows (*Routes from a
+  record made at another site*), and routes 3800, 11715, 23695 and 24071, which that site set aside, driven here
+  on 12 Nov 2026 with patch 0003 and the same recorded settings. The four 216-route records are superseded by them.
+  OpenPilot's four routes here ran from a copy of openpilot 14 commits before the pin `555f48c5d`, with the same
+  `driving_supercombo.onnx` and `modeld`; none of the 14 touches what the adapter imports.
+- **Patch 0003** acted (printed `ActorFlow: removed flow car` in `evaluator.log`) on Drive-JEPA's 11755 and five
+  Town13 routes and VisionPilot's 11755; UniAD's 3785, 3800, 23670, 23708 and 24041; VAD's 3785, 3800, 11755, 23658,
+  23670, 23687, 23695 and 24041; Alpamayo 1.5's 3800 and 23695; AutoE2E's 23695 and 24071; and on none of
+  Qwen-Drive's, METEOR's or OpenPilot's. On every other route the code it adds is never reached or never acts.
+- **Up to three attempts per route.** An attempt that broke in the simulator or the client was set aside and the
+  route driven again; a poor drive was always kept.
+- Drive-JEPA ran with momentum-aware selection and the OpenScene crop, as its `model.yaml` declares, from an SSD
+  copy of the released checkpoint (sha256 `740335c8…`, the same bytes as the declared path). VisionPilot's plan
+  tail is extrapolated, as everywhere (*Notes on the matrix cells*). Qwen-Drive's frames between plans were set
+  on the host in this sweep (`PADDOCK_OBSERVE_HZ=10`), which `observe_hz` now records. UniAD and VAD are the
+  released nuScenes checkpoints (`uniad_base_e2e.pth`, `VAD_base.pth`) on paddock's six-camera rig; under GPU
+  contention they ran at 0.009-0.05x real time, so their route timeout was 10800 s, and two routes (UniAD 2084,
+  VAD 23687) finished past it while only the harness process waited (the evaluator, CARLA and the node kept driving).
+
+**Bench2Drive's own scores, over the 216 routes driven at `a100-gpu-vm-002`.** Success, efficiency, comfort and
+the abilities come from Bench2Drive's own scripts, in `upstream_scores.json` beside each of the four records
+made there ([Efficiency and comfort](#efficiency-and-comfort)); a 220-route pool has no such file yet, so these
+are over those 216 routes, and Bench2Drive's own tables divide DS and success by 220, a route not driven
+counting as 0.
+
+| Model | Routes | Success ↑ (%) | Efficiency ↑ | Comfort ↑ (%) | Record |
+|---|---:|---:|---:|---:|---|
+| OpenPilot | 216 | 10.65 | 180.59 | 40.88 | `full220-836dda734659a86c-2803bd` |
+| METEOR | 216 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
+| AutoE2E | 216 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
+| Alpamayo 1.5 | 216 | 2.78 | 161.32 | 51.83 | `full220-836dda734659a86c-f81033` |
+
+Bench2Drive's five abilities over the same 216 routes, in % of the routes that count towards each:
+
+| Model | Merging ↑ | Overtaking ↑ | Emergency brake ↑ | Give way ↑ | Traffic signs ↑ | Mean ↑ |
+|---|---:|---:|---:|---:|---:|---:|
+| OpenPilot | 9.21 | 11.11 | 15.00 | 20.00 | 36.17 | 18.30 |
+| METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
+| AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
+| Alpamayo 1.5 | 1.32 | 4.44 | 3.33 | 10.00 | 52.13 | 14.24 |
+
+A route counts towards an ability by its scenario, the same for every model:
+Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
+Traffic signs 94 (a scenario can count towards two). A route earns its abilities
+by succeeding: completed, with no infraction but a minimum-speed one. A traffic-sign
+route also earns that one if the car got past its first junction with no red
+light or stop sign run.
+
+The four paragraphs below describe the 216 routes driven at `a100-gpu-vm-002`.
+
+**OpenPilot** drives through openpilot's own longitudinal planner and its
+driver-resume nudge (P), asked every 20 Hz tick, as in its 50-route cell. CARLA
+crashed (signal 11) on three of its attempts. Routes 2943 and 3248 crashed as
+they started and scored on their next attempt. Route 28111 had finished: the
+evaluator had printed and registered its result (completed at 34.8 s of game
+time, one collision) when CARLA crashed, so that result is the route's score.
+No route needed a third attempt.
+
+**METEOR** is asked at its declared 5 Hz, the last plan followed in between, and
+CARLA never crashed on its attempts. As on 50 routes, it rarely gets moving: 189
+of its 216 routes end under 1% route completion. The 30 s rule ended 138 of them,
+Bench2Drive's own 60 s blocked test 44 (the 30 s clock pauses while the car waits
+at a red light) and the over-time rule 7. No route is a success; its one ability credit is Traffic signs, for 3 of 94 routes
+that got past their first junction with no red light or stop sign run. Its comfort
+is that of a car that barely moved. Bench2Drive's minimum-speed check runs on every
+route but records a value only each time the car covers another twentieth of it,
+so METEOR's efficiency is over the 26 routes it drove at least 5% of (OpenPilot's
+is over 205).
+
+**AutoE2E** is asked at its declared 10 Hz, the last plan followed in between,
+with upstream's inputs: the measured ego history and the route raster. CARLA
+crashed once, on route 3307's first attempt as it started, and the route scored
+on its next. It moves off on every route but completes none: its median route
+completion is 25.8%, and 172 of its 216 routes have a collision. The 30 s rule
+ended 177 routes and the over-time rule 12. No route is a success; its one ability
+credit is Traffic signs, for 11 of 94 routes that got past their first junction
+with no red light or stop sign run.
+
+**Alpamayo 1.5** is asked at its declared 10 Hz, the last plan followed in between,
+with its three front cameras and the route as navigation text. CARLA crashed on
+nine of its attempts, all on routes 3800, 23695 and 24071, three each, which scored
+here under patch 0003 (*Routes set aside*); every other route scored on its first attempt. It completes 53 of its 216 routes, more than any other model
+here, and is second to openpilot on driving score: 88 routes have a collision, and
+the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
+best ability is Traffic signs, 49 of 94 routes.
+
+### The 50 routes are not a sample of the 220
+
+Every matrix cell lists the same 50 routes in its run's `config.routes_subset`.
+Alpamayo 1.5 and Qwen-Drive score 49 of them, because route 3800 crashes CARLA at
+their rate. The routes grew in two steps: 24 routes first (5 abilities × 5 routes,
+minus 11715, which crashes CARLA), then 26 more. Nothing in this repository records
+how the 26 were picked. All 26 are of types the first 24 already had, so they added
+routes and no new type.
+
+They cover **14 of the 44 scenario types**, so the other 30 types are not tested at
+all:
+
+| Routes | Scenario types |
+|---:|---|
+| 5 | Accident, DynamicObjectCrossing, InvadingTurn, PedestrianCrossing, YieldToEmergencyVehicle |
+| 4 | ParkingCutIn, SignalizedJunctionLeftTurn |
+| 3 | AccidentTwoWays, NonSignalizedJunctionLeftTurn, SignalizedJunctionRightTurn |
+| 2 | ConstructionObstacle, EnterActorFlow, HighwayCutIn, MergerIntoSlowTraffic |
+
+A score here says how a model drives these 14 types. Do not compare it with a
+published 220-route score.
 
 ### Bench2Drive — 50 routes
 
@@ -953,7 +1246,7 @@ The baseline is not one experiment. All five targets were driven over the same
 
 This fixes the target speed rather than holding the zero speed at route start;
 the path is straight in the ego frame, not a route-following reference. The
-**48.31 ♣** in the support matrix is the 3 m/s target over all 50 routes
+**48.31 ♣**, constant velocity's cell in the 50-route column, is the 3 m/s target over all 50 routes
 (RC 74.65); the same setting scores 47.94 over the *historical 24* (RC 74.68), and
 the two are separate runs in the store:
 [all 50](../../results/bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac/run.json)

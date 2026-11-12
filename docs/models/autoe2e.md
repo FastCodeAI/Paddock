@@ -465,7 +465,7 @@ declares instead of 2 s, so the 64 ego rows are real wherever the log reaches ba
 |---:|---:|---:|---:|---:|---:|---:|
 | 0.553 | 1.444 | 2.697 | 1.565 | **0.839** | 1.319 | 1.86 |
 
-Between Alpamayo 1.5 (0.787) and Drive-JEPA (0.912); constant velocity scores 0.641.
+Between Alpamayo 1.5 (0.787) and METEOR (0.977); constant velocity scores 0.641.
 On the 28 keyframes of scene-0003, run before and after the two input changes, the point
 L2 fell from 0.957 to 0.899 (one scene, a check of the inputs, not a score).
 
@@ -568,6 +568,20 @@ Earlier runs, each `valid: false`:
 - The full 220-route sweep with the steady settings, from 23 Oct 2026: stopped
   on 28 Oct at 204 routes for the valid run above. Its 50 routes that the other
   rows pool are the steady row's record.
+
+**Bench2Drive, all 220 routes, valid**
+(`results/bench2drive/autoe2e/full220-86aa45e768a29a64-740c68`, the 220-route protocol: the
+same inputs, rate and early stop as the 50-route row, up to three attempts a route):
+**14.29** mean driving score, RC 27.72%. It pools the 216 routes driven at
+`a100-gpu-vm-002` on 7-8 Nov 2026 (`full220-836dda734659a86c-63902e`, superseded by it)
+with routes 3800, 11715, 23695 and 24071, set aside there and driven here on 12 Nov under
+patch 0003. Over those 216 routes:
+**14.36** mean driving score (median 13.05), RC 27.80%, infraction
+penalty 0.55, a collision on 172 routes; the 30 s rule ended 177 and the over-time
+rule 12. It
+moves off on every route and completes none. The tables, and Bench2Drive's own
+scores for the record, are in
+[Bench2Drive — 220 routes](../benchmarks/bench2drive.md#bench2drive--220-routes).
 
 Why it swerves, from three routes (1711, 2286, 2373) whose every request was
 recorded and replayed into the model to within 0.5 mm of the plan CARLA's node

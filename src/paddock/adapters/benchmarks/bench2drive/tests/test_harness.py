@@ -24,11 +24,14 @@ import pytest
 
 from paddock.adapters.benchmarks.bench2drive import harness as harness_module
 from paddock.adapters.benchmarks.bench2drive.harness import (
+    ATOMIC_BEHAVIORS,
     BENCHMARK,
+    CARLA_EGG,
     CONNECT_TIMEOUT_FLAG,
     CRASH_STATUSES,
     DEFAULT_CONNECT_TIMEOUT_S,
     FAILURE,
+    FAR_CAR_GUARD,
     GUARD_KILL,
     KILL_ALL_LINE,
     SET_ASIDE,
@@ -244,9 +247,14 @@ def test_set_aside_routes_are_skipped_unless_named_by_id() -> None:
 
 def test_every_route_set_aside_names_its_reason_without_a_path() -> None:
     """The reasons reach tracked notes, so they may name no disk; the ids are route ids."""
-    assert SET_ASIDE, "the 220-route records are pooled under this list"
     for route, reason in SET_ASIDE.items():
         assert route.isdigit() and reason.strip() and "/" not in reason
+
+
+def test_route_11715_is_no_longer_set_aside() -> None:
+    """It crashed CARLA on every attempt until patch 0003, which preflight now requires; with it,
+    it is driven, expected and averaged like any other route (docs/benchmarks/bench2drive.md)."""
+    assert "11715" not in SET_ASIDE
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +298,8 @@ def _site(tmp_path: Path, monkeypatch, stub_body: str, **settings: str) -> SiteC
     (repo / "scenario_runner" / "srunner" / "scenariomanager").mkdir(parents=True)
     (repo / "leaderboard" / "leaderboard" / "autoagents" / "autonomous_agent.py").write_text("")
     (repo / "scenario_runner" / "srunner" / "scenariomanager" / "carla_data_provider.py").write_text("")
+    (repo / ATOMIC_BEHAVIORS).parent.mkdir(parents=True)
+    (repo / ATOMIC_BEHAVIORS).write_text(f"class ActorFlow:\n    {FAR_CAR_GUARD}self):\n        pass\n")
     (repo / "leaderboard" / "leaderboard" / "leaderboard_evaluator.py").write_text(STUB_HEADER + stub_body)
     shutil.copy(FIXTURES / "routes_sample.xml", repo / "leaderboard" / "data" / "routes_sample.xml")
 
@@ -770,6 +780,32 @@ def test_preflight_imports_what_the_agent_imports_in_the_client_interpreter(tmp_
     assert "PYTHONPATH=" in problems[0]
 
 
+def test_the_release_egg_goes_on_the_path_only_without_an_installed_carla(tmp_path, monkeypatch) -> None:
+    """An egg on PYTHONPATH is imported ahead of an installed carla.
+
+    The egg needs the system's libtiff.so.5; PyPI's wheel, which
+    `paddock setup --bench bench2drive` installs, carries its own. So the egg is
+    for an interpreter with no carla of its own, such as a conda env with those
+    libraries, and must not shadow the wheel where there is one.
+    """
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    egg = tmp_path / "carla" / CARLA_EGG
+    egg.parent.mkdir(parents=True)
+    egg.write_bytes(b"")
+    # This test's interpreter has no carla: the egg is how the client gets one.
+    assert str(egg) in _harness(cfg)._pythonpath()
+
+    # One that has carla installed, as the probe sees it: find_spec finds it, exit 0.
+    has_carla = tmp_path / "python-with-carla"
+    has_carla.write_text("#!/bin/sh\nexit 0\n")
+    has_carla.chmod(0o755)
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    config.write_text(config.read_text().replace(f'python = "{sys.executable}"', f'python = "{has_carla}"'))
+    path = _harness(SiteConfig.load())._pythonpath()
+    assert str(egg) not in path
+    assert str(tmp_path / "carla" / "PythonAPI" / "carla") in path, "agents.navigation still comes from CARLA"
+
+
 def test_an_unknown_scene_or_scenario_is_reported_before_the_model_loads(tmp_path, monkeypatch) -> None:
     harness = _harness(_site(tmp_path, monkeypatch, COMPLETED))
     assert harness.scene_problems("1773") == []
@@ -836,15 +872,33 @@ def test_preflight_refuses_an_evaluator_without_paddocks_patches(tmp_path, monke
     assert any("0002-connect-timeout-for-a-booting-server" in p for p in problems), problems
 
 
+def test_preflight_refuses_scenario_runner_without_the_far_car_guard(tmp_path, monkeypatch) -> None:
+    """Without patch 0003 CARLA crashes on route 11715 every time, and the route is no longer set
+    aside, so a sweep would lose it to the simulator again: a refusal before CARLA boots."""
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    (tmp_path / "Bench2Drive" / ATOMIC_BEHAVIORS).write_text("class ActorFlow:\n    pass\n")
+    problems = _harness(cfg).preflight()
+    assert any("0003-actorflow-remove-far-flow-cars-before-dormancy" in p for p in problems), problems
+
+
+def test_preflight_accepts_scenario_runner_with_the_far_car_guard(tmp_path, monkeypatch) -> None:
+    cfg = _site(tmp_path, monkeypatch, COMPLETED)
+    assert not any("0003" in p or "atomic behaviours" in p for p in _harness(cfg).preflight())
+
+
 def test_the_patches_are_what_preflight_looks_for() -> None:
-    """The refusal above keys on two strings; the tracked patches must remove the
-    one and add the other, or preflight and the patches disagree."""
+    """The refusals above key on these strings; the tracked patches must remove the
+    one and add the others, or preflight and the patches disagree."""
     patches = Path(__file__).resolve().parents[6] / "patches" / "Bench2Drive"
     kill = (patches / "0001-kill-only-own-carla-on-crash.patch").read_text().splitlines()
     connect = (patches / "0002-connect-timeout-for-a-booting-server.patch").read_text().splitlines()
     assert any(line.startswith("-") and KILL_ALL_LINE in line for line in kill)
     assert not any(line.startswith("+") and KILL_ALL_LINE in line for line in kill)
     assert any(line.startswith("+") and CONNECT_TIMEOUT_FLAG in line for line in connect)
+    guard = (patches / "0003-actorflow-remove-far-flow-cars-before-dormancy.patch").read_text().splitlines()
+    assert any(line.startswith("+") and FAR_CAR_GUARD in line for line in guard)
+    assert not any(line.startswith("-") and FAR_CAR_GUARD in line for line in guard)
+    assert any(line.startswith("+++ b/") and line.endswith(str(ATOMIC_BEHAVIORS)) for line in guard)
 
 
 def test_a_site_sets_the_connect_timeout(tmp_path, monkeypatch) -> None:
@@ -1216,6 +1270,13 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
         "frames and poses 0.1 s apart"
     )
     assert harness.model_run_config(models["openpilot"]) == {}, "no planning_hz: asked every tick"
+    assert harness.model_run_config(models["qwendrive"]) == {"infer_hz": 2.0, "observe_hz": 10.0}, (
+        "plans at 2 Hz, its pose history is on a 0.1 s grid: frames handed between plans, recorded"
+    )
+    dense = _episode()
+    dense.config.update(planning_hz=2.0, native_input_hz=10.0)
+    harness.run_episode(dense, "http://127.0.0.1:9123", tmp_path / "dense")
+    assert json.loads((tmp_path / "dense" / "env.json").read_text())["PADDOCK_OBSERVE_HZ"] == "10"
     episode = _episode()
     episode.config["planning_hz"] = 2.0
     out = tmp_path / "out"
@@ -1226,6 +1287,15 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     monkeypatch.setenv("PADDOCK_INFER_HZ", "fast")
     with pytest.raises(ValueError, match="expected a rate in Hz"):
         infer_hz(2.0)
+
+
+def test_frames_are_handed_between_plans_only_to_a_model_asked_slower_than_its_input_rate() -> None:
+    from paddock.adapters.benchmarks.bench2drive.harness import observe_hz
+
+    assert observe_hz(10.0, 2.0) == 10.0, "Qwen-Drive"
+    assert observe_hz(10.0, 10.0) == 0.0, "Alpamayo 1.5 and AutoE2E plan at their input rate"
+    assert observe_hz(10.0, 0.0) == 0.0, "asked every tick: every frame already reaches it"
+    assert observe_hz(0.0, 2.0) == 0.0 and observe_hz(None, 2.0) == 0.0, "Drive-JEPA declares no input rate"
 
 
 def test_the_hosts_rate_in_place_of_the_models_own_is_recorded_and_does_not_rank(

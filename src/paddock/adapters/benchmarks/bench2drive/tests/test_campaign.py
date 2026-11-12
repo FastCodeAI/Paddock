@@ -29,6 +29,7 @@ from paddock.adapters.benchmarks.bench2drive.campaign import (
     whose,
     with_ports,
 )
+from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -51,11 +52,11 @@ def test_a_failed_attempt_counts_toward_tries_and_a_cut_off_one_does_not(tmp_pat
     """Only an attempt that left a failure record failed: one cut off by a restart says nothing
     about the route, and must not use up its tries."""
     for i in range(3):
-        _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+        _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "3248", "empty", CRASHED)
         _attempt(tmp_path, f"2026100{i + 1}T000000-aaaaaa", "1711", "empty")  # cut off, no record
     states = route_states(tmp_path)
-    assert len(states["23695"].failures) == 3 and states["1711"].failures == []
-    assert given_up(states, 3) == {"23695"}
+    assert len(states["3248"].failures) == 3 and states["1711"].failures == []
+    assert given_up(states, 3) == {"3248"}
     assert given_up(states, 4) == set() and given_up(states, 0) == set()
 
 
@@ -93,29 +94,29 @@ def _deal_site(tmp_path: Path, monkeypatch, routes):
 
 
 def test_a_route_given_up_is_not_dealt_and_status_says_whose_failure_it_was(tmp_path, monkeypatch) -> None:
-    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
+    routes = [("1711", "Town12", "ParkingCutIn"), ("3248", "Town13", "ParkingCrossingPedestrian")]
     campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
     for i in range(3):
-        _attempt(tmp_path / "bench2drive" / "m", f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+        _attempt(tmp_path / "bench2drive" / "m", f"2026100{i + 1}T000000-aaaaaa", "3248", "empty", CRASHED)
     lines: list[str] = []
     campaign.launch(cfg, "m", 5, dry_run=True, echo=lines.append)
     assert [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")] == ["1711"]
     said: list[str] = []
     state = campaign.status(cfg, "m", echo=said.append)
-    assert state["given_up"] == ["23695"] and state["left"] == ["1711"]
-    assert any("given up on 23695 after 3 failed attempt(s)" in ln and "SET_ASIDE" in ln for ln in said)
+    assert state["given_up"] == ["3248"] and state["left"] == ["1711"]
+    assert any("given up on 3248 after 3 failed attempt(s)" in ln and "SET_ASIDE" in ln for ln in said)
     assert sum("CARLA crashed (signal 11) at 36.4 s of game time" in ln for ln in said) == 3
 
 
 def test_a_route_given_up_on_is_dealt_again_when_only_names_it(tmp_path, monkeypatch) -> None:
     """After the model's failure on it is fixed, --only drives it again; nothing else does."""
-    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
+    routes = [("1711", "Town12", "ParkingCutIn"), ("3248", "Town13", "ParkingCrossingPedestrian")]
     campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
     for i in range(3):
-        _attempt(tmp_path / "bench2drive" / "m", f"2026100{i + 1}T000000-aaaaaa", "23695", "empty", CRASHED)
+        _attempt(tmp_path / "bench2drive" / "m", f"2026100{i + 1}T000000-aaaaaa", "3248", "empty", CRASHED)
     lines: list[str] = []
-    campaign.launch(cfg, "m", 5, only={"23695"}, dry_run=True, echo=lines.append)
-    assert [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")] == ["23695"]
+    campaign.launch(cfg, "m", 5, only={"3248"}, dry_run=True, echo=lines.append)
+    assert [ln.rsplit(": ", 1)[1] for ln in lines if ln.startswith("worker slot")] == ["3248"]
 
 
 def test_keep_stops_when_its_workers_keep_exiting_without_driving(tmp_path, monkeypatch) -> None:
@@ -141,8 +142,9 @@ def test_keep_stops_when_its_workers_keep_exiting_without_driving(tmp_path, monk
 
 
 def test_a_set_aside_route_is_dealt_only_when_only_names_it(tmp_path, monkeypatch) -> None:
-    """11715 is set aside for every model: never dealt in a sweep, but --only can drive it on
-    purpose, to see whether it still fails."""
+    """A route set aside for every model is never dealt in a sweep, but --only can drive it on
+    purpose, to see whether it still fails. 11715 stands in: it was on the list until patch 0003."""
+    monkeypatch.setitem(SET_ASIDE, "11715", "a stand-in reason: fails in the simulator every time")
     routes = [("1711", "Town12", "ParkingCutIn"), ("11715", "Town12", "EnterActorFlow")]
     campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
 
@@ -554,7 +556,7 @@ def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path,
         source = tmp_path / "site.toml"
 
     Cfg.source.write_text(SITE)
-    routes = [("1711", "Town12", "ParkingCutIn"), ("23695", "Town13", "InterurbanAdvancedActorFlow")]
+    routes = [("1711", "Town12", "ParkingCutIn"), ("3248", "Town13", "ParkingCrossingPedestrian")]
     monkeypatch.setattr(campaign, "_routes_meta", lambda cfg: routes)
     monkeypatch.setattr(campaign.ports, "is_free", lambda port: True)
     launched: list[list[str]] = []
@@ -562,15 +564,15 @@ def test_held_routes_wait_for_everything_else_and_then_run_alone(tmp_path: Path,
 
     def plan(**kw):
         lines: list[str] = []
-        campaign.launch(Cfg, "m", 5, held={"23695"}, dry_run=True, echo=lines.append, **kw)
+        campaign.launch(Cfg, "m", 5, held={"3248"}, dry_run=True, echo=lines.append, **kw)
         launched.append([ln for ln in lines if ln.startswith("worker slot")])
         return lines
 
     plan()
-    assert len(launched[-1]) == 1 and launched[-1][0].endswith(": 1711")  # 23695 not dealt yet
+    assert len(launched[-1]) == 1 and launched[-1][0].endswith(": 1711")  # 3248 not dealt yet
     _attempt(tmp_path / "bench2drive" / "m", "20261007T000000-cccccc", "1711", "results_collisions.json")
     lines = plan()
-    assert launched[-1] == ["worker slot 0: 1 route(s), ~0.1 h, CARLA 2000, TM 8000: 23695"]
+    assert launched[-1] == ["worker slot 0: 1 route(s), ~0.1 h, CARLA 2000, TM 8000: 3248"]
     assert any("alone" in ln for ln in lines)
     monkeypatch.setattr(
         campaign, "workers", lambda model, root: [campaign.Worker(1, ["1711"], Path("x"), 2150)]

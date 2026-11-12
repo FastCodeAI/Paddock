@@ -104,6 +104,59 @@ sample list references, which is why the tiering above exists. What matters is
 that everyone comparing numbers evaluated the *same* sequences — `doctor`
 cross-checks the configured tiers against the benchmark's sample list.
 
+## Downloading a dataset
+
+`paddock data fetch` downloads a dataset from its owners' own host, and only the
+files a benchmark scores: the evaluation split, cameras only.
+
+| Dataset | Parts | Size | Licence | Before you start |
+|---|---|---:|---|---|
+| `comma2k19` | `raw_data`: ten chunks | 94.6 GB | MIT | |
+| `hugsim` | `scenarios`, `scenes`, `vehicles`, `map_cache` | 60.7 GB | MIT | |
+| `navsim` | `metadata`, `cameras` (the test split), `maps` | 129.3 GB | CC BY-NC-SA 4.0 | `--accept-terms` |
+| `nuscenes` | `metadata`, `keyframes`, `can_bus`, `map_expansion` | 46.5 GB | CC BY-NC-SA 4.0 | `--accept-terms`; nuScenes asks you to register at nuscenes.org |
+| `nuplan` | `logs`, `cameras` (the mini split), `maps` | 460.2 GB | CC BY-NC-SA 4.0 | `--accept-terms`; the host is slow, so the cameras take more than a day |
+| `neurad_checkpoints` | `renderers`: neuroNCAP's 14 scene renderers | 13.5 GB | CC BY-NC-SA 4.0 (trained on nuScenes) | `--accept-terms`; then set `[benchmarks.neuroncap] checkpoints` to the same folder |
+| `kitscenes` | `val`, `overlap_train_val` | 594.3 GB | CC BY-NC 4.0 | accept the terms on [its Hugging Face page](https://huggingface.co/datasets/KIT-MRT/KITScenes-Multimodal), log in with `huggingface-cli login`, and pass `--accept-terms`. Scoring it also needs the benchmark's list of 223 keyframes, which is not public yet ([#178](https://github.com/FastCodeAI/Paddock/issues/178)) |
+| `carla` | `simulator`: CARLA 0.9.15; `maps`: Towns 12, 13 and 15 | 15.8 GB | MIT code, CC BY assets | a simulator, not data: Bench2Drive drives in it. Then set `[benchmarks.bench2drive] carla_root` to the same folder |
+
+```bash
+paddock data fetch comma2k19 --dest /data/comma2k19 --match Chunk_1.zip   # one chunk, 8.7 GB
+paddock data fetch hugsim    --dest /data/hugsim
+paddock data fetch navsim    --dest /data/navsim --dry-run                # the files and sizes; nothing downloaded
+paddock data fetch navsim    --dest /data/navsim --accept-terms           # after reading the terms it prints
+```
+
+- **Pinned.** Each source is read at a fixed version, recorded in
+  [`datasets.yaml`](../datasets.yaml) under `fetch:`: a Hugging Face commit, or,
+  for a file at a plain web address, its size and its sha256 or S3 ETag. Every
+  file is checked against those before it is unpacked; one that differs is
+  deleted and the command fails.
+- **Checked first.** Before anything downloads, and in a dry run too, each file at
+  a web address is confirmed unchanged at its host, and a gated Hugging Face repo
+  is confirmed to accept your login. `--dry-run` is therefore a full check that a
+  dataset can be fetched.
+- **Resumable.** Run the same command again after an interruption: a partial file
+  continues where it stopped, and finished files are skipped. Progress is kept
+  under `<dest>/.paddock-fetch/`.
+- **Recorded.** When paddock.toml has no `[datasets.<name>]` yet, one is added
+  pointing at `--dest`. An existing entry is never changed; with one, `--dest` can
+  be left out.
+- **Narrowed** with `--only <part>` or `--match <file name or path glob>`.
+
+Each dataset still needs what its benchmark page lists beyond the data: comma's
+toolkit for comma2k19, HUGSIM's own environment and its map-cache link, NAVSIM's
+devkit and metric cache, and for CARLA the Python that drives it
+(`paddock setup --bench bench2drive`). The command prints the next step when it
+finishes.
+
+Not covered: AlpaSim needs no download, because its own scene provider fetches
+each scene on first use.
+nuScenes' sweeps (`sweeps/`, the frames between keyframes) are left out of the
+nuScenes recipe, so OpenPilot cannot run on a copy it fetches: OpenPilot needs
+10 Hz input, and the nuScenes harness refuses it without `camera_history =
+"CAM_FRONT"` and `sweeps/CAM_FRONT`. Every other model runs on it.
+
 ## Fetching data you do not have
 
 Per-dataset instructions are in `docs/benchmarks/<name>.md`. Two things to do
@@ -119,6 +172,8 @@ usually on the smallest partition on the box. `doctor` warns when it is unset or
 resolves onto `/`.
 
 ## comma2k19
+
+`paddock data fetch comma2k19` does everything in this section. By hand:
 
 comma2k19 is ten zips (`Chunk_1.zip` … `Chunk_10.zip`), about 9 GB each and ~100 GB
 unpacked. Download them from the `raw_data/` folder of
@@ -193,7 +248,8 @@ version = "v1.0-trainval"
 ```
 
 `--bench nuscenes` reads the `v1.0-trainval` JSON tables and the keyframe images
-under `samples/` (2 Hz); it does not need `sweeps/`. The 150-scene val index is
+under `samples/` (2 Hz); only OpenPilot, which needs 10 Hz input, also needs
+`sweeps/CAM_FRONT`. The 150-scene val index is
 built once and cached (see `docs/benchmarks/nuscenes.md`); point
 `[benchmarks.nuscenes] index_cache` at a writable path if the checkout is
 read-only.

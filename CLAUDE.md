@@ -40,10 +40,19 @@ paddock report [--include-invalid]                # leaderboard from results/
 paddock ingest --all                              # import pre-paddock results
 ```
 
-`paddock setup [--repo NAME | --model NAME] [--dry-run]` clones each `repos.yaml`
+`paddock setup [--repo NAME | --model NAME | --bench NAME] [--dry-run]` clones each `repos.yaml`
 entry into `[roots.repos]` at its pinned sha (or adopts a clone already there),
-then applies its patches; `--model` also runs that model's `setup.sh`. A clone at
+then applies its patches; `--model` also runs that model's `setup.sh`, and
+`--bench` a benchmark's (bench2drive's builds the CARLA-client Python). A clone at
 another sha is reported and left alone, and the exit code is 1.
+
+`paddock data fetch NAME [--dest DIR] [--only PART] [--match GLOB] [--dry-run]`
+downloads a dataset whose `datasets.yaml` entry has a `fetch:` recipe, from its
+owners' host, pinned (a Hugging Face commit, or a size and sha256/S3 ETag per
+file) and checked file by file; `--dry-run` checks every source without
+downloading. A dataset with `terms` needs `--accept-terms`, which only the user
+may give; a gated Hugging Face repo uses the user's own login (HF_TOKEN or
+`huggingface-cli login`).
 
 Set `PADDOCK_CONFIG` to use a config file other than `./paddock.toml`, and
 `PADDOCK_BASE_PORT` to give concurrent runs disjoint port ranges (two runs

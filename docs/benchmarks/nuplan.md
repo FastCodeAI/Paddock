@@ -217,13 +217,13 @@ currently reads none. Coverage is one camera shard of nine; the rest are
 
 ## Support-matrix results
 
-The per-metric results behind this benchmark's column in the
-[README's support matrix](../../README.md#support-matrix), and the notes on its
-cells. Each note below starts with the mark it explains. Marks about a model
+nuPlan has no column in the README's support matrix yet: these runs cover 25 of the
+351 anchors, and the column comes back with full runs. The per-metric results and
+their notes stay here as the record. Each note below starts with the mark it explains. Marks about a model
 rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 [What these models are](../models/comparison.md#notes-on-the-models).
 
-### Notes on the matrix cells
+### Notes on these runs
 
 ◐ **Every nuPlan figure is `valid: false` and excluded from `paddock report`.**
 This site holds one of nuPlan's nine camera shards, so of the 351 scorable

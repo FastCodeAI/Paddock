@@ -30,7 +30,7 @@ Site settings, `[benchmarks.navsim]` in paddock.toml:
 
     python         interpreter that can import navsim and nuplan
     devkit         NAVSIM devkit root (the directory holding navsim/)
-    metric_cache   prebuilt metric cache; `run_metric_caching.py` builds one
+    metric_cache   prebuilt metric cache; tools/benchmarks/navsim/build_metric_cache.py builds one
     split          train_test_split name, default navtest
     workers        scorer worker processes, default 4
 
@@ -259,6 +259,15 @@ REPLAY_AGENT = "paddock_replay"
 #: in there says which OpenScene split the scorer reads; preflight needs it
 #: before hydra runs, so it is read from the same file rather than repeated.
 SPLITS_DIR = "navsim/planning/script/config/common/train_test_split"
+
+#: What builds a metric cache and finishes an interrupted build; preflight's
+#: refusals of a cache name it with `--bench <this benchmark>`. It runs the
+#: devkit's own run_metric_caching.py as the scorer is run, set to skip the
+#: scenarios already cached. Never send anyone to that script directly: re-run
+#: as it ships, navsim_v2's recomputes every cached scenario (its
+#: `force_feature_computation` defaults to True), so a navtest build stopped
+#: near the end starts over.
+BUILD_CACHE = "python -m tools.benchmarks.navsim.build_metric_cache"
 
 #: Environment switches that change what a NAVSIM run measures. Each is
 #: recorded in run.json through `run_config()`, and the ones that make a run
@@ -497,13 +506,14 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         elif not Path(cache).is_dir():
             problems.append(
                 f"metric cache not found at {cache}\n"
-                f"build one with the devkit's run_metric_caching.py, or download the "
+                f"build one with `{BUILD_CACHE} --bench {self.spec.name}`, or download the "
                 f"vendor's; a scenario with no cache entry is silently skipped"
             )
         elif not self._cache_csvs(Path(cache)):
             problems.append(
-                f"metric cache at {cache} has no metadata/*.csv: run_metric_caching.py writes it "
-                f"last, so the build did not finish. Re-run it; it skips scenarios already cached"
+                f"metric cache at {cache} has no metadata/*.csv: the build writes it last, so it "
+                f"did not finish. Re-run `{BUILD_CACHE} --bench {self.spec.name}`; it skips "
+                f"scenarios already cached"
             )
 
         problems.extend(self._coverage_warnings(root, cache))
@@ -638,8 +648,9 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
             return [
                 f"partial metric cache: its metadata csv lists {listed[0]} of the {listed[1]} scenarios "
                 f"{self.split} declares, so this run scores a subset, not {self.split}.\n"
-                f"re-run run_metric_caching.py (it skips scenarios already cached) or set "
-                f"{ENV_ALLOW_PARTIAL}=1 to run anyway -- the result is then stored valid=false."
+                f"re-run `{BUILD_CACHE} --bench {self.spec.name}` (it skips scenarios already "
+                f"cached) or set {ENV_ALLOW_PARTIAL}=1 to run anyway -- the result is then stored "
+                f"valid=false."
             ]
         return []
 

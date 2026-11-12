@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE, every_tick
+from paddock.registry import Registry
 from paddock.results.ingest.bench2drive import _driven_off_protocol
 from tools.readme_figures import load_matrix, matrix_cell, rank
 
@@ -305,12 +306,12 @@ def test_speed_sweep_reproduces(data: dict) -> None:
         assert row[3] == f"{s['route_completion']:.2f}", row[0]
 
 
-def test_support_matrix_baseline_cell_is_the_all50_three_mps(data: dict) -> None:
-    """♣ 48.31 and the table's 40.39 are different experiments; both must be stated."""
+def test_the_baseline_has_no_bench2drive_cell_and_the_page_keeps_its_sweep(data: dict) -> None:
+    """Constant velocity has no 220-route run, so its cell in the 220-route column is empty; the
+    50-route sweep's ♣ figure and the table's 40.39 are still both stated on the page."""
     s = data["summaries"]["all50"]["constant_velocity_3mps"]
     assert f"**{s['driving_score']:.2f} ♣**" in PAGE.read_text()
-    cell = _matrix_cell("constant_velocity")
-    assert cell == f"{s['driving_score']:.2f}", cell
+    assert _matrix_cell("constant_velocity") == ""
 
 
 def test_bench2drive_page_still_links_a_tracked_run() -> None:
@@ -371,7 +372,9 @@ def test_a_cell_asked_at_its_own_rate_or_stopped_early_ranks_and_says_so() -> No
     # The cells this rule is about; a loop that matched none of them would pass anything.
     own_rate_cells = {"drivejepa", "alpamayo15", "qwendrive", "meteor", "autoe2e"}
     assert own_rate_cells <= own_rated, f"own-rate cells checked: {sorted(own_rated)}"
-    assert {"openpilot", "meteor", "autoe2e"} <= stopped, f"early-stopped cells checked: {sorted(stopped)}"
+    assert {"openpilot", "alpamayo15", "meteor", "autoe2e"} <= stopped, (
+        f"early-stopped cells checked: {sorted(stopped)}"
+    )
 
 
 def test_the_page_lists_exactly_the_routes_set_aside_with_the_code_s_reasons() -> None:
@@ -383,3 +386,102 @@ def test_the_page_lists_exactly_the_routes_set_aside_with_the_code_s_reasons() -
     rows = [line.split("|")[1:-1] for line in section.splitlines() if re.match(r"^\| \d+ \|", line)]
     listed = {cells[0].strip(): cells[2].strip() for cells in rows}
     assert listed == SET_ASIDE
+
+
+# ---------------------------------------------------------------------------
+# The Bench2Drive column: all 220 routes for every cell (issue #158)
+# ---------------------------------------------------------------------------
+
+#: The 220-route protocol's early stop; the column's other cells have none (the page says which).
+PROTOCOL_STOP = {"stuck_s": 30.0, "progress_m": 3.0, "expert_factor": 4.0}
+OWN_SCORES = (
+    "**Bench2Drive's own scores, over the 216 routes driven at `a100-gpu-vm-002`.** "
+    "Success, efficiency, comfort and"
+)
+ABILITIES = (
+    "Bench2Drive's five abilities over the same 216 routes, in % of the routes that count towards each:"
+)
+
+
+def _column() -> tuple[int, list]:
+    columns, rows = load_matrix()
+    rank(columns, rows)
+    j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
+    return j, [row for row in rows if row.cells[j].run]
+
+
+def _record(run_id: str) -> Path:
+    (record,) = (REPO_ROOT / "results" / "bench2drive").glob(f"*/{run_id}")
+    return record
+
+
+def test_the_bench2drive_column_is_every_route_at_each_model_s_own_rate() -> None:
+    """Every cell of the column is over the same 220 routes, every one scored, asked at the rate its
+    model declares and ranked; the one protocol choice that differs, whether routes end early, is
+    the 220-route protocol's or none, and the page names it per row."""
+    j, rows = _column()
+    header = next(c.header for c in load_matrix()[0] if c.key == "bench2drive")
+    assert "all 220 routes" in header and not SET_ASIDE
+    registry = Registry.load().models
+    hashes = set()
+    for row in rows:
+        cell = row.cells[j]
+        record = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())
+        config, dataset = record["config"], record["dataset"]
+        assert record["valid"] and record["status"] == "complete", f"{cell.run}: {record['notes']}"
+        assert dataset["n_samples"] == dataset["n_expected"] == 220 and dataset["n_failed"] == 0, cell.run
+        assert config["routes_file"] == "bench2drive220.xml"
+        hashes.add(dataset["sequences_sha256"])
+        stop = config.get("early_stop")
+        if stop:
+            assert {k: stop[k] for k in PROTOCOL_STOP} == PROTOCOL_STOP and "collision" not in stop, cell.run
+        declared = registry[row.key].planning_hz
+        assert (config.get("infer_hz") or 0.0) == (declared or 0.0), f"{cell.run}: not its model's own rate"
+        assert cell.rank is not None and "R" not in row.marks + cell.marks
+        if declared:
+            assert cell.qualifier == f"{declared:g} Hz", f"{row.key}: its rate is not named"
+    assert len(rows) >= 7, "the column has lost cells"
+    assert len(hashes) == 1, "every cell is over the same routes"
+
+
+def test_the_220_route_tables_reproduce() -> None:
+    """Each row of the page's 220-route table is its record: paddock's means from metrics.json, its
+    rate and whether its routes end early from its config, and every cell of the column is a row.
+    Bench2Drive's own scores are the 216-route records' upstream_scores.json, which the 220-route
+    pools that superseded them do not have."""
+    j, rows = _column()
+    table = {
+        re.search(r"`([^`]+)`", r[-1]).group(1): r for r in _readme_table("### Bench2Drive — 220 routes")[1:]
+    }
+    assert {row.cells[j].run.split("/")[-1] for row in rows} <= set(table), "every cell is a row"
+    for run_id, r in table.items():
+        record = _record(run_id)
+        m = json.loads((record / "metrics.json").read_text())["metrics"]
+        run = json.loads((record / "run.json").read_text())
+        assert run["valid"] and run["dataset"]["n_samples"] == 220, run_id
+        hz = run["config"].get("infer_hz")
+        assert r[1:7] == [
+            f"{hz:g} Hz" if hz else "every tick",
+            "yes" if run["config"].get("early_stop") else "no",
+            f"{m['driving_score']['mean']:.2f}",
+            f"{m['route_completion']['mean']:.2f}",
+            f"{m['infraction_penalty']['mean']:.3f}",
+            f"{100 * m['collision_rate']['mean']:.2f}",
+        ], run_id
+    own = _readme_table(OWN_SCORES)[1:]
+    abilities = {r[0]: r for r in _readme_table(ABILITIES)[1:]}
+    assert len(own) == 4 and set(abilities) == {r[0] for r in own}
+    order = ["Merging", "Overtaking", "Emergency_Brake", "Give_Way", "Traffic_Signs"]
+    for r in own:
+        record = _record(r[-1].strip("`"))
+        run = json.loads((record / "run.json").read_text())
+        assert run["superseded_by"] in table, f"{record.name}: not superseded by a row of the 220-route table"
+        u = json.loads((record / "upstream_scores.json").read_text())["pooled"]
+        assert r[1:5] == [
+            str(u["routes"]),
+            f"{100 * u['success_rate']:.2f}",
+            f"{u['efficiency']:.2f}",
+            f"{100 * u['comfort']:.2f}",
+        ], r[0]
+        shares = [f"{100 * u['abilities'][k]['score']:.2f}" for k in order]
+        assert abilities[r[0]][1:] == [*shares, f"{100 * u['multi_ability_mean']:.2f}"], r[0]
