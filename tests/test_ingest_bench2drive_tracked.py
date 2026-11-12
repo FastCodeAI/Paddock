@@ -243,6 +243,33 @@ def test_runs_that_disagree_with_the_record_do_not_rank(tmp_path: Path, change, 
     assert said in run.notes
 
 
+def _ffmpeg(path: str) -> Callable[[dict], object]:
+    return lambda c: c["declared_env"].update(PADDOCK_FFMPEG=path)
+
+
+def test_a_record_cut_by_the_old_scrub_agrees_with_runs_that_recorded_the_whole_path(tmp_path: Path) -> None:
+    """The a100 records were pooled before #175: their declared_env holds `{repo}ffmpeg` where the
+    runs that drive their missing routes now record `{repo}/.venv/bin/ffmpeg`. Through the old cut
+    the two are one model.yaml env: the pool ranks and records the whole path."""
+    root = _five_as_the_record_ran(tmp_path, _ffmpeg("{repo}/.venv/bin/ffmpeg"))
+    routes = _read(OPENPILOT / "run.json")["config"]["routes_subset"]
+    ((run, _, _),) = bench2drive.ingest(root, model="openpilot", site="s", routes=routes, tracked=[OPENPILOT])
+    assert run.valid and run.status == "complete", run.notes
+    assert run.config["declared_env"]["PADDOCK_FFMPEG"] == "{repo}/.venv/bin/ffmpeg"
+    said = "bench2drive/openpilot/full220-836dda734659a86c-2803bd was written by scrub() before #175"
+    assert said in run.notes
+
+
+def test_a_record_cut_by_the_old_scrub_still_differs_from_another_file(tmp_path: Path) -> None:
+    """The cut keeps the file name, so another file is still another setting of the model."""
+    root = _five_as_the_record_ran(tmp_path, _ffmpeg("{repo}/.venv/bin/ffmpeg7"))
+    routes = _read(OPENPILOT / "run.json")["config"]["routes_subset"]
+    ((run, _, _),) = bench2drive.ingest(root, model="openpilot", site="s", routes=routes, tracked=[OPENPILOT])
+    assert not run.valid
+    assert "different model.yaml envs" in run.notes
+    assert "before #175" not in run.notes
+
+
 def test_a_record_that_does_not_rank_keeps_the_pool_from_ranking(tmp_path: Path) -> None:
     record = _copy(OPENPILOT, tmp_path)
     _edit(record / "run.json", lambda r: r.update(valid=False))
@@ -255,6 +282,31 @@ def test_a_record_that_does_not_rank_keeps_the_pool_from_ranking(tmp_path: Path)
     )
     assert not run.valid
     assert "full220-836dda734659a86c-2803bd do not rank (valid: false" in run.notes
+
+
+def test_a_record_superseded_by_the_pool_it_feeds_gives_that_pool_again(tmp_path: Path) -> None:
+    """Once its routes are driven, the 216-route record is superseded by the pool it feeds. Pooling
+    again gives the same run, ranked, with the same notes; superseded by any other run, it stops the
+    pool ranking as before."""
+    root = _five_as_the_record_ran(tmp_path)
+    routes = _read(OPENPILOT / "run.json")["config"]["routes_subset"]
+    ((first, metrics, samples),) = bench2drive.ingest(
+        root, model="openpilot", site="s", routes=routes, tracked=[OPENPILOT]
+    )
+    store.write_run(first, metrics, samples, root=tmp_path)
+    shutil.copytree(OPENPILOT, tmp_path / "bench2drive" / "openpilot" / OPENPILOT.name)
+    store.supersede("bench2drive", "openpilot", OPENPILOT.name, first.run_id, "pooled again", root=tmp_path)
+    record = tmp_path / "bench2drive" / "openpilot" / OPENPILOT.name
+    assert not _read(record / "run.json")["valid"]
+
+    ((again, _, _),) = bench2drive.ingest(root, model="openpilot", site="s", routes=routes, tracked=[record])
+    assert again.valid, again.notes
+    assert (again.run_id, again.notes) == (first.run_id, first.notes)
+
+    _edit(record / "run.json", lambda r: r.update(superseded_by="full220-0000000000000000-000000"))
+    ((other, _, _),) = bench2drive.ingest(root, model="openpilot", site="s", routes=routes, tracked=[record])
+    assert not other.valid
+    assert "do not rank (valid: false" in other.notes
 
 
 # --- a record the rows do not fully describe is refused, by name --------------

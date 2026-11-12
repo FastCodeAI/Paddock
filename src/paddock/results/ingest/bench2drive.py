@@ -248,6 +248,43 @@ def _driven_off_protocol(model_env: dict[str, Any]) -> float | None:
     return None if hz <= 0 or hz == PROTOCOL_HZ else hz
 
 
+#: The pattern `store.scrub()` used before #175 (#173). It also matched the `/` after a template
+#: variable, so it cut the directories out of a path model.yaml names at every site:
+#: `{weights}/meteor/x.onnx` was stored as `{weights}x.onnx`. A record pooled then keeps that
+#: `declared_env`: it is regenerated only from its raw results, which may never leave its site.
+_ABSOLUTE_BEFORE_175 = re.compile(r"(?<![\w:/])/(?:[A-Za-z0-9_.+-]+/)+[A-Za-z0-9_.+-]*")
+
+
+def _cut_before_175(value: Any) -> Any:
+    """``value`` as `store.scrub()` wrote it before #175."""
+    if isinstance(value, str):
+        return _ABSOLUTE_BEFORE_175.sub(lambda m: Path(m.group(0)).name, value)
+    if isinstance(value, dict):
+        return {k: _cut_before_175(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_cut_before_175(v) for v in value]
+    return value
+
+
+def _declared_through_the_cut(runs: Sequence[Any], records: Sequence[Any]) -> tuple[list[Any], list[int]]:
+    """The records' `declared_env`, each read through the pre-#175 cut where that is all that differs.
+
+    A tracked record whose `declared_env` is not the runs' but is exactly what scrub() made of the
+    runs' before #175 recorded the same model.yaml env, cut: it stands for the runs' value. Only
+    when the runs agree among themselves, and only for an exact match after the cut; any other
+    difference is two settings, as before. Returns the values to compare and the indices of the
+    records read through the cut.
+    """
+    agreed = _agreed(list(runs))
+    out, cut = list(records), []
+    if isinstance(agreed, dict):
+        for i, env in enumerate(records):
+            if isinstance(env, dict) and env != agreed and env == _cut_before_175(agreed):
+                out[i] = agreed
+                cut.append(i)
+    return out, cut
+
+
 def _agreed(values: Sequence[Any]) -> Any:
     """One value if the source runs agree, the sorted list if they do not.
 
@@ -383,6 +420,8 @@ class Tracked(NamedTuple):
     sha256: str
     #: Route folder -> the route's metrics, measured as from its results.json.
     routes: dict[str, dict[str, Any]]
+    #: Its run.json's ``superseded_by``: the run that replaced it, when one did.
+    superseded_by: str = ""
 
 
 def _differing(mine: dict[str, Any], stored: dict[str, Any]) -> list[str]:
@@ -522,6 +561,7 @@ def read_tracked(record_dir: Path, model: str) -> Tracked:
         valid=bool(run.get("valid", True)),
         sha256=hashlib.sha256(raw).hexdigest(),
         routes=routes,
+        superseded_by=str(run.get("superseded_by") or ""),
     )
 
 
@@ -710,8 +750,13 @@ def ingest(
     # The model.yaml env each source run was made under. Two values are
     # two settings of the model, not one experiment. `_agreed` skips a missing
     # value, so a run that recorded none (every run before 21 Oct 2026) is counted
-    # rather than read as agreeing with the others.
-    declared = _agreed([c.get("declared_env") for c in configs])
+    # rather than read as agreeing with the others. A tracked record pooled before #175 holds its
+    # declared_env cut (`_declared_through_the_cut`); the runs' uncut value is what is recorded.
+    runs_declared = [c.get("declared_env") for c in configs[: len(runs_used)]]
+    records_declared, read_cut = _declared_through_the_cut(
+        runs_declared, [c.get("declared_env") for c in configs[len(runs_used) :]]
+    )
+    declared = _agreed(runs_declared + records_declared)
     undeclared = sum(1 for c in configs if "declared_env" not in c) if declared is not None else 0
     if declared is not None:
         config["declared_env"] = declared
@@ -804,7 +849,9 @@ def ingest(
             f"so the {len(taken)} route(s) from tracked records carry none and metrics.json counts them "
             "missing, as for a route --resume reused."
         )
-    unranked = [rec.name for rec in used_records if not rec.valid]
+    # A record superseded by this very pool stops ranking because this pool replaces it, not
+    # because of anything in its rows: pooling it again must give the same run, notes and all.
+    unranked = [rec.name for rec in used_records if not rec.valid and rec.superseded_by != run_id]
     if unranked:
         note = (note + " " if note else "") + (
             f"tracked record(s) {', '.join(unranked)} do not rank (valid: false; their notes say why), "
@@ -827,6 +874,14 @@ def ingest(
             f"pooled across {len(pooled_setups)} recording setups ({', '.join(pooled_setups)}); "
             "one mean describes none of them, so this run does not rank -- the per-setup "
             "figures are in metrics.json by_group."
+        )
+    if read_cut:
+        names = ", ".join(used_records[i].name for i in read_cut)
+        note = (note + " " if note else "") + (
+            f"the declared_env of {names} was written by scrub() before #175, which cut the directories "
+            "after a template variable ({weights}/meteor/x.onnx became {weights}x.onnx, #173); it is exactly "
+            "the runs' declared_env through that cut, so it counts as the same model.yaml env and the runs' "
+            "value is recorded."
         )
     if isinstance(declared, list):
         note = (note + " " if note else "") + (
