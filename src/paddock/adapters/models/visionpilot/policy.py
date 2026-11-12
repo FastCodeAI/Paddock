@@ -1,3 +1,9 @@
+# Portions ported to Python from the Autoware Foundation's VisionPilot
+# (https://github.com/autowarefoundation/vision_pilot), Apache-2.0:
+# VisionPilot/modules/safety_guardian/fusion/src/longitudinal_fusion.cpp,
+# .../planning/src/longitudinal_planning.cpp, .../planning/src/planning.cpp
+# (`Planner::compute_plan`) and VisionPilot/modules/models/src/auto_speed.cpp.
+# Changed in the port; the docstring below says where and why.
 """NeuroNCAP model node for Autoware's Vision Pilot.
 
 Adapted from the NeuroNCAP model node. The planner reimplementation below is
