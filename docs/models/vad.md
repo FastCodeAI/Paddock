@@ -71,7 +71,9 @@ own normalisation, in eval mode, with the CAN bus on.
 
 As [UniAD's](uniad.md#benchmarks): nuscenes, hugsim, bench2drive, kitscenes, nuplan, neuroncap and alpasim run
 (on neuroncap the plan is held between 0.5 s steps; on alpasim, UniAD's profile, flag for flag, not yet run);
-navsim and navsim_v1 need `VAD_HORIZON_S = "4.0"`; comma2k19 (one camera) does not.
+navsim and navsim_v1 need `VAD_HORIZON_S = "4.0"`, set in a pairing for each of the two (`[models.vad.benchmarks.navsim.env]`
+and `[models.vad.benchmarks.navsim_v1.env]`: a pairing matches the benchmark name exactly; `paddock.toml.example`). Without it
+every token is refused. comma2k19 (one camera) does not run.
 
 ## Verification
 

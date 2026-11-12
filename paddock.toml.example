@@ -365,6 +365,16 @@ serialize = true
 # venv = "/path/to/envs/uniad-vad"
 # [models.vad_b2d]
 # venv = "/path/to/envs/uniad-vad"
+# NAVSIM scores 4 s and refuses their 3 s plans on every token, so each NAVSIM benchmark needs its own
+# pairing (a pairing matches the benchmark name exactly: navsim's does not reach navsim_v1). Same for vad
+# (VAD_HORIZON_S), uniad_b2d (UNIAD_B2D_HORIZON_S) and vad_b2d (VAD_B2D_HORIZON_S).
+# [models.uniad.benchmarks.navsim.env]
+# UNIAD_HORIZON_S = "4.0"
+# [models.uniad.benchmarks.navsim_v1.env]
+# UNIAD_HORIZON_S = "4.0"
+# Thread pool for the frame prefetch (tuning: speed only, the run stays ranked); default 5.
+# [models.uniad.env]
+# UNIAD_VAD_THREADS = "5"
 
 # Configure these in the model node environment, not just the invoking shell.
 # [models.openpilot.env]
