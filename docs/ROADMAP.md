@@ -12,13 +12,12 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 | NAVSIM v1 matches the paper | constant velocity reproduces the paper's navtest row term by term (20.65 against 20.6) |
 | The patches paddock applies are the ones it claims | CI applies every patch to its pinned upstream commit on every PR |
 | Nothing in the repo depends on one machine | `tests/test_portability.py` fails the build on a machine path; `tests/test_alt_site.py` resolves a different site's layout |
+| No OpenPilot cell has the ONNX bug that gave the wide view the road camera's image | Only Bench2Drive gives OpenPilot two cameras, and both its cells were driven after the fix (#44). Every other cell gives it one camera, which fed both views before the fix too. Cell by cell: [openpilot.md](models/openpilot.md#which-backend-ran-and-one-number-it-used-to-change) |
 
 ## Known issues
 
 - **VisionPilot's figures predate the `CURV_SCALE` fix.** Every VisionPilot cell
   but comma2k19's and KITScenes', re-run in November 2026, is due to be re-run.
-- **OpenPilot runs made with the ONNX backend** fed the road camera's image to
-  the wide view. Those rows are due to be re-run.
 - **comma2k19's `pdm_style_score` proxy ranks a parked car first.** It pairs
   waypoints by index; pairing by arc length fixes it and moves a published
   column. The benchmark's primary metric, ADE, is unaffected.
