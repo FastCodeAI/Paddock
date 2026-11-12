@@ -92,7 +92,7 @@ GRAVITY = 9.81
 #: one, the rest decode and convert the six cameras side by side, and OpenCV's own pool is held to as many.
 #: Speed only: every frame is prepared in order and fed what it would be fed one at a time, so the plans
 #: are the same at any count (the golden tests, `make check-uniad-vad`). 1 or less prepares on the model's
-#: thread, one camera after another, as before. model.yaml declares it `tuning_env`.
+#: thread, one camera after another. model.yaml declares it `tuning_env`.
 THREADS_ENV = "UNIAD_VAD_THREADS"
 DEFAULT_THREADS = 5
 

@@ -92,7 +92,7 @@ road is LANEFOLLOW in its training data. FOLLOW_REFERENCE is LANEFOLLOW everywhe
 
 bench2drive, hugsim, nuscenes, kitscenes, nuplan and neuroncap run (real photographs are out of distribution
 for a CARLA-trained model; on neuroncap the plan is held between 0.5 s steps); navsim and navsim_v1 need
-`UNIAD_B2D_HORIZON_S = "4.0"`; comma2k19 (one camera) and alpasim (no rectified six-camera rig) do not. See
+`UNIAD_B2D_HORIZON_S = "4.0"`; comma2k19 (one camera) and alpasim (its six-camera profile renders nuScenes' rig, not the CARLA rig this checkpoint was trained on) do not. See
 [uniad.md](uniad.md#benchmarks).
 
 ## Verification
