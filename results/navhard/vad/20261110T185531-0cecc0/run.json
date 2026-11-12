@@ -4,8 +4,8 @@
   "benchmark": "navhard",
   "model": "vad",
   "mode": "open_loop",
-  "started_utc": "2026-11-10T18:55:31+00:00",
-  "duration_s": 20282.0,
+  "started_utc": "2026-11-12T12:53:53+00:00",
+  "duration_s": 99.4,
   "repo_sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
   "dataset": {
     "name": "navhard",
@@ -38,8 +38,8 @@
     "declared_env": {
       "MPLBACKEND": "Agg",
       "PYTHONNOUSERSITE": "1",
-      "VAD_CHECKPOINT": "{weights}VAD_base.pth",
-      "VAD_CONFIG": "{repo}VAD_base_stage_2.py"
+      "VAD_CHECKPOINT": "{weights}/vad/VAD_base.pth",
+      "VAD_CONFIG": "{repo}/projects/configs/VAD/VAD_base_stage_2.py"
     },
     "model_env": {
       "VAD_HORIZON_S": "4.0"
@@ -54,13 +54,13 @@
       "at_pin": true
     },
     "paddock": {
-      "sha": "9565e19061ffa7614c8cf323d537cfeb864b75bf",
+      "sha": "4c17e283a66cda8a68e87492bac86102e06e99e4",
       "dirty": false
     }
   },
   "status": "complete",
-  "valid": false,
+  "valid": true,
   "superseded_by": "",
-  "notes": "site env override may change what was measured: VAD_HORIZON_S (values in config.model_env)",
+  "notes": "",
   "ingested_from": ""
 }
