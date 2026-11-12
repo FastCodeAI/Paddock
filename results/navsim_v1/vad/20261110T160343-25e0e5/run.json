@@ -43,7 +43,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "",
-  "notes": "replayed from navsim/vad/20261110T095855-0ebf09, which is stored valid=false: site env override may change what was measured: VAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277, stored valid=false); the same plans, this benchmark's scorer",
+  "superseded_by": "20261112T132424-25e0e5",
+  "notes": "replayed from navsim/vad/20261110T095855-0ebf09, which is stored valid=false: site env override may change what was measured: VAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277, stored valid=false); the same plans, this benchmark's scorer Superseded by 20261112T132424-25e0e5: the same plans replayed again from the NAVSIM run after its record was re-written valid (byte-identical checkpoint override no longer counted as one)",
   "ingested_from": ""
 }

@@ -43,7 +43,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "",
-  "notes": "replayed from navsim/uniad/20261109T082522-c24426, which is stored valid=false: site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/uniad/20261109T082522-c24426 (that run: epdms 0.4781, stored valid=false); the same plans, this benchmark's scorer",
+  "superseded_by": "20261112T130241-e02e88",
+  "notes": "replayed from navsim/uniad/20261109T082522-c24426, which is stored valid=false: site env override may change what was measured: UNIAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/uniad/20261109T082522-c24426 (that run: epdms 0.4781, stored valid=false); the same plans, this benchmark's scorer Superseded by 20261112T130241-e02e88: the same plans replayed again from the NAVSIM run after its record was re-written valid (byte-identical checkpoint override no longer counted as one)",
   "ingested_from": ""
 }
