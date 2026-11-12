@@ -135,7 +135,7 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 (`model.yaml`, `capabilities`). The client asks the node once per
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
 without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz,
-Alpamayo 1.5 10 Hz. The rate is
+Alpamayo 1.5 10 Hz, Alpamayo 2 Edge 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
 `PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
 own rate, the run records the declared rate beside it (`config.planning_hz`) and
@@ -751,6 +751,10 @@ What every run here depends on, beyond the leaderboard's own rules.
   1 m/s) and runs on the CUDA provider with two threads.
 * **Alpamayo** receives the route as its navigation text ("Turn left in 37m")
   and samples with the reference notebook's settings.
+* **Alpamayo 2 Edge** receives the same sentence and reads five of paddock's
+  cameras plus a telephoto crop of the front one, at its declared 10 Hz. It plans
+  64 points 0.1 s apart, and the controller follows every fifth, its points at 0.5
+  to 3 s ([alpamayo2edge.md](../models/alpamayo2edge.md#how-a-bench2drive-route-becomes-that-input)).
 * **Drive-JEPA** is the released NAVSIM-v2 checkpoint transferred zero-shot to
   CARLA. The paper's Bench2Drive result (DS 64.52) comes from a
   Bench2Drive-trained variant whose configs are in the repo but whose data
