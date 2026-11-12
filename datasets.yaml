@@ -83,10 +83,6 @@ datasets:
         overlap_train_val:
           files: ["data/overlap_train_val/*.tar"]
           into: overlap_train_val
-      after: >
-        The data alone cannot be scored yet: the benchmark reads its list of 223
-        keyframes from [benchmarks.kitscenes] sample_list, and that list is not
-        public (issue #178; docs/benchmarks/kitscenes.md).
 
   navsim:
     description: NAVSIM on OpenScene (a 2 Hz redistribution of nuPlan, not nuScenes) -- open-loop scoring as v1.1 PDMS (navsim_v1) or v2 EPDMS (navsim)

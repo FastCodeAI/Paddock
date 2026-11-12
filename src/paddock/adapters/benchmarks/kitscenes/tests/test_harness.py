@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import pickle
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,10 +19,11 @@ import pytest
 
 from paddock.adapters.benchmarks.kitscenes import harness as H
 from paddock.adapters.benchmarks.kitscenes.harness import BENCHMARK, POD_HEIGHT_M, RING
-from paddock.config import SiteConfig
+from paddock.config import REPO_ROOT, SiteConfig
 from paddock.policy.protocol import CAMERAS, Command, Observation, grid_stride
 from paddock.registry import Registry
 from paddock.results.ingest.kitscenes import STRAIGHT_COMMAND
+from paddock.results.store import sequence_hash
 
 SCENE = "0a1b2c3d-0000-4000-8000-000000000001"
 N_FRAMES = 100
@@ -110,12 +112,18 @@ def _write_scene(root: Path, sensors, split: str = "val", maps: bool = True) -> 
 
 
 def _site(
-    tmp_path: Path, monkeypatch, tiers: list[Path], settings: str = "", row: dict | None = None
+    tmp_path: Path,
+    monkeypatch,
+    tiers: list[Path],
+    settings: str = "",
+    row: dict | None = None,
+    listed: bool = True,
 ) -> SiteConfig:
     """A throwaway site config, written and loaded the way a real one is.
 
     *settings* are extra `[benchmarks.kitscenes]` lines; *row* extra fields of
-    the one sample-list row.
+    the one sample-list row. `listed=False` leaves `sample_list` unset, so the
+    tracked list is read.
     """
     for sub in ("repos", "runs", "weights"):
         (tmp_path / sub).mkdir(exist_ok=True)
@@ -123,6 +131,8 @@ def _site(
     sample_list.write_bytes(
         pickle.dumps([{"scene_id": SCENE, "keyframe_index": KEYFRAME, "split": "val", **(row or {})}])
     )
+    if listed:
+        settings = f'sample_list = "{sample_list}"\n' + settings
     config = tmp_path / "site.toml"
     config.write_text(
         'site = "test-site"\n'
@@ -132,8 +142,7 @@ def _site(
         f'weights = "{tmp_path / "weights"}"\n'
         "[datasets.kitscenes]\n"
         f"tiers = [{', '.join(f'{str(t)!r}' for t in tiers)}]\n"
-        "[benchmarks.kitscenes]\n"
-        f'sample_list = "{sample_list}"\n' + settings
+        "[benchmarks.kitscenes]\n" + settings
     )
     monkeypatch.setenv("PADDOCK_CONFIG", str(config))
     return SiteConfig.load()
@@ -535,6 +544,101 @@ def test_preflight_still_reports_the_missing_sample_list_first(tmp_path, monkeyp
 
     (problem,) = bench.preflight()
     assert "sample_list does not exist" in problem
+
+
+# ---------------------------------------------------------------------------
+# The tracked sample list
+# ---------------------------------------------------------------------------
+
+
+def test_the_tracked_list_is_the_one_every_stored_run_scored() -> None:
+    """The file is only the benchmark if it names the keyframes the stored rows cover.
+
+    Every full KITScenes run carries this `sequences_sha256`, the hash of
+    `kitscenes_e2e_final.pkl`'s 223 keyframes, so the tracked rows must give it too.
+    """
+    rows = H.read_sample_list(H.SAMPLE_LIST)
+    ids = [H.KitScenesBenchmark._sample_id(row) for row in rows]
+    assert len(ids) == len(set(ids)) == 223
+    assert len({row["scene_id"] for row in rows}) == 140
+    want = "80665529bea7f500"
+    assert sequence_hash(ids) == want
+
+    stored = [
+        json.loads(path.read_text())["dataset"]
+        for path in sorted((REPO_ROOT / "results" / "kitscenes").glob("*/*/run.json"))
+    ]
+    full = [dataset for dataset in stored if dataset.get("n_samples") == 223]
+    assert full, "no full KITScenes run to check the list against"
+    assert {dataset["sequences_sha256"] for dataset in full} == {want}
+
+
+def test_the_tracked_list_carries_the_route_hint_the_docs_count() -> None:
+    """39 of the 223 are told to turn under `gt`: 21 left, 18 right (docs/benchmarks/kitscenes.md)."""
+    rows = H.read_sample_list(H.SAMPLE_LIST)
+    one_hots = Counter(tuple(row["driving_command"]) for row in rows)
+    assert one_hots == {(1, 0, 0, 0): 21, (0, 1, 0, 0): 184, (0, 0, 1, 0): 18}
+    assert Counter(row["split"] for row in rows) == {"val": 186, "overlap_train_val": 37}
+
+
+def test_without_a_sample_list_setting_the_tracked_list_is_read(tmp_path, monkeypatch) -> None:
+    """A site that only downloaded the data has nothing to set."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    bench = _benchmark(tmp_path, monkeypatch, [archive], listed=False)
+
+    assert bench._sample_list() == H.SAMPLE_LIST
+    assert bench.preflight() == []
+    rows, missing = bench.coverage()
+    assert (rows, len(missing)) == ([], 140), "the synthetic scene is not one of the 140"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("left", Command.LEFT), ("straight", Command.STRAIGHT), ("right", Command.RIGHT)],
+)
+def test_a_csv_list_gives_the_route_hint_a_pkl_gives(tmp_path, monkeypatch, name, expected) -> None:
+    """The .csv names the command the .pkl stores as a one-hot; the keyframe gets the same one."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    listed = tmp_path / "list.csv"
+    listed.write_text(f"scene_id,keyframe_index,split,driving_command\n{SCENE},{KEYFRAME},val,{name}\n")
+    bench = _benchmark(
+        tmp_path,
+        monkeypatch,
+        [archive],
+        listed=False,
+        settings=f'sample_list = "{listed}"\ncommand_source = "gt"\n',
+    )
+
+    assert bench.preflight() == []
+    assert _scored_observation(bench).command == expected
+
+
+def test_a_csv_list_names_a_command_it_does_not_know(tmp_path) -> None:
+    """A typo must stop the read, not reach the model as no hint at all."""
+    listed = tmp_path / "list.csv"
+    listed.write_text(f"scene_id,keyframe_index,split,driving_command\n{SCENE},{KEYFRAME},val,lefft\n")
+    with pytest.raises(ValueError, match=r"list\.csv:2: driving_command = 'lefft'"):
+        H.read_sample_list(listed)
+
+
+def test_a_csv_row_without_a_command_is_refused_under_gt(tmp_path, monkeypatch) -> None:
+    """An empty cell is a row without one, as in a .pkl: preflight names it."""
+    archive = tmp_path / "archive"
+    _write_scene(archive, RING)
+    listed = tmp_path / "list.csv"
+    listed.write_text(f"scene_id,keyframe_index,split,driving_command\n{SCENE},{KEYFRAME},val,\n")
+    bench = _benchmark(
+        tmp_path,
+        monkeypatch,
+        [archive],
+        listed=False,
+        settings=f'sample_list = "{listed}"\ncommand_source = "gt"\n',
+    )
+
+    (problem,) = bench.preflight()
+    assert "1 of 1 row(s)" in problem and "driving_command" in problem
 
 
 # ---------------------------------------------------------------------------
