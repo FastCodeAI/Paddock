@@ -20,7 +20,7 @@ import pytest
 from paddock.adapters.benchmarks.kitscenes import harness as H
 from paddock.adapters.benchmarks.kitscenes.harness import BENCHMARK, POD_HEIGHT_M, RING
 from paddock.config import REPO_ROOT, SiteConfig
-from paddock.policy.protocol import CAMERAS, Command, Observation
+from paddock.policy.protocol import CAMERAS, Command, Observation, grid_stride
 from paddock.registry import Registry
 from paddock.results.ingest.kitscenes import STRAIGHT_COMMAND
 from paddock.results.store import sequence_hash
@@ -761,7 +761,7 @@ def test_a_plan_already_half_a_second_apart_is_scored_point_for_point() -> None:
     ("dt", "stride"), [(0.5, 1), (0.25, 2), (0.1, 5), (0.05, 10), (0.3, None), (1.0, None)]
 )
 def test_only_a_spacing_that_divides_half_a_second_has_points_on_the_grid(dt, stride) -> None:
-    assert H.grid_stride(dt) == stride
+    assert grid_stride(dt, H.INTERVAL_S) == stride
 
 
 def test_a_model_whose_plan_misses_the_grid_is_refused_before_it_loads(tmp_path, monkeypatch) -> None:
