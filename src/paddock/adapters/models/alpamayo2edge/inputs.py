@@ -78,6 +78,10 @@ FRAME_SIZE = (1920, 1080)
 JITTER_S = 0.02
 
 FRAME_MODES = ("nearest", "distinct")
+#: What a slot whose camera the source never sends gets: "refuse" stops the plan, the
+#: default; "black" feeds a black frame at each time the slot asks for, for a source
+#: with fewer cameras than Edge's six (comma2k19 records one), and names the slot.
+ABSENT_MODES = ("refuse", "black")
 HISTORY_MODES = ("hermite", "linear")
 
 

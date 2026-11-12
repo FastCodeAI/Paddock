@@ -19,6 +19,8 @@ Settings, read from the environment; model.yaml declares the defaults:
     ALPAMAYO2_EDGE_SEED            43        set before every plan
     ALPAMAYO2_EDGE_NAV_DISTANCE_M  unset     a distance for turns the source gives none
     ALPAMAYO2_EDGE_SAVE_REASONING  0         1 keeps the rationale in each plan's extras
+    ALPAMAYO2_EDGE_ABSENT_CAMERAS  refuse    black feeds a slot whose camera the source lacks
+                                             black frames (comma2k19), and names it
     ALPAMAYO2_EDGE_THREADS         4         torch's CPU threads in the node; speed only
 
 The seed is set before every plan, so a plan depends on its input alone -- not on
@@ -63,6 +65,9 @@ MAX_FRAMES = 64
 #: in order, 0.5 s apart, so a scenario shares three of its four frames with the
 #: one before it; at 6 MB a frame this is under 1 GB.
 MAX_WARPED = 128
+#: The frame an absent camera's slot gets with ABSENT_CAMERAS=black, at the vendor's size.
+BLACK_FRAME = np.zeros((inputs.FRAME_SIZE[1], inputs.FRAME_SIZE[0], 3), dtype=np.uint8)
+BLACK_FRAME.setflags(write=False)
 #: Characters of the rationale kept in extras and diagnostics.
 REASONING_CHARS = 400
 NOMINAL = "<NOMINAL>"
@@ -84,6 +89,7 @@ class Settings:
     seed: int = 43
     nav_distance_m: float | None = None
     save_reasoning: bool = False
+    absent_cameras: str = "refuse"
     #: torch's CPU threads (`torch.set_num_threads`). Torch takes every core by default,
     #: and the vendor's processor then spends 1.4 s packing a plan's 22 frames on a
     #: 48-core box shared with CARLA, where 4 threads take 0.18 s and 16 take 0.07 s.
@@ -106,6 +112,9 @@ class Settings:
             raise ValueError(f"{PREFIX}FRAMES={frames!r} is not one of {inputs.FRAME_MODES}")
         if history not in inputs.HISTORY_MODES:
             raise ValueError(f"{PREFIX}HISTORY={history!r} is not one of {inputs.HISTORY_MODES}")
+        absent = get("ABSENT_CAMERAS") or cls.absent_cameras
+        if absent not in inputs.ABSENT_MODES:
+            raise ValueError(f"{PREFIX}ABSENT_CAMERAS={absent!r} is not one of {inputs.ABSENT_MODES}")
         samples = int(get("SAMPLES") or cls.samples)
         if samples < 1:
             raise ValueError(f"{PREFIX}SAMPLES must be at least 1, got {samples}")
@@ -123,6 +132,7 @@ class Settings:
             seed=int(get("SEED") or cls.seed),
             nav_distance_m=nav_distance_m,
             save_reasoning=(get("SAVE_REASONING") or "0") == "1",
+            absent_cameras=absent,
             threads=threads,
         )
 
@@ -144,6 +154,8 @@ class Sample:
     frame_times_s: dict[int, list[float]] = field(default_factory=dict)
     #: Seconds of the history before the oldest frame, continued rather than read.
     extrapolated_s: float = 0.0
+    #: Camera IDs fed black frames because the source sent no camera for them.
+    black_slots: list[int] = field(default_factory=list)
 
 
 def vendor_sample(sample: Sample) -> dict[str, Any]:
@@ -321,18 +333,33 @@ class Alpamayo2EdgePolicy(Policy):
 
     def build_sample(self) -> Sample:
         """The recorded sequence as Edge's input. Raises if a camera Edge needs never arrived:
-        the vendor requires all six IDs, and a black frame would be a claim the source never made."""
+        the vendor requires all six IDs, and a black frame would be a claim the source never made.
+        With `ABSENT_CAMERAS=black` that slot instead gets a black frame at each time it asks
+        for, taken on the frames the source did send, and is named in `black_slots`."""
         if not self._frames:
             raise RuntimeError("no frame has been recorded")
         frames = self._frames
         now_us = frames[-1].timestamp_us
-        images, ids, stamps, chosen_times = [], [], [], {}
+        images, ids, stamps, chosen_times, black = [], [], [], {}, []
         for camera_id, camera, hfov in inputs.SLOTS:
             carrying = [frame for frame in frames if _has(frame, camera)]
             if not carrying:
-                raise ValueError(
-                    f"Edge's camera {camera_id} is filled from {camera}, which this source did not send"
+                if self.settings.absent_cameras != "black":
+                    raise ValueError(
+                        f"Edge's camera {camera_id} is filled from {camera}, which this source did not "
+                        f"send (set {PREFIX}ABSENT_CAMERAS=black to feed it black frames)"
+                    )
+                black.append(camera_id)
+                times = [frame.timestamp_us / 1e6 for frame in frames]
+                picks = inputs.select_frames(
+                    times, inputs.offsets_for(camera_id), self.settings.frames, now_us / 1e6
                 )
+                for i in picks:
+                    images.append(BLACK_FRAME)
+                    ids.append(camera_id)
+                    stamps.append(frames[i].timestamp_us)
+                chosen_times[camera_id] = [round((frames[i].timestamp_us - now_us) / 1e6, 3) for i in picks]
+                continue
             times = [frame.timestamp_us / 1e6 for frame in carrying]
             picks = inputs.select_frames(
                 times, inputs.offsets_for(camera_id), self.settings.frames, now_us / 1e6
@@ -375,6 +402,7 @@ class Alpamayo2EdgePolicy(Policy):
             nav_text=text,
             frame_times_s=chosen_times,
             extrapolated_s=inputs.history_before_first_frame_s(times),
+            black_slots=black,
         )
 
     # -- the model ----------------------------------------------------------------
@@ -427,6 +455,7 @@ class Alpamayo2EdgePolicy(Policy):
         reach = float(np.linalg.norm(plan[-1, :2]))
         self._last = {
             "nav_text": sample.nav_text,
+            "black_slots": sample.black_slots,
             "frame_times_s": sample.frame_times_s,
             "history_extrapolated_s": sample.extrapolated_s,
             "reasoning": reasoning[:REASONING_CHARS],

@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -173,10 +173,23 @@ Each is read from the environment of the node; `model.yaml` declares the default
 | `ALPAMAYO2_EDGE_SEED` | `43` | set before every plan | no |
 | `ALPAMAYO2_EDGE_NAV_DISTANCE_M` | unset | a distance for turns the source gives none ("Turn left in 20m") | no |
 | `ALPAMAYO2_EDGE_SAVE_REASONING` | `0` | `1` keeps the rationale's first 400 characters in each plan's extras | yes |
+| `ALPAMAYO2_EDGE_ABSENT_CAMERAS` | `refuse` | `black`: a slot whose camera the source never sends gets a black frame at each time it asks for, and is named in `black_slots`. comma2k19 needs it | yes, with a note |
 | `ALPAMAYO2_EDGE_THREADS` | `4` | torch's CPU threads in the node; the plan is the same at any count | yes |
 
 No default was chosen by scoring navtest. They are the vendor's settings, plus the
 reasons above.
+
+`ALPAMAYO2_EDGE_ABSENT_CAMERAS` stays `refuse` everywhere but comma2k19. A black frame
+is a claim the source never made, so a source missing a camera stops the plan unless
+the run says otherwise. comma2k19 records one camera, and the vendor requires all six
+slots: there the front and telephoto slots are real and the other four black. The
+leaderboard prints that under the run, as it prints METEOR's horizon note. To score
+Edge on comma2k19, set it for that pairing alone in `paddock.toml`:
+
+```toml
+[models.alpamayo2edge.benchmarks.comma2k19.env]
+ALPAMAYO2_EDGE_ABSENT_CAMERAS = "black"
+```
 
 `ALPAMAYO2_EDGE_THREADS` exists because torch takes every core by default. On a
 48-core machine shared with CARLA, the vendor's processor then took 1.4 s to pack one
@@ -384,3 +397,28 @@ branch `alpamayo2edge/nuscenes-neuroncap`; its Edge adapter and nuScenes code ar
 branch's, and the one other file it differs in, `policy/protocol.py`, changes only what a
 closed-loop simulator is sent. The model wrote
 `<NOMINAL>` on 1,967 of the 5,119 keyframes (38 %), and no plan was drawn again.
+
+### comma2k19
+
+All 10,165 samples, five keyframes in each of 2,033 one-minute segments of I-280 highway
+driving, at the recorded 20 Hz, so every frame is the one at the time Edge asks for and
+no pose history is extrapolated. comma2k19 has one camera, so the front slot gets it (65°,
+where Edge was trained on 120°), the telephoto slot a 30° crop of it, and the other four
+slots black frames (`ALPAMAYO2_EDGE_ABSENT_CAMERAS=black`). Edge's 64 points, 0.1 s apart,
+are scored on their own points at every 0.5 s, and so are its comfort terms.
+
+| ADE at 1 / 2 / 3 / 4 / 5 s (m) ↓ | FDE at 3 s ↓ | Median ADE at 3 s ↓ | Miss rate at 3 s ↓ | PDMS-style ↑ | Run |
+|---|---:|---:|---:|---:|---|
+| 0.086 / 0.225 / **0.438** / 0.713 / 1.043 | 1.013 | 0.356 | 8.9 % | 0.949 | `comma2k19/alpamayo2edge/20261112T012152-9b1e09` |
+
+The lowest ADE of every comma2k19 row at every horizon from 1 s to 5 s, on the mean
+and the median: Qwen-Drive 1.0 is next, at 0.589 m at 3 s, and Alpamayo 1.5 at 0.819.
+Its plans reach as far as the car went (path length 99.7 % of the recorded), and its
+PDMS-style score is the highest here (0.949; OpenPilot's 0.816). comma2k19 is not in
+its claimed training data.
+
+Made at `8c5ed2f` with no local changes: four nodes, while a neuroNCAP sweep shared
+the site's two H200s, 5.6 hours. No plan was drawn again. That commit is on the branch
+`alpamayo2edge/nuscenes-neuroncap`; its Edge adapter and comma2k19 code are this
+branch's, except that its harness imported the same 0.5 s stride rule from
+`policy/protocol.py`, which there also changes what a closed-loop simulator is sent.
