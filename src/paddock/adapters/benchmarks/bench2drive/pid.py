@@ -22,6 +22,11 @@ TCP also blends in the route's next target point for steering; paddock's wire
 format carries the route as a discrete ``Command``, not a point, so that branch
 is left out (``use_target_to_aim = False`` in TCP's terms).
 
+The tracker reads every model's plan the same way: its own points at 0.5, 1.0,
+... 3.0 s (``on_grid``), six points 0.5 s apart. That is the whole of what the
+wire's ``trajectory`` carries for a plan 0.5 s apart, and every fifth point of a
+plan 0.1 s apart (alpamayo2edge).
+
 Pure numpy and no CARLA, so it is unit-tested with the rest of the adapter. It
 also runs inside the CARLA client's own interpreter, which is Python 3.8 at the
 one site that has one -- keep the syntax to what 3.8 accepts.
@@ -58,6 +63,46 @@ CLIP_DELTA = 0.25
 #: plan exactly 8 waypoints at 0.5 s, and visionpilot's 3 s plan is shorter than
 #: the window and therefore untouched.
 CONTROL_HORIZON_S = 4.0
+
+
+def grid_stride(dt: float, grid_dt: float) -> int | None:
+    """How many of a plan's points make one ``grid_dt`` step, or None if they never land on it.
+
+    A plan 0.5 s apart is read point for point on a 0.5 s grid (stride 1); one 0.1 s
+    apart has a point at every 0.5 s, every fifth (stride 5). Any other spacing would
+    have to be interpolated, and the controller would then follow a smoothed plan
+    instead of the one the model gave.
+    """
+    if not dt > 0 or not grid_dt > 0:
+        return None
+    stride = int(round(grid_dt / dt))
+    return stride if stride >= 1 and abs(stride * dt - grid_dt) < 1e-6 else None
+
+
+def on_grid(waypoints, dt: float, grid_dt: float, n: int) -> np.ndarray:
+    """The plan's own points at ``grid_dt``, ``2 grid_dt``, ... ``n grid_dt`` s: (n, 2).
+
+    Nothing is interpolated. ``waypoints`` is the whole plan, (N, 2) or (N, 3) with yaw, evenly spaced by
+    ``dt`` starting at t = ``dt``. For a plan already ``grid_dt`` apart these are its
+    first ``n`` points. Raises ValueError for a spacing with no points on the grid
+    (``grid_stride``) and for a plan that ends before ``n grid_dt`` s: the controller
+    would otherwise read a shorter horizon than every other model gives it.
+    """
+    stride = grid_stride(dt, grid_dt)
+    if stride is None:
+        raise ValueError(
+            f"a plan {dt:g} s apart has no points on the {grid_dt:g} s grid the controller reads"
+        )
+    wps = np.asarray(waypoints, dtype=np.float64)
+    if wps.ndim != 2 or wps.shape[1] < 2:
+        raise ValueError(f"need (N, 2) or (N, 3) waypoints, got shape {wps.shape}")
+    picked = wps[stride - 1 :: stride][:n, :2]
+    if len(picked) < n:
+        raise ValueError(
+            f"a plan of {len(wps)} points {dt:g} s apart ends at {len(wps) * dt:g} s; the "
+            f"controller reads its points to {n * grid_dt:g} s"
+        )
+    return picked
 
 
 class PID:

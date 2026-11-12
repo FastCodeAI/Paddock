@@ -24,9 +24,12 @@ their own rates); see
 Closed-loop, like neuroNCAP: the model decides what happens next and errors
 compound. The model runs behind paddock's HTTP policy node; the adapter spawns the
 leaderboard evaluator per route and points a model-agnostic `AutonomousAgent`
-(`agent.py`) at that node. Waypoints come back on paddock's 0.5 s grid and are
-tracked by the Bench2Drive dual-PID controller, reimplemented in `pid.py` (see
-*Notes*).
+(`agent.py`) at that node. The controller reads every plan at its own points
+0.5, 1.0, ... 3.0 s ahead (`pid.on_grid`): a plan 0.5 s apart point for point,
+and Alpamayo 2 Edge's, 0.1 s apart, at every fifth point; nothing is
+interpolated, and a model whose spacing does not divide 0.5 s is refused before
+anything launches. It tracks them with the Bench2Drive dual-PID controller,
+reimplemented in `pid.py` (see *Notes*).
 
 ## What it measures
 
