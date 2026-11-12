@@ -1,4 +1,8 @@
-"""One AlpaSim scene, every model side by side, and which scenes the website shows.
+"""Comparison figures for AlpaSim runs, one scene drawn for every model, and the website's scenes.
+
+`render` draws every model's score on every scene in one grid (`paddock render --bench
+alpasim`): a closed-loop score is one number per scene, and the mean hides which scenes a
+model loses.
 
 AlpaSim already draws each drive: with `[benchmarks.alpasim] video = "true"` every scene
 folder holds one video of the wide front camera with the model's plan (pink or orange) and the route
@@ -37,6 +41,43 @@ SCORED_S = 20.0  # duration_frac_20s is the scored time as a fraction of this
 ROUTE_LIMIT_M = 4.0  # scoring stops this far from the route (max_dist_to_gt_trajectory)
 
 _SAMPLE = re.compile(r"alpasim/(?P<scene>clipgt-[0-9a-f-]+)")
+
+
+def render(runs, out_dir: Path, cfg) -> list[Path]:
+    """One grid: a row per scene, hardest first, a column per run, each cell that scene's score."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    scores: dict[str, dict[int, float]] = {}
+    for k, run in enumerate(runs):
+        for record in run.samples:
+            m = _SAMPLE.fullmatch(record.get("sample_id", ""))
+            score = record.get("metrics", {}).get("scene_score")
+            if m and score is not None:
+                scores.setdefault(m["scene"], {})[k] = float(score)
+    if not scores:
+        return []
+
+    scenes = sorted(scores, key=lambda s: (statistics.fmean(scores[s].values()), s))
+    grid = np.array([[scores[s].get(k, np.nan) for k in range(len(runs))] for s in scenes])
+    fig, ax = plt.subplots(figsize=(1.6 + 1.1 * len(runs), 1.4 + 0.28 * len(scenes)))
+    image = ax.imshow(grid, vmin=0.0, vmax=1.0, cmap="RdYlGn", aspect="auto")
+    for (row, col), value in np.ndenumerate(grid):
+        if not np.isnan(value):
+            ax.text(col, row, f"{value:.2f}", ha="center", va="center", fontsize=7)
+    ax.set_xticks(range(len(runs)))
+    ax.set_xticklabels([run.label for run in runs], rotation=30, ha="right", fontsize=8)
+    ax.set_yticks(range(len(scenes)))
+    ax.set_yticklabels([_short(s) for s in scenes], fontsize=7)
+    ax.set_title("AlpaSim scene score (0 to 1) by scene, hardest first; blank = not scored", fontsize=10)
+    fig.colorbar(image, ax=ax, fraction=0.03, pad=0.02)
+    fig.tight_layout()
+    path = out_dir / "scores_by_scene.png"
+    fig.savefig(path, dpi=140)
+    plt.close(fig)
+    return [path]
 
 
 def _short(scene: str) -> str:

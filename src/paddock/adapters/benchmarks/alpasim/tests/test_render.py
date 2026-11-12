@@ -34,6 +34,20 @@ def _picked(runs, n: int = 4) -> list[str]:
     return [p["sample"].removeprefix("alpasim/clipgt-")[:8] for p in R.showcase(runs, n)]
 
 
+def test_render_draws_the_scores_so_paddock_render_has_something_to_call(tmp_path: Path) -> None:
+    """`paddock render --bench alpasim` calls `render`; without one it ended in an AttributeError."""
+    pytest.importorskip("matplotlib")
+    from paddock import render as rendering
+
+    runs = [_run(m, {"aaaaaaa1": _metrics(0.2 * i), "aaaaaaa2": _metrics(1.0)}) for i, m in enumerate("ab")]
+    written = R.render(runs, tmp_path, SimpleNamespace(runs=tmp_path))
+    assert [p.name for p in written] == ["scores_by_scene.png"] and written[0].stat().st_size > 0
+    assert R.render([_run("a", {})], tmp_path, SimpleNamespace(runs=tmp_path)) == []
+    # Every hook `paddock render` reaches for is there.
+    assert all(callable(getattr(R, hook)) for hook in ("render", "render_sample", "showcase"))
+    assert rendering._adapter("alpasim", lambda _: None) is R
+
+
 def test_showcase_picks_the_two_hardest_then_the_two_most_split() -> None:
     scores = {  # scene: one score per model
         "aaaaaaa1": [0.0, 0.0, 0.2],  # average 0.07: the hardest
