@@ -370,10 +370,12 @@ paddock's CARLA rig renders `CAM_OP_ROAD` and `CAM_OP_WIDE`
 other benchmark adapter has supplied the pair in any commit. The ONNX path
 itself reached `main` together with its fix, in #44 (merged 19 Sep 2026, UTC);
 until then `main` ran openpilot through tinygrad alone. Each cell is below,
-checked against its own `run.json` for issue #194. In three of those records,
-nuScenes', comma2k19's and NAVSIM v2's, `config.cameras` names `CAM_OP_WIDE`: it
-is the list in OpenPilot's `model.yaml`, not what the benchmark gave it. Their
-rows say where the count comes from:
+checked against its own `run.json` for issue #194. In four of those records,
+nuScenes', KITScenes', comma2k19's and NAVSIM v2's, `config.cameras` names
+`CAM_OP_WIDE`: it is the list in OpenPilot's `model.yaml`, not what the
+benchmark gave it. KITScenes' record also says what it gave
+(`config.cameras_supplied`); the other three rows say where the count comes
+from:
 
 | Cell | Run | Cameras | Why the defect does not reach it |
 |---|---|---|---|
