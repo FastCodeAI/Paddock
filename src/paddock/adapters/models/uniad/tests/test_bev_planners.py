@@ -910,8 +910,11 @@ def test_the_black_slots_reach_the_backbone_wrapper_in_camera_order(monkeypatch)
 
     def step(batch, results):
         seen["blank"] = list(policy.view_features.blank)
+        policy.view_features.reused += len(policy.view_features.blank)
         return np.zeros((6, 2))
 
     monkeypatch.setattr(policy, "_run", step)
     policy._run_prepared(_front_only(), prepared)
     assert seen["blank"] == [1, 2, 3, 4, 5]
+    # what the wrapper answered from its cache that step, in the diagnostics a run can keep
+    assert policy.diagnostics()["views_from_cache"] == 5

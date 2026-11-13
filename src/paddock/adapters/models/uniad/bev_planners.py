@@ -944,9 +944,13 @@ class BevPlannerPolicy(Policy):
 
     def _run_prepared(self, obs: Observation, prepared) -> tuple[np.ndarray, np.ndarray]:
         lidar2ego, lidar_source, results, batch = prepared
+        reused = None
         if self.view_features is not None:
             self.view_features.blank = list(results.get("blank_slots", []))
+            reused = self.view_features.reused
         plan = np.asarray(self._run(batch, results), dtype=np.float64).reshape(-1, 2)
+        if reused is not None:
+            self.last["views_from_cache"] = self.view_features.reused - reused
         self._last_step_us = int(obs.timestamp_us)
         self._steps += 1
         #: The last step's plan as the model gave it, and the lidar frame it is in (full precision).
@@ -1033,7 +1037,9 @@ class BevPlannerPolicy(Policy):
         model's training mount did; ``quaternion_source`` (nuScenes checkpoints) is "canbus" where the
         source's own quaternion was used; ``gravity_added`` says the source's acceleration had no gravity
         term; ``source_size`` is each camera as it arrived, before the resize to `LOAD_SIZE`; ``blank_views``
-        the slots the source has no camera for, fed black (`_absent`);
+        the slots the source has no camera for, fed black (`_absent`); ``views_from_cache`` (a model with
+        `reuse_blank_views` on) how many of the last step's views the backbone was not run on
+        (`BlankViewFeatures`);
         ``command_record`` (nuScenes checkpoints) is the last step's command and what decided it
         (`command_record`), also sent with the plan as ``extras["route_command"]`` when a route decided it.
         """
