@@ -111,3 +111,23 @@ repos:
     url: https://github.com/AFARI-Research/WA-JEPA.git
     sha: bec2966
     description: AFARI WA-JEPA world-action model (V-JEPA 2.1 ViT-L + joint flow predictor); the adapter imports the model package and upstream's HUGSIM client helpers, nothing from NAVSIM
+
+  UniAD:
+    url: https://github.com/OpenDriveLab/UniAD.git
+    sha: 532fc33
+    description: UniAD v1 (OpenDriveLab, CVPR 2023), the code of the released nuScenes checkpoint (main; the default branch is v2.0, a rewrite)
+    patches:
+      - 0001-mmdet-dice-registry.patch
+
+  VAD:
+    url: https://github.com/hustvl/VAD.git
+    sha: 1688c4b
+    description: VAD (hustvl, ICCV 2023) on the OpenMMLab 1.x stack; the nuScenes VAD-Base checkpoint runs on it unpatched
+
+  Bench2DriveZoo:
+    url: https://github.com/Thinklab-SJTU/Bench2DriveZoo.git
+    sha: 498c1f7
+    description: Bench2Drive's UniAD and VAD (branch uniad/vad), with mmcv + mmdet + mmdet3d 0.17.1 vendored as one `mmcv` package built in place
+    patches:
+      - 0001-numba-errors-moved.patch
+      - 0002-nms-rotated-scalar-type.patch

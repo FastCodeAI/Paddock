@@ -174,7 +174,7 @@ scoring and a second pass costs another 594 GB.
 K=6 rather than 16 because the GPU is shared and 6 is the number NVIDIA publishes
 (minADE₆); with K=6 the `min_ade@6` column equals `min_ade`.
 
-**Why `nav` exists.** The reference run used `--command gt`, which reads `poses[k+50]` and
+**Why `nav` exists.** The reference run used `--command gt`, which reads `poses[k+40]` (4 s ahead) and
 hands the planner a left/straight/right one-hot on 39 of 223 samples. Withholding the
 equivalent from Alpamayo would lose the comparison on a technicality, so `nav` renders the
 same hint (same 5.0 m lateral threshold) as `<|route_start|>…<|route_end|>` text. The two

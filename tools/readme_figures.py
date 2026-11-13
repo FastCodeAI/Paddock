@@ -78,6 +78,8 @@ MODELS = {
     "meteor": "METEOR",
     "qwendrive": "Qwen-Drive 1.0",
     "autoe2e": "AutoE2E",
+    "uniad": "UniAD",
+    "vad": "VAD",
 }
 
 #: Where each declared camera or view looks: (view, yaw in degrees left of forward, field of

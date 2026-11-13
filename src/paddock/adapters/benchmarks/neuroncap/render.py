@@ -331,8 +331,10 @@ def _decode(video: Path, width: int, height: int, ffmpeg: str | None = None) -> 
     ]
 
 
-def _encode(frames, path: Path, width: int, height: int, ffmpeg: str | None = None) -> None:
+def _encode(frames, path: Path, width: int, height: int, ffmpeg: str | None = None, fps: int = FPS) -> None:
     """H.264 for the web: `+faststart` puts the index first, so a browser starts playing at once.
+
+    `fps` is for a benchmark that borrows this and steps at another rate (AlpaSim: 20 a second).
 
     Two encoder threads, because this box degrades above 90% CPU and nothing here is urgent.
     Written to a .partial file and renamed, so a failed encode leaves no playable half.
@@ -340,7 +342,7 @@ def _encode(frames, path: Path, width: int, height: int, ffmpeg: str | None = No
     partial = path.with_suffix(".partial.mp4")
     cmd = [
         ffmpeg or _ffmpeg(), "-v", "error", "-y",
-        "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", str(FPS), "-i", "pipe:0",
+        "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", str(fps), "-i", "pipe:0",
         "-c:v", "libx264", "-preset", "medium", "-crf", "26", "-pix_fmt", "yuv420p",
         "-movflags", "+faststart", "-threads", "2", str(partial),
     ]  # fmt: skip

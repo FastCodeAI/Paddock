@@ -14,7 +14,9 @@ come from the environment, set by ``harness.run_episode``:
     PADDOCK_CAMERAS       comma-separated camera ids       (default CAM_FRONT)
     PADDOCK_CAMERA_RIG    where those cameras sit and what they render: a rig
                           named in ``rig.py``          (default paddock)
-    PADDOCK_WAYPOINT_DT   spacing of the returned waypoints, s   (default 0.5)
+    PADDOCK_WAYPOINT_DT   the grid the controller reads a plan on, s (default 0.5):
+                          the plan's own points at every multiple of it, the
+                          first six (``pid.on_grid``), whatever its spacing
     PADDOCK_INFER_HZ      ask for a plan this often and follow the last one in
                           between (default 0: every tick); from `planning_hz`
     PADDOCK_OBSERVE_HZ    between plans, hand the node a frame this often
@@ -77,8 +79,15 @@ from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
 from paddock.adapters.benchmarks.bench2drive import early_stop, navigation, recorder, rig
-from paddock.adapters.benchmarks.bench2drive.pid import WaypointTracker
-from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Trajectory, encode_image
+from paddock.adapters.benchmarks.bench2drive.pid import WaypointTracker, on_grid
+from paddock.policy.protocol import (
+    CANBUS_ACCEL,
+    CANBUS_VELOCITY,
+    N_WAYPOINTS,
+    Command,
+    Trajectory,
+    encode_image,
+)
 
 SERVER = os.environ.get("PADDOCK_NODE_URL", "http://127.0.0.1:9000")
 CAMS = [c.strip() for c in os.environ.get("PADDOCK_CAMERAS", "CAM_FRONT").split(",") if c.strip()]
@@ -399,9 +408,11 @@ class PaddockB2DAgent(AutonomousAgent):
         return lights, stops
 
     def _write_analysis_record(
-        self, input_data, game_time, infer_ms, sent, payload, control, desired_speed, asked=True
+        self, input_data, game_time, infer_ms, sent, payload, control, desired_speed, asked=True, plan=None
     ):
-        """One line of ticks.jsonl, plus model-camera thumbnails every few ticks."""
+        """One line of ticks.jsonl, plus model-camera thumbnails every few ticks. ``plan`` is
+        what the controller followed (``decide``), recorded in place of the reply's
+        ``trajectory``, which for a plan finer than 0.5 s is not what the car drove."""
         hero = self._hero_actor()
         if hero is None:
             return
@@ -506,6 +517,8 @@ class PaddockB2DAgent(AutonomousAgent):
             lane=lane,
             lights=lights,
             actors=rows,
+            plan=None if plan is None else plan.xy.tolist(),
+            dt=None if plan is None else plan.dt,
             asked=asked,
         )
         self._ticks.write(recorder.dumps(record) + "\n")
@@ -810,8 +823,18 @@ class PaddockB2DAgent(AutonomousAgent):
 
     def decide(self, payload, speed):
         """Node reply -> (control, desired_speed, plan, native). Validated here: a NaN
-        from a mis-warmed model is an error, not a steer value CARLA accepts silently."""
-        plan = Trajectory(payload["trajectory"], dt=WAYPOINT_DT)
+        from a mis-warmed model is an error, not a steer value CARLA accepts silently.
+
+        ``plan`` is what the controller follows: the reply's whole plan (``plan``, every
+        point at the model's own spacing) read at every WAYPOINT_DT s, six points
+        (``pid.on_grid``). Those are the same six points the reply's ``trajectory``
+        carries (``Trajectory.to_wire``). That field once held the plan's first six
+        points whatever their spacing, which for alpamayo2edge's, 0.1 s apart, was 0.6 s
+        of plan that read as 3 s would drive at a fifth of the planned speed; reading
+        ``plan`` keeps the client right against a node that still sends that."""
+        whole = payload["plan"]
+        points = on_grid(whole["waypoints"], float(whole["dt"]), WAYPOINT_DT, N_WAYPOINTS)
+        plan = Trajectory(points, dt=WAYPOINT_DT)
         native = (payload.get("extras") or {}).get("native_long")
         if native:
             control, desired_speed = self._control_native(plan.xy, speed, native)
@@ -887,7 +910,15 @@ class PaddockB2DAgent(AutonomousAgent):
             }
             try:
                 self._write_analysis_record(
-                    input_data, timestamp, infer_ms, sent, payload, control, desired_speed, asked=due
+                    input_data,
+                    timestamp,
+                    infer_ms,
+                    sent,
+                    payload,
+                    control,
+                    desired_speed,
+                    asked=due,
+                    plan=plan,
                 )
             except Exception as exc:  # the record is for analysis; the route must go on without it
                 self._record_failed = True
