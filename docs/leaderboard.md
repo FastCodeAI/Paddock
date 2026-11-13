@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-111 runs across 10 benchmarks.
+112 runs across 10 benchmarks.
 69 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -184,6 +184,7 @@
 | model | run | n | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | longitudinal_mae ↓ | lateral_mae ↓ | pdm_ep ↑ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | qwendrive | 20261113T201149-e56771 | 351 | 0.293 | 0.100 | 0.317 | 0.639 | 0.247 | 0.092 | 0.976 |
+| alpamayo15 | 20261113T224735-d4cf3b | 351 | 0.684 | 0.197 | 0.728 | 1.579 | 0.604 | 0.170 | 0.970 |
 | autoe2e | 20261113T175630-abc9d8 | 351 | 0.826 | 0.270 | 0.885 | 1.855 | 0.636 | 0.355 | 0.960 |
 | openpilot | 20261113T215414-4e1d08 | 351 | 0.922 | 0.457 | 1.021 | 1.744 | 0.853 | 0.198 | 0.937 |
 | drivejepa | 20261113T190058-0128b9 | 351 | 1.249 | 0.543 | 1.345 | 2.543 | 1.201 | 0.167 | 0.967 |
