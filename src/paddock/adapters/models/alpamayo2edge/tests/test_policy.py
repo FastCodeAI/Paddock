@@ -295,7 +295,7 @@ def test_diagnostics_answer_before_load_and_report_the_last_plan(tmp_path: Path)
 
 
 def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
-    default = Settings("nearest", "hermite", 1, 43, None, False, "refuse", 4)
+    default = Settings("nearest", "hermite", 1, 43, None, False, "refuse")
     assert Settings.from_env({}) == Settings() == default
     env = {
         "ALPAMAYO2_EDGE_FRAMES": "distinct",
@@ -305,9 +305,8 @@ def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
         "ALPAMAYO2_EDGE_NAV_DISTANCE_M": "25",
         "ALPAMAYO2_EDGE_SAVE_REASONING": "1",
         "ALPAMAYO2_EDGE_ABSENT_CAMERAS": "black",
-        "ALPAMAYO2_EDGE_THREADS": "16",
     }
-    assert Settings.from_env(env) == Settings("distinct", "linear", 6, 7, 25.0, True, "black", 16)
+    assert Settings.from_env(env) == Settings("distinct", "linear", 6, 7, 25.0, True, "black")
 
 
 @pytest.mark.parametrize(
@@ -319,7 +318,6 @@ def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
         ("NAV_DISTANCE_M", "-5"),
         ("SEED", "x"),
         ("ABSENT_CAMERAS", "grey"),
-        ("THREADS", "0"),
     ],
 )
 def test_a_bad_setting_stops_the_node(name: str, value: str) -> None:
@@ -445,10 +443,22 @@ def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_throu
     assert Settings.from_env(declared) == Settings()
     knobs = {f"ALPAMAYO2_EDGE_{name.upper()}" for name in Settings.__dataclass_fields__}
     assert knobs == set(spec.runtime.env_passthrough)
-    assert set(spec.runtime.tuning_env) == {"ALPAMAYO2_EDGE_SAVE_REASONING", "ALPAMAYO2_EDGE_THREADS"}
+    assert set(spec.runtime.tuning_env) == {"ALPAMAYO2_EDGE_SAVE_REASONING"}
     # The one setting a site may change and stay ranked, with the line the report prints.
     assert spec.ranked_with_note == ("ALPAMAYO2_EDGE_ABSENT_CAMERAS",)
     assert "{value}" in spec.score_notes["ALPAMAYO2_EDGE_ABSENT_CAMERAS"]
+
+
+def test_model_yaml_caps_the_nodes_cpu_threads_with_a_speed_only_setting() -> None:
+    """Torch takes every core by default, and on a box shared with CARLA the vendor's processor
+    then took 1.4 s a plan against 0.18 s with 4 threads. OMP_NUM_THREADS is the runner's own
+    speed-only key for every model: the value in model.yaml is in no run id, and a site's value
+    keeps its run ranked."""
+    from paddock.runner import THREAD_ENV, _declared_env
+
+    spec = _spec()
+    assert spec.runtime.env["OMP_NUM_THREADS"] == "4"
+    assert "OMP_NUM_THREADS" in THREAD_ENV and "OMP_NUM_THREADS" not in _declared_env(spec)
 
 
 # -- a rationale that never reaches the trajectory ------------------------------------

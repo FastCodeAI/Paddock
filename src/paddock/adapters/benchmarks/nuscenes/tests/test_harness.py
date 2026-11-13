@@ -188,7 +188,9 @@ def test_a_sample_list_scores_only_its_samples(monkeypatch):
     fake = SimpleNamespace(
         _index=lambda: frames,
         _sample=lambda fr, i: SimpleNamespace(sample_id=f"nuscenes/val/{fr[i].scene}/{fr[i].index_in_scene}"),
+        _sample_id=NH.NuScenesBenchmark._sample_id,
     )
+    fake._scorable = lambda split: NH.NuScenesBenchmark._scorable(fake, split)
     monkeypatch.setenv(NH.ENV_SAMPLES, "nuscenes/val/scene-0012/1,nuscenes/val/scene-0003/2")
     got = [s.sample_id for s in NH.NuScenesBenchmark.samples(fake)]
     assert got == ["nuscenes/val/scene-0003/2", "nuscenes/val/scene-0012/1"]

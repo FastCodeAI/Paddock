@@ -10,7 +10,8 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 | Paddock's adapters drive a model exactly as the original research code did | neuroNCAP head to head: both return `2.8269616956051293`. KITScenes, all 223 samples: 892 of 892 metrics identical at full float precision |
 | NAVSIM v2 scores are the official scorer's | 2,379 of 2,379 metrics identical, difference 0.0 |
 | NAVSIM v1 matches the paper | constant velocity reproduces the paper's navtest row term by term (20.65 against 20.6) |
-| The patches paddock applies are the ones it claims | CI applies every patch to its pinned upstream commit on every PR |
+| The patches paddock applies are the ones it claims | CI applies every patch under `patches/` to its pinned upstream commit on every PR. `uniad/env/mmdet3d-0.17.1.patch` edits a PyPI sdist, not a pinned repo, and only its setup run applies it |
+| UniAD's and VAD's adapters plan what the models' own pipeline and forward plan | `make check-uniad-vad`, opt-in on a GPU site, never in CI: 0.0 m on four nuScenes keyframes for all four checkpoints, given one ego pose per frame and the source's quaternion sign (`test_golden.py` gives the gaps that leaves). Measured on one card (sm_120); `uniad/setup.sh` has not been run end to end on a clean machine |
 | Nothing in the repo depends on one machine | `tests/test_portability.py` fails the build on a machine path; `tests/test_alt_site.py` resolves a different site's layout |
 | No OpenPilot cell has the ONNX bug that gave the wide view the road camera's image | Only Bench2Drive gives OpenPilot two cameras, and both its cells were driven after the fix (#44). Every other cell gives it one camera, which fed both views before the fix too. Cell by cell: [openpilot.md](models/openpilot.md#which-backend-ran-and-one-number-it-used-to-change) |
 
@@ -60,11 +61,14 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 - Bench2Drive over all 220 routes, one column of its own, made the same way for
   every model ("The 220-route protocol" in docs/benchmarks/bench2drive.md):
-  openpilot's, METEOR's, AutoE2E's and Alpamayo 1.5's cells are in; the other
-  models after (issue #158).
+  openpilot's, METEOR's, AutoE2E's, Alpamayo 1.5's and Alpamayo 2 Edge's cells are
+  in; the other models after (issue #158).
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.
+- A NAVSIM preflight that refuses a model whose plan is shorter than 4 s when no pairing sets its horizon
+  key (METEOR, UniAD, VAD). Today every token is refused at scoring time;
+  it needs `model.yaml` to name the horizon key, a core change.
 - Alpamayo 2 Edge on NAVSIM with nuPlan's 10 Hz frames, which it is built for. Its
   NAVSIM cells are 2 Hz: the site that ran it holds no nuPlan 10 Hz data.
 - Failure-mode analysis, the same for every model and dataset.
