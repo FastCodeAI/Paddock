@@ -221,7 +221,7 @@ alpamayo15's port of the same function. Run on the real checkpoint on an H200 wi
 AlpaSim-shaped requests (20 Hz pixels at 1916×1080, no intrinsics, the telephoto, a
 route 0.5 s old), one plan took 0.5 s after the first, every slot's frame times were
 the vendor's, and a turn 24 m ahead on a route 0.5 s old at 8 m/s read "Turn left
-in 20m". No scene has been driven yet.
+in 20m". The 30-scene result is under [Results, AlpaSim](#alpasim).
 
 ## Settings
 
@@ -511,3 +511,39 @@ closed-loop wire and neuroNCAP code are this branch's, but for two things that c
 nothing here: the stride helper was named `wire_stride`, and the adapter did not yet have
 `ALPAMAYO2_EDGE_ABSENT_CAMERAS`, whose default refuses a missing camera as it did then;
 neuroNCAP sends all five.
+
+### AlpaSim
+
+The 30 pinned `public_2601` scenes (26.01 artifacts), the set every AlpaSim row since the
+scene set was recorded is on, at the shared 20 Hz control step. Edge sees its own six
+cameras through their own lenses, the real telephoto among them, and its route sentence
+comes from AlpaSim's route ([On AlpaSim through the bridge](#on-alpasim-through-the-bridge)).
+
+| scene_score ↑ | Progress ↑ | At-fault collision ↓ | Offroad ↓ | Distance to the human's path ↓ | Run |
+|---:|---:|---:|---:|---:|---|
+| **0.437** | 0.628 | 23 % (7 of 30) | 20 % (6 of 30) | 2.94 m | `alpasim/alpamayo2edge/20261112T220852-f6d995` |
+
+Sixth of nine rows on these 30 scenes: below Alpamayo 1.5 (0.795), OpenPilot (0.773),
+Qwen-Drive (0.700), VisionPilot (0.629) and the constant-velocity floor (0.488), above
+METEOR (0.423), Drive-JEPA (0.421) and AutoE2E (0.169). A scene that ends in an at-fault
+collision or off the road scores 0, and 13 of the 30 did; the other 17 average 0.77, and six
+of them scored 1.0. Where it collided or
+left the road it had decided to: the last rationale before the end is a deliberate move, as
+in "Steer right into the open roadway and accelerate to bypass the road debris ahead" or a
+left turn on a green arrow, not a plan that stopped making sense. It also leaves the human's
+line on purpose elsewhere ("Change lanes to the left to overtake the slower lead vehicle"),
+which `dist_to_gt_trajectory` counts against it up to its 4 m cap. Alpamayo 1.5's row is on
+the same settings but four cameras, so the gap is the two models, not the harness; Edge also
+sits below Alpamayo 1.5 on neuroNCAP (2.92 against 3.73).
+
+What was checked on this run, rather than argued: every scene ran its full length (168 or 169
+plans each, 5,048 in all); every plan came back whole and was driven on the model's own
+headings (`bridge_plans`: 5,048 `model`, 0 `derived`); every route sentence came from
+AlpaSim's route (`from route` on all 5,048), 520 of them a turn; the first scene, driven twice,
+scored the same to the last digit. Edge wrote `<NOMINAL>` on 2,216 plans (44 %) and no plan was
+drawn again.
+
+Made at `c372441` with no local changes, on one of the site's H200s shared with the
+simulator, 3.3 hours (about 6.6 minutes a scene). On this site Docker cannot mount either
+NFS share, so the AlpaSim checkout, the scene cache and the run directory were on local
+`/tmp`; that changes where files are, not what is computed.
