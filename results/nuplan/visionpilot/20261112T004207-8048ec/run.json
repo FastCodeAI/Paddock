@@ -69,8 +69,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261113T190336-8048ec",
+  "notes": "Superseded by 20261113T190336-8048ec: Re-run from a clean checkout; same settings.",
   "ingested_from": ""
 }

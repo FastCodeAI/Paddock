@@ -85,8 +85,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261113T194349-e44306",
+  "notes": "Superseded by 20261113T194349-e44306: Re-run from a clean checkout; same settings.",
   "ingested_from": ""
 }

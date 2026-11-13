@@ -1,0 +1,160 @@
+{
+  "run_id": "20261113T201149-e56771",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "qwendrive",
+  "mode": "open_loop",
+  "started_utc": "2026-11-13T20:11:49+00:00",
+  "duration_s": 386.8,
+  "repo_sha": "28091c1532e869bc7aee91fc0aef6b3e6fd0b2e0",
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 351,
+    "sequences_sha256": "05efb12a2f3eaf9e",
+    "n_expected": 351
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0",
+    "declared_env": {
+      "QWENDRIVE_ATTN": "sdpa",
+      "QWENDRIVE_CHECKPOINT": "{weights}/hf_gbanda/Qwen-Drive-1.0-4B",
+      "QWENDRIVE_MODE": "direct",
+      "QWENDRIVE_NUM_SAMPLES": "1",
+      "QWENDRIVE_PLANNER": "planner-sft",
+      "QWENDRIVE_VIEWS": "ring"
+    },
+    "model_env": {
+      "CUDA_VISIBLE_DEVICES": "1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "Qwen-Drive-1.0",
+      "sha": "28091c1532e869bc7aee91fc0aef6b3e6fd0b2e0",
+      "pinned_sha": "28091c1",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "58b309a40dbae2d5b0c4523b800a78f09ace8973",
+      "dirty": false
+    },
+    "policy": {
+      "planner": "planner-sft",
+      "mode": "direct",
+      "views": "ring",
+      "cameras": [
+        "CAM_FRONT",
+        "CAM_FRONT_LEFT",
+        "CAM_FRONT_RIGHT"
+      ],
+      "blank_views": [],
+      "num_samples": 1,
+      "attn": "sdpa",
+      "seed": null,
+      "history_span_s": 2.4,
+      "request_dt_s": 0.1,
+      "frames_repeated_total": 0,
+      "frames_off_grid_total": 0,
+      "last_frame_gaps_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_command": "STRAIGHT",
+      "infer_seconds_mean": 0.928,
+      "reasoning": "",
+      "planner_sha256": "dcf5989ed292799e77f539b21e5d8b701566676c1c5d13038135e97f96e2d7b4",
+      "units_check_reach_m": 51.88,
+      "short_plans_total": 68,
+      "short_plans_last": [
+        [
+          null,
+          1629223435287482,
+          0.069,
+          0.272
+        ],
+        [
+          null,
+          1629227746487396,
+          0.066,
+          0.039
+        ],
+        [
+          null,
+          1629811240787262,
+          0.204,
+          0.108
+        ],
+        [
+          null,
+          1630336099887203,
+          0.187,
+          -0.022
+        ],
+        [
+          null,
+          1630336133787339,
+          0.185,
+          0.456
+        ],
+        [
+          null,
+          1633117986187313,
+          0.202,
+          0.162
+        ],
+        [
+          null,
+          1633118095787398,
+          0.235,
+          0.107
+        ],
+        [
+          null,
+          1633119567887234,
+          0.267,
+          0.089
+        ],
+        [
+          null,
+          1633419650387362,
+          0.252,
+          0.144
+        ],
+        [
+          null,
+          1633542945687577,
+          0.141,
+          -0.01
+        ]
+      ],
+      "alpasim": false,
+      "scene_id": null,
+      "route_command": null,
+      "command_hold": {
+        "held": null,
+        "transitions": 0,
+        "calls_held_back": 0
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}
