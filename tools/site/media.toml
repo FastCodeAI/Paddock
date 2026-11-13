@@ -16,14 +16,101 @@
 # poster = "neuroncap/hero.jpg"
 # alt = "Every model driving the same neuroNCAP scene, side by side"
 
-base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/228de179e6c544a17380bf33e009a3ca4b976a32/"
+base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/be6054e5dd549d831e4e9ba40123a63d3b61d7c7/"
 
 # One line under a benchmark's videos, for what a viewer would otherwise misread. In
 # neuroNCAP scene 0108, OpenPilot and METEOR end 36 m and 51 m from the recorded path and
 # still score 5.0.
 [notes]
+nuscenes = "Every frame is a scored keyframe, two a second, with each model's plan and the recorded path (blue) on the road; the panel beside it shows the same lines from above with each model's error on that keyframe."
+kitscenes = "KITScenes scores only a few frames per scene, 9 s apart. Each clip shows a scored frame with every model's plan, then plays the next 4 s of the recorded drive with the plans held where they lie on the road, so the car drives the recorded path past each plan."
+navsim = "NAVSIM scores frames in short unbroken runs. Each clip plays one such run, two frames a second, with each model's plan and the recorded path (blue) on the road. One set of videos serves NAVSIM v1 and v2; the scores shown are v2's, from 0 to 1."
 neuroncap = "neuroNCAP rebuilds each scene from one real recorded drive and adds the other car to it. It draws that car only roughly, and a model that drives far from the recorded path sees a smeared view. The score counts only collisions, so a drive like that can still score 5."
 alpasim = "AlpaSim rebuilds each scene from one real recorded drive. Every tile is the wide front camera; some models also see side and rear cameras that are not shown. The green line is the route and the pink or orange line is the model's plan. Scoring stops at the first collision, when the car leaves the road, or 4 m from the route; the picture after that point can smear. The picture can also smear while a car is still scored, when it drifts from the recorded drive."
+
+[[video]]
+benchmark = "nuscenes"
+title = "Left turn, scene-0271"
+caption = "The hardest left turn, at 5.0 s: on average the models' plans are 2.5 m from the path the car took. Not shown yet: OpenPilot, Alpamayo 1.5, Alpamayo 2 Edge, VisionPilot."
+src = "nuscenes/scene-0271-10.mp4"
+poster = "nuscenes/scene-0271-10.jpg"
+
+[[video]]
+benchmark = "nuscenes"
+title = "Right turn, scene-1064"
+caption = "The hardest right turn, at 13.5 s: on average the models' plans are 2.4 m from the path the car took. Not shown yet: OpenPilot, Alpamayo 1.5, Alpamayo 2 Edge, VisionPilot."
+src = "nuscenes/scene-1064-27.mp4"
+poster = "nuscenes/scene-1064-27.jpg"
+
+[[video]]
+benchmark = "nuscenes"
+title = "Straight on, scene-0093"
+caption = "The hardest moment driving straight on, at 15.5 s: on average the models' plans are 4.0 m from the path the car took. Not shown yet: OpenPilot, Alpamayo 1.5, Alpamayo 2 Edge, VisionPilot."
+src = "nuscenes/scene-0093-31.mp4"
+poster = "nuscenes/scene-0093-31.jpg"
+
+[[video]]
+benchmark = "nuscenes"
+title = "Straight on, scene-0922"
+caption = "Where the models disagree most, at 13.5 s: their errors run from 0.3 m to 7.5 m. Not shown yet: OpenPilot, Alpamayo 1.5, Alpamayo 2 Edge, VisionPilot."
+src = "nuscenes/scene-0922-27.mp4"
+poster = "nuscenes/scene-0922-27.jpg"
+
+[[video]]
+benchmark = "kitscenes"
+title = "Left turn, scene fdcc7efa"
+caption = "The hardest left turn, at 4.0 s: on average the models' plans are 6.2 m from the path the car took. Not shown yet: OpenPilot, Alpamayo 2 Edge, AutoE2E."
+src = "kitscenes/fdcc7efa-40.mp4"
+poster = "kitscenes/fdcc7efa-40.jpg"
+
+[[video]]
+benchmark = "kitscenes"
+title = "Right turn, scene b8002a79"
+caption = "The hardest right turn, at 13.0 s: on average the models' plans are 6.8 m from the path the car took. Not shown yet: OpenPilot, Alpamayo 2 Edge, AutoE2E."
+src = "kitscenes/b8002a79-130.mp4"
+poster = "kitscenes/b8002a79-130.jpg"
+
+[[video]]
+benchmark = "kitscenes"
+title = "Straight on, scene a724baf7"
+caption = "The hardest moment driving straight on, at 13.0 s: on average the models' plans are 3.9 m from the path the car took. Not shown yet: OpenPilot, Alpamayo 2 Edge, AutoE2E."
+src = "kitscenes/a724baf7-130.mp4"
+poster = "kitscenes/a724baf7-130.jpg"
+
+[[video]]
+benchmark = "kitscenes"
+title = "Straight on, scene 1df9975b"
+caption = "Where the models disagree most, at 13.0 s: their errors run from 0.2 m to 11.9 m. Not shown yet: OpenPilot, Alpamayo 2 Edge, AutoE2E."
+src = "kitscenes/1df9975b-130.mp4"
+poster = "kitscenes/1df9975b-130.jpg"
+
+[[video]]
+benchmark = "navsim"
+title = "Left turn, scenario cf1ad202"
+caption = "The left turn the models split on most, at 4.0 s: 2 of 5 score above 0.9 and 3 score below 0.1. Not shown yet: Alpamayo 2 Edge, Drive-JEPA, VisionPilot, Baseline (Constant Velocity)."
+src = "navsim/cf1ad202aadb5ee6.mp4"
+poster = "navsim/cf1ad202aadb5ee6.jpg"
+
+[[video]]
+benchmark = "navsim"
+title = "Right turn, scenario 1edf90bb"
+caption = "The right turn the models split on most, at 6.0 s: 2 of 5 score above 0.9 and 3 score below 0.1. Not shown yet: Alpamayo 2 Edge, Drive-JEPA, VisionPilot, Baseline (Constant Velocity)."
+src = "navsim/1edf90bb34fc5d3f.mp4"
+poster = "navsim/1edf90bb34fc5d3f.jpg"
+
+[[video]]
+benchmark = "navsim"
+title = "Straight on, scenario b2def33d"
+caption = "The moment driving straight on the models split on most, at 6.0 s: 2 of 5 score above 0.9 and 3 score below 0.1. Not shown yet: Alpamayo 2 Edge, Drive-JEPA, VisionPilot, Baseline (Constant Velocity)."
+src = "navsim/b2def33d6adc50fc.mp4"
+poster = "navsim/b2def33d6adc50fc.jpg"
+
+[[video]]
+benchmark = "navsim"
+title = "Straight on, scenario b87ed298"
+caption = "Where the models split most, at 3.0 s: 2 of 5 score above 0.9 and 3 score below 0.1. Not shown yet: Alpamayo 2 Edge, Drive-JEPA, VisionPilot, Baseline (Constant Velocity)."
+src = "navsim/b87ed2985e545397.mp4"
+poster = "navsim/b87ed2985e545397.jpg"
 
 [[video]]
 benchmark = "neuroncap"
