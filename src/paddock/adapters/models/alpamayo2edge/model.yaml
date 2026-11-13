@@ -26,14 +26,16 @@ runtime:
     # A slot whose camera the source never sends stops the plan. comma2k19 sets
     # "black" (score_notes below): it records one camera of Edge's six.
     ALPAMAYO2_EDGE_ABSENT_CAMERAS: "refuse"
-    # torch's CPU threads. Torch takes every core by default, and on a 48-core box
-    # shared with CARLA the vendor's processor then spends 1.4 s packing one plan's
-    # frames, against 0.18 s with 4 threads; the plan is the same at any count.
-    ALPAMAYO2_EDGE_THREADS: "4"
+    # The node's CPU threads, torch's and numpy's. Torch takes every core by default,
+    # and on a 48-core box shared with CARLA the vendor's processor then spends 1.4 s
+    # packing one plan's frames, against 0.18 s with 4 threads; the plan is the same at
+    # any count. The runner counts it as speed-only for every model (THREAD_ENV), so a
+    # site that sets its own in [models.alpamayo2edge.env] keeps its run ranked.
+    OMP_NUM_THREADS: "4"
   # Read from the shell that launches `paddock run`, so `ALPAMAYO2_EDGE_HISTORY=linear
   # paddock run ...` reaches the node. Any of these set to something other than
-  # the declared value stores the run valid: false, except SAVE_REASONING and THREADS,
-  # and ABSENT_CAMERAS, which stays ranked with its note.
+  # the declared value stores the run valid: false, except SAVE_REASONING, and
+  # ABSENT_CAMERAS, which stays ranked with its note.
   env_passthrough:
     - ALPAMAYO2_EDGE_FRAMES
     - ALPAMAYO2_EDGE_HISTORY
@@ -42,10 +44,8 @@ runtime:
     - ALPAMAYO2_EDGE_NAV_DISTANCE_M
     - ALPAMAYO2_EDGE_SAVE_REASONING
     - ALPAMAYO2_EDGE_ABSENT_CAMERAS
-    - ALPAMAYO2_EDGE_THREADS
-  # SAVE_REASONING only adds the rationale to each plan's extras, and THREADS only
-  # changes how fast the CPU packs the input; the plan is the same.
-  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING, ALPAMAYO2_EDGE_THREADS]
+  # Only adds the rationale to each plan's extras; the plan is the same.
+  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING]
 
 capabilities:
   # CAM_FRONT first: NAVSIM's 10 Hz path keys its history on the first camera.
