@@ -243,6 +243,11 @@ class ModelSpec:
     #: OpenPilot's camera height measured on the rig from one fitted to the test
     #: set, so such a run stays `valid: false` however clearly a note describes it.
     ranked_with_note: tuple[str, ...] = ()
+    #: benchmark -> the input convention the model asks that benchmark's harness for, in place of the inputs
+    #: it builds for every model. Only a benchmark that offers conventions reads it, and its run records the
+    #: one used: nuScenes builds UniAD's and VAD's keyframes as their own converters and datasets do
+    #: (``{nuscenes: uniad}``; docs/benchmarks/nuscenes.md, "The datasets' own inputs"). Empty for the rest.
+    inputs: dict[str, str] = field(default_factory=dict)
     description: str = ""
     directory: Path = REPO_ROOT
 
@@ -341,6 +346,17 @@ def _trained_on(value: object, path: Path) -> tuple[TrainedOn, ...]:
     return tuple(out)
 
 
+def _inputs(value: object, path: Path) -> dict[str, str]:
+    """`inputs:` as {benchmark: convention}, refused when it is not one."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) and v for k, v in value.items()
+    ):
+        raise ConfigError(f"{path}: inputs must map a benchmark to an input convention's name, got {value!r}")
+    return dict(value)
+
+
 def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
     models: dict[str, ModelSpec] = {}
     for path in sorted(directory.glob("*/model.yaml")):
@@ -393,6 +409,7 @@ def load_models(directory: Path = MODELS_DIR) -> dict[str, ModelSpec]:
             benchmarks=tuple(body.get("benchmarks", ())),
             score_notes=dict(body.get("score_notes") or {}),
             ranked_with_note=tuple(body.get("ranked_with_note") or ()),
+            inputs=_inputs(body.get("inputs"), path),
             description=body.get("description", ""),
             directory=path.parent,
         )

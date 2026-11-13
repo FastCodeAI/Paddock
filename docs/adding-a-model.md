@@ -162,6 +162,14 @@ Four fields are worth more thought than they look:
   number that could be tuned to a benchmark's own errors, and never a checkpoint.
   A run that sets a noted key not listed here is stored `valid: false`, and its
   note prints only with `paddock report --include-invalid`.
+- **`inputs`** (top level, optional) — `{benchmark: convention}`: inputs a benchmark
+  builds your model's own way instead of the way it builds them for every model.
+  Only a benchmark that offers conventions reads it, refuses one it does not know,
+  and records the one used in the run's config. Today nuScenes offers `uniad` and
+  `vad`: each keyframe as that repo's converter and dataset give it (the stored ego
+  quaternion, each camera at its own ego pose, the CAN-bus message after the
+  keyframe, the repo's command rule; docs/benchmarks/nuscenes.md). Leave it out
+  unless your model was trained on one of those datasets' own inputs.
 
 ## Step 5 — write `setup.sh`
 

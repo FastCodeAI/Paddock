@@ -17,7 +17,7 @@ PY := $(shell \
   elif [ -x .venv/bin/python ]; then echo ".venv/bin/python"; \
   else echo "python3"; fi)
 
-.PHONY: help setup setup-conda check check-alpasim-driver check-alpamayo check-alpamayo2edge check-openpilot test lint fmt typecheck doctor which clean
+.PHONY: help setup setup-conda check check-alpasim-driver check-alpamayo check-alpamayo2edge check-openpilot check-uniad-vad test lint fmt typecheck doctor which clean
 
 help:
 	@echo "make setup        — create .venv and install paddock (uv; the default)"
@@ -27,6 +27,7 @@ help:
 	@echo "make check-alpamayo ALPAMAYO_PY=<python> — the Alpamayo 1.5 input tests, in its own interpreter"
 	@echo "make check-alpamayo2edge ALPAMAYO2_EDGE_PY=<python> ALPAMAYO2_EDGE_CHECKPOINT=<dir> — the Alpamayo 2 Edge input tests, against NVIDIA's own code"
 	@echo "make check-openpilot OPENPILOT_REPO=<dir> — the openpilot geometry tests, against its checkout"
+	@echo "make check-uniad-vad UNIAD_VAD_DATA=<dir> UNIAD_VAD_SCENE_DATA=<nuscenes> — UniAD/VAD golden tests, on the GPU"
 	@echo "make test         — pytest only"
 	@echo "make lint         — ruff only"
 	@echo "make fmt          — ruff format + autofix"
@@ -114,6 +115,21 @@ check-openpilot:
 	@test -n "$(OPENPILOT_REPO)" || { echo "set OPENPILOT_REPO to the openpilot checkout, e.g. <repos>/openpilot"; exit 2; }
 	@PYTHONPATH="$(OPENPILOT_REPO)" $(PY) -c "import openpilot.common.transformations.model" || { echo "$(OPENPILOT_REPO) is not an openpilot checkout paddock's python can import"; exit 2; }
 	PYTHONPATH="$(OPENPILOT_REPO)" $(PY) -m pytest src/paddock/adapters/models/openpilot/tests -q -rs
+
+# UniAD's and VAD's golden tests (uniad, vad): each adapter, run in its model's
+# own environment through the site's paddock.toml, must plan what the model's original tools plan on four
+# nuScenes keyframes (adapters/models/uniad/tests/test_golden.py), and uniad and vad, sent two whole val scenes
+# in order as paddock's nuScenes harness builds them, what their repos' own test loops plan at every keyframe
+# (test_scene_golden.py). They need the env, the weights, a GPU (~4 GB), scene-0103's four-keyframe sample
+# (UNIAD_VAD_DATA) and a nuScenes root holding the camera JPEGs of scene-0103 and scene-0916
+# (UNIAD_VAD_SCENE_DATA), so `make check` skips them; a reviewer at a site that has them runs this. It fails
+# rather than skips when something is missing, for the same reason as above. UNIAD_VAD_INFOS_REFERENCE=<dir>
+# (optional; infos_reference.py writes it) also holds the harness's inputs for every val keyframe to the repos'
+# converters, through the site's nuScenes config.
+check-uniad-vad:
+	@test -n "$(UNIAD_VAD_DATA)" || { echo "set UNIAD_VAD_DATA to the directory holding scene-0103's samples/CAM_*/ JPEGs"; exit 2; }
+	@test -n "$(UNIAD_VAD_SCENE_DATA)" || { echo "set UNIAD_VAD_SCENE_DATA to a nuScenes root whose samples/CAM_*/ hold scene-0103 and scene-0916"; exit 2; }
+	UNIAD_VAD_GOLDEN=1 UNIAD_VAD_GOLDEN_DATA="$(UNIAD_VAD_DATA)" UNIAD_VAD_SCENE_DATA="$(UNIAD_VAD_SCENE_DATA)" UNIAD_VAD_INFOS_REFERENCE="$(UNIAD_VAD_INFOS_REFERENCE)" $(PY) -m pytest src/paddock/adapters/models/uniad/tests/test_golden.py src/paddock/adapters/models/uniad/tests/test_scene_golden.py -q -rs -s $(PYTEST_ARGS)
 
 test:
 	$(PY) -m pytest -q

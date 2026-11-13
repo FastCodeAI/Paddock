@@ -8,7 +8,7 @@
 | Dataset | `hugsim` |
 | Primary metric | `hd_score` |
 | Adapter | [`adapters/benchmarks/hugsim/`](../../src/paddock/adapters/benchmarks/hugsim/) |
-| Models paddock can run on it | [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md) |
+| Models paddock can run on it | [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [uniad](../models/uniad.md), [vad](../models/vad.md) |
 
 <!-- /summary -->
 

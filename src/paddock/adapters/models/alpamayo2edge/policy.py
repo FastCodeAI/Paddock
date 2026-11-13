@@ -19,6 +19,8 @@ Settings, read from the environment; model.yaml declares the defaults:
     ALPAMAYO2_EDGE_SEED            43        set before every plan
     ALPAMAYO2_EDGE_NAV_DISTANCE_M  unset     a distance for turns the source gives none
     ALPAMAYO2_EDGE_SAVE_REASONING  0         1 keeps the rationale in each plan's extras
+    ALPAMAYO2_EDGE_ABSENT_CAMERAS  refuse    black feeds a slot whose camera the source lacks
+                                             black frames (comma2k19), and names it
 
 The seed is set before every plan, so a plan depends on its input alone -- not on
 the node, the order, a retry or a resumed run. It is still one draw of the model's
@@ -62,6 +64,9 @@ MAX_FRAMES = 64
 #: in order, 0.5 s apart, so a scenario shares three of its four frames with the
 #: one before it; at 6 MB a frame this is under 1 GB.
 MAX_WARPED = 128
+#: The frame an absent camera's slot gets with ABSENT_CAMERAS=black, at the vendor's size.
+BLACK_FRAME = np.zeros((inputs.FRAME_SIZE[1], inputs.FRAME_SIZE[0], 3), dtype=np.uint8)
+BLACK_FRAME.setflags(write=False)
 #: Characters of the rationale kept in extras and diagnostics.
 REASONING_CHARS = 400
 NOMINAL = "<NOMINAL>"
@@ -83,6 +88,7 @@ class Settings:
     seed: int = 43
     nav_distance_m: float | None = None
     save_reasoning: bool = False
+    absent_cameras: str = "refuse"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -100,6 +106,9 @@ class Settings:
             raise ValueError(f"{PREFIX}FRAMES={frames!r} is not one of {inputs.FRAME_MODES}")
         if history not in inputs.HISTORY_MODES:
             raise ValueError(f"{PREFIX}HISTORY={history!r} is not one of {inputs.HISTORY_MODES}")
+        absent = get("ABSENT_CAMERAS") or cls.absent_cameras
+        if absent not in inputs.ABSENT_MODES:
+            raise ValueError(f"{PREFIX}ABSENT_CAMERAS={absent!r} is not one of {inputs.ABSENT_MODES}")
         samples = int(get("SAMPLES") or cls.samples)
         if samples < 1:
             raise ValueError(f"{PREFIX}SAMPLES must be at least 1, got {samples}")
@@ -114,6 +123,7 @@ class Settings:
             seed=int(get("SEED") or cls.seed),
             nav_distance_m=nav_distance_m,
             save_reasoning=(get("SAVE_REASONING") or "0") == "1",
+            absent_cameras=absent,
         )
 
 
@@ -134,6 +144,8 @@ class Sample:
     frame_times_s: dict[int, list[float]] = field(default_factory=dict)
     #: Seconds of the history before the oldest frame, continued rather than read.
     extrapolated_s: float = 0.0
+    #: Camera IDs fed black frames because the source sent no camera for them.
+    black_slots: list[int] = field(default_factory=list)
 
 
 def vendor_sample(sample: Sample) -> dict[str, Any]:
@@ -243,6 +255,9 @@ class Alpamayo2EdgePolicy(Policy):
     def reset(self) -> None:
         """Forget the sequence. Resized frames stay cached by file for the next one."""
         self._frames: list[Observation] = []
+        #: This sequence's frames that came as pixels (a closed-loop client), resized, by the
+        #: time they were taken: the next sequence's clock may start again at the same time.
+        self._held: dict[tuple, np.ndarray] = {}
 
     def _record(self, obs: Observation) -> None:
         """Keep one observation. One stamped no later than the last is the same frame
@@ -259,13 +274,19 @@ class Alpamayo2EdgePolicy(Policy):
 
     # -- input --------------------------------------------------------------------
 
-    def _warp(self, frame: Observation, camera: str, hfov: float | None, memo: dict) -> np.ndarray:
-        """One camera of one frame, cropped for its slot: once per call, and across calls once per file."""
+    def _warp(self, frame: Observation, camera: str, hfov: float | None) -> np.ndarray:
+        """One camera of one frame, cropped for its slot, once.
+
+        A file is known by its path, across sequences. Pixels sent in the body (a
+        closed-loop client) are known by the time they were taken, which `_record`
+        keeps strictly increasing within a sequence: at 10 Hz a plan reads 22 frames,
+        16 of them read by an earlier plan, and resizing one is 30-40 ms.
+        """
         intrinsics = np.asarray(frame.camera2image[camera], dtype=np.float64)
         fx, cx, cy = float(intrinsics[0, 0]), float(intrinsics[0, 2]), float(intrinsics[1, 2])
         path = frame.image_paths.get(camera)
-        key = (path, hfov, fx, cx, cy) if path else (id(frame), camera, hfov)
-        cache = self._warped if path else memo
+        cache = self._warped if path else self._held
+        key = (path, hfov, fx, cx, cy) if path else (frame.timestamp_us, camera, hfov, fx, cx, cy)
         if key in cache:
             self._warp_hits += 1
             if path:
@@ -297,30 +318,48 @@ class Alpamayo2EdgePolicy(Policy):
 
     def build_sample(self) -> Sample:
         """The recorded sequence as Edge's input. Raises if a camera Edge needs never arrived:
-        the vendor requires all six IDs, and a black frame would be a claim the source never made."""
+        the vendor requires all six IDs, and a black frame would be a claim the source never made.
+        With `ABSENT_CAMERAS=black` that slot instead gets a black frame at each time it asks
+        for, taken on the frames the source did send, and is named in `black_slots`."""
         if not self._frames:
             raise RuntimeError("no frame has been recorded")
         frames = self._frames
         now_us = frames[-1].timestamp_us
-        memo: dict = {}
-        images, ids, stamps, chosen_times = [], [], [], {}
+        images, ids, stamps, chosen_times, black = [], [], [], {}, []
         for camera_id, camera, hfov in inputs.SLOTS:
             carrying = [frame for frame in frames if _has(frame, camera)]
             if not carrying:
-                raise ValueError(
-                    f"Edge's camera {camera_id} is filled from {camera}, which this source did not send"
+                if self.settings.absent_cameras != "black":
+                    raise ValueError(
+                        f"Edge's camera {camera_id} is filled from {camera}, which this source did not "
+                        f"send (set {PREFIX}ABSENT_CAMERAS=black to feed it black frames)"
+                    )
+                black.append(camera_id)
+                times = [frame.timestamp_us / 1e6 for frame in frames]
+                picks = inputs.select_frames(
+                    times, inputs.offsets_for(camera_id), self.settings.frames, now_us / 1e6
                 )
+                for i in picks:
+                    images.append(BLACK_FRAME)
+                    ids.append(camera_id)
+                    stamps.append(frames[i].timestamp_us)
+                chosen_times[camera_id] = [round((frames[i].timestamp_us - now_us) / 1e6, 3) for i in picks]
+                continue
             times = [frame.timestamp_us / 1e6 for frame in carrying]
             picks = inputs.select_frames(
                 times, inputs.offsets_for(camera_id), self.settings.frames, now_us / 1e6
             )
             chosen = [carrying[i] for i in picks]
             for frame in chosen:
-                images.append(self._warp(frame, camera, hfov, memo))
+                images.append(self._warp(frame, camera, hfov))
                 ids.append(camera_id)
                 stamps.append(frame.timestamp_us)
             chosen_times[camera_id] = [round((frame.timestamp_us - now_us) / 1e6, 3) for frame in chosen]
             self._slot_geometry(camera_id, chosen[-1], camera, hfov)
+        # Kept for the 2 s the slots look back, 21 frames at 10 Hz. An older frame that a slot
+        # reads again for want of a newer one, as on a source slower than 0.5 Hz, is resized again.
+        oldest_us = now_us - int(round((max(map(abs, inputs.FRONT_OFFSETS_S)) + inputs.JITTER_S) * 1e6))
+        self._held = {key: image for key, image in self._held.items() if key[0] >= oldest_us}
         times = [frame.timestamp_us / 1e6 for frame in frames]
         poses = np.stack([np.asarray(frame.ego2world, dtype=np.float64) for frame in frames])
         # Measured velocity, ego frame -> world frame (NAVSIM's EgoStatus, the CAN bus elsewhere).
@@ -348,6 +387,7 @@ class Alpamayo2EdgePolicy(Policy):
             nav_text=text,
             frame_times_s=chosen_times,
             extrapolated_s=inputs.history_before_first_frame_s(times),
+            black_slots=black,
         )
 
     # -- the model ----------------------------------------------------------------
@@ -400,6 +440,7 @@ class Alpamayo2EdgePolicy(Policy):
         reach = float(np.linalg.norm(plan[-1, :2]))
         self._last = {
             "nav_text": sample.nav_text,
+            "black_slots": sample.black_slots,
             "frame_times_s": sample.frame_times_s,
             "history_extrapolated_s": sample.extrapolated_s,
             "reasoning": reasoning[:REASONING_CHARS],
@@ -443,6 +484,8 @@ class Alpamayo2EdgePolicy(Policy):
             ),
             "warp_cache": {
                 "entries": len(self._warped),
+                # This sequence's frames that came as pixels, kept while a slot may still read them.
+                "held": len(self._held),
                 "hits": self._warp_hits,
                 "misses": self._warp_misses,
             },

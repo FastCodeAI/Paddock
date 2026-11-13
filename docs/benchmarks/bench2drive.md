@@ -8,7 +8,7 @@
 | Dataset | rendered by the simulator |
 | Primary metric | `driving_score` |
 | Adapter | [`adapters/benchmarks/bench2drive/`](../../src/paddock/adapters/benchmarks/bench2drive/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -24,9 +24,12 @@ their own rates); see
 Closed-loop, like neuroNCAP: the model decides what happens next and errors
 compound. The model runs behind paddock's HTTP policy node; the adapter spawns the
 leaderboard evaluator per route and points a model-agnostic `AutonomousAgent`
-(`agent.py`) at that node. Waypoints come back on paddock's 0.5 s grid and are
-tracked by the Bench2Drive dual-PID controller, reimplemented in `pid.py` (see
-*Notes*).
+(`agent.py`) at that node. The controller reads every plan at its own points
+0.5, 1.0, ... 3.0 s ahead (`pid.on_grid`): a plan 0.5 s apart point for point,
+and Alpamayo 2 Edge's, 0.1 s apart, at every fifth point; nothing is
+interpolated, and a model whose spacing does not divide 0.5 s is refused before
+anything launches. It tracks them with the Bench2Drive dual-PID controller,
+reimplemented in `pid.py` (see *Notes*).
 
 ## What it measures
 
@@ -132,7 +135,7 @@ So do the `stop_*` settings, whose rules the run's notes also state, and a
 (`model.yaml`, `capabilities`). The client asks the node once per
 1/`planning_hz` seconds and follows the last plan unchanged in between; a model
 without it is asked every 0.05 s tick. Drive-JEPA declares 2 Hz, AutoE2E 10 Hz, METEOR 5 Hz,
-Alpamayo 1.5 10 Hz. The rate is
+Alpamayo 1.5 10 Hz, Alpamayo 2 Edge 10 Hz. The rate is
 recorded as `config.infer_hz` and hashed into the run id, and the host's
 `PADDOCK_INFER_HZ` overrides it for every model. Where that replaces the model's
 own rate, the run records the declared rate beside it (`config.planning_hz`) and
@@ -403,7 +406,7 @@ per-tick `log.csv`, and the analysis record (`recorder.py`):
 
 | file | what |
 |---|---|
-| `ticks.jsonl` | one line per tick: the node's whole reply (every waypoint, every `extras` field), what it was sent besides pixels (command, navigation, the `route_xy` polyline, speed), the actuation and `/infer` latency, and state the model never sees: actors within 60 m, the lane under the ego, progress along the route, the next light and stop sign |
+| `ticks.jsonl` | one line per tick: the six plan points the controller followed, 0.5 s apart (for a model that plans 0.5 s apart, the reply's `trajectory`; for Alpamayo 2 Edge, every fifth of its 64 points, so its other 58 are in no record), every `extras` field of the reply, what it was sent besides pixels (command, navigation, the `route_xy` polyline, speed), the actuation and `/infer` latency, and state the model never sees: actors within 60 m, the lane under the ego, progress along the route, the next light and stop sign |
 | `route_plan.json` | the leaderboard's route at its own 1 m spacing, with the lights and stop signs on it |
 | `actors.jsonl` | blueprint, role and extent of each actor, once |
 | `model_<camera>/` | quarter-size thumbnails of every camera the model reads, at 10 Hz (openpilot's pair as `model_road` / `model_wide`) |
@@ -748,6 +751,10 @@ What every run here depends on, beyond the leaderboard's own rules.
   1 m/s) and runs on the CUDA provider with two threads.
 * **Alpamayo** receives the route as its navigation text ("Turn left in 37m")
   and samples with the reference notebook's settings.
+* **Alpamayo 2 Edge** receives the same sentence and reads five of paddock's
+  cameras plus a telephoto crop of the front one, at its declared 10 Hz. It plans
+  64 points 0.1 s apart, and the controller follows every fifth, its points at 0.5
+  to 3 s ([alpamayo2edge.md](../models/alpamayo2edge.md#how-a-bench2drive-route-becomes-that-input)).
 * **Drive-JEPA** is the released NAVSIM-v2 checkpoint transferred zero-shot to
   CARLA. The paper's Bench2Drive result (DS 64.52) comes from a
   Bench2Drive-trained variant whose configs are in the repo but whose data
@@ -883,6 +890,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 | METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
 | AutoE2E | 216/220 | 14.36 | 27.80 | 0.548 | 79.63 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
 | Alpamayo 1.5 | 216/220 | 37.66 | 56.49 | 0.740 | 40.74 | 2.78 | 161.32 | 51.83 | `full220-836dda734659a86c-f81033` |
+| Alpamayo 2 Edge | 216/220 | 13.74 | 38.84 | 0.481 | 65.74 | 0.00 | 140.89 | 63.56 | `full220-836dda734659a86c-56db50` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
@@ -892,6 +900,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 | METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
 | AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
 | Alpamayo 1.5 | 1.32 | 4.44 | 3.33 | 10.00 | 52.13 | 14.24 |
+| Alpamayo 2 Edge | 0.00 | 0.00 | 0.00 | 0.00 | 55.32 | 11.06 |
 
 A route counts towards an ability by its scenario, the same for every model:
 Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
@@ -937,6 +946,17 @@ its first attempt. It completes 53 of its 216 routes, more than any other model
 here, and is second to openpilot on driving score: 88 routes have a collision, and
 the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
 best ability is Traffic signs, 49 of 94 routes.
+
+**Alpamayo 2 Edge** is asked at its declared 10 Hz, the last plan followed in between,
+with five of paddock's cameras, a telephoto crop of the front one, and the route as
+navigation text; the controller follows its plan's own points every 0.5 s. CARLA
+crashed once, on route 23670's first attempt, 66 s in, and the route scored on its
+next. It completes 16 of its 216 routes, and none is a success: each of the 16 has an
+infraction, and 142 of the 216 routes have a collision. Its median route completion
+is 35%, and 19 routes end under 1%. The 30 s rule ended 166 routes and the
+over-time rule 14. Its one ability credit is Traffic signs, for 52 of 94 routes that
+got past their first junction with no red light or stop sign run, the most of any
+model here (Alpamayo 1.5: 49).
 
 ### The 50 routes are not a sample of the 220
 

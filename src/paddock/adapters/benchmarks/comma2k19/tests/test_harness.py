@@ -1115,7 +1115,7 @@ def test_a_model_below_the_configured_rate_is_refused_before_it_loads(monkeypatc
 
     monkeypatch.delenv(ENV_INPUT_HZ, raising=False)
     monkeypatch.delenv(ENV_ALLOW_SLOW, raising=False)
-    model = type("M", (), {"name": "openpilot", "min_input_hz": 10.0})()
+    model = type("M", (), {"name": "openpilot", "min_input_hz": 10.0, "waypoint_dt": 0.5})()
 
     assert _bench().model_problems(model) == []
     assert _bench(input_hz=10.0).model_problems(model) == []
@@ -1192,6 +1192,42 @@ def test_scoring_pairs_by_time_not_by_index():
     # Index pairing on the same input would have looked like a large error.
     naive = float(np.linalg.norm(fine.xy[:20] - gt, axis=1).mean())
     assert naive > 10.0
+
+
+def test_a_fine_plan_is_scored_on_its_own_half_second_points():
+    """Alpamayo 2 Edge's 64 points 0.1 s apart score exactly as their every fifth point
+    0.5 s apart: the points between are not scored, and the truth is not interpolated
+    onto the finer grid. Its in-between points here wander off the path to prove it."""
+    from paddock.adapters.benchmarks.comma2k19.harness import INTERVAL_S, N_GT_POSES
+    from paddock.benchmark import Sample
+    from paddock.policy.protocol import Trajectory
+
+    gt_t = INTERVAL_S * np.arange(1, N_GT_POSES + 1)
+    gt = np.stack([20.0 * gt_t, 0.3 * gt_t**2], axis=1)
+    sample = Sample(sample_id="t", observations=[], ground_truth=gt)
+
+    t = 0.1 * np.arange(1, 65)
+    xy = np.stack([19.0 * t, 0.25 * t**2], axis=1)
+    off_grid = (np.arange(1, 65) % 5) != 0
+    xy[off_grid, 1] += 5.0  # only the points between the 0.5 s ones are moved
+    fine = _bench().score(sample, Trajectory(xy, dt=0.1))
+    coarse = _bench().score(sample, Trajectory(xy[4::5], dt=INTERVAL_S))
+
+    trajectory_keys = [k for k in coarse if k.startswith(("ade", "fde")) or k.endswith("_mae")]
+    assert trajectory_keys
+    for key in [*trajectory_keys, "scored_horizon_s"]:
+        assert fine[key] == pytest.approx(coarse[key], nan_ok=True, abs=1e-12), key
+
+
+@pytest.mark.parametrize(("dt", "refused"), [(0.5, False), (0.1, False), (0.25, False), (0.2, True)])
+def test_a_plan_spacing_off_the_half_second_grid_is_refused_before_loading(dt, refused):
+    from types import SimpleNamespace
+
+    model = SimpleNamespace(name="m", waypoint_dt=dt, min_input_hz=0.0)
+    problems = _bench().model_problems(model)
+    assert bool(problems) is refused
+    if refused:
+        assert "must divide 0.5 s" in problems[0]
 
 
 def test_a_plan_past_the_recorded_future_is_trimmed_not_extrapolated():

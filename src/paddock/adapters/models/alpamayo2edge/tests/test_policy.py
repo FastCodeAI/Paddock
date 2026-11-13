@@ -191,6 +191,29 @@ def test_a_camera_the_source_never_sent_is_named(tmp_path: Path) -> None:
         _loaded().infer_sequence(_sequence(tmp_path, cameras=cameras))
 
 
+def test_absent_cameras_black_feeds_their_slots_black_at_the_times_they_ask_for(tmp_path: Path) -> None:
+    """comma2k19's one camera: the front and telephoto slots are real, the other four black,
+    each black frame stamped like a real one would be, and the four named."""
+    policy = _loaded(Settings(absent_cameras="black"))
+    policy.infer_sequence(_sequence(tmp_path, cameras=("CAM_FRONT",)))
+    sample = policy.runs[-1]
+    assert sorted(sample.black_slots) == [0, 2, 3, 5]
+    assert len(sample.frames) == len(sample.camera_ids) == len(sample.timestamps_us) == 22
+    for camera_id, frame in zip(sample.camera_ids, sample.frames, strict=True):
+        assert bool(frame.max() == 0) is (int(camera_id) in sample.black_slots)
+    # A black slot's frames are taken at the source's own frame times, as a real one's are.
+    assert sample.frame_times_s[0] == sample.frame_times_s[3] == sample.frame_times_s[5]
+    assert policy.diagnostics()["last"]["black_slots"] == sample.black_slots
+
+
+def test_with_every_camera_present_black_changes_nothing(tmp_path: Path) -> None:
+    refuse, black = _loaded(), _loaded(Settings(absent_cameras="black"))
+    refuse.infer_sequence(_sequence(tmp_path))
+    black.infer_sequence(_sequence(tmp_path))
+    assert black.runs[-1].black_slots == []
+    np.testing.assert_array_equal(black.runs[-1].frames, refuse.runs[-1].frames)
+
+
 def test_a_straight_command_is_continue_straight(tmp_path: Path) -> None:
     policy = _loaded()
     policy.infer_sequence(_sequence(tmp_path, command=Command.STRAIGHT))
@@ -272,7 +295,8 @@ def test_diagnostics_answer_before_load_and_report_the_last_plan(tmp_path: Path)
 
 
 def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
-    assert Settings.from_env({}) == Settings() == Settings("nearest", "hermite", 1, 43, None, False)
+    default = Settings("nearest", "hermite", 1, 43, None, False, "refuse")
+    assert Settings.from_env({}) == Settings() == default
     env = {
         "ALPAMAYO2_EDGE_FRAMES": "distinct",
         "ALPAMAYO2_EDGE_HISTORY": "linear",
@@ -280,17 +304,107 @@ def test_settings_default_to_the_vendors_and_read_the_environment() -> None:
         "ALPAMAYO2_EDGE_SEED": "7",
         "ALPAMAYO2_EDGE_NAV_DISTANCE_M": "25",
         "ALPAMAYO2_EDGE_SAVE_REASONING": "1",
+        "ALPAMAYO2_EDGE_ABSENT_CAMERAS": "black",
     }
-    assert Settings.from_env(env) == Settings("distinct", "linear", 6, 7, 25.0, True)
+    assert Settings.from_env(env) == Settings("distinct", "linear", 6, 7, 25.0, True, "black")
 
 
 @pytest.mark.parametrize(
     "name,value",
-    [("FRAMES", "grid"), ("HISTORY", "clamp"), ("SAMPLES", "0"), ("NAV_DISTANCE_M", "-5"), ("SEED", "x")],
+    [
+        ("FRAMES", "grid"),
+        ("HISTORY", "clamp"),
+        ("SAMPLES", "0"),
+        ("NAV_DISTANCE_M", "-5"),
+        ("SEED", "x"),
+        ("ABSENT_CAMERAS", "grey"),
+    ],
 )
 def test_a_bad_setting_stops_the_node(name: str, value: str) -> None:
     with pytest.raises(ValueError):
         Settings.from_env({f"ALPAMAYO2_EDGE_{name}": value})
+
+
+# -- closed loop: Bench2Drive's client ---------------------------------------------------
+
+#: Where paddock's Bench2Drive cameras point, degrees left of forward (bench2drive/rig.py);
+#: each is 70 deg wide. Rendered at a tenth of their 800x450.
+B2D_BEARINGS = {
+    "CAM_FRONT": 0,
+    "CAM_FRONT_LEFT": 55,
+    "CAM_FRONT_RIGHT": -55,
+    "CAM_BACK_LEFT": 110,
+    "CAM_BACK_RIGHT": -110,
+}
+B2D_WIDTH, B2D_HEIGHT, B2D_FOV = 80, 45, 70.0
+
+
+def _b2d_frame(t: float, rng, speed: float = SPEED) -> Observation:
+    """One request of Bench2Drive's client: each camera's pixels in the body, no file, and the
+    route's next maneuver and how far along the route it is."""
+    fx = B2D_WIDTH / 2 / math.tan(math.radians(B2D_FOV / 2))
+    intrinsics = np.array([[fx, 0.0, B2D_WIDTH / 2], [0.0, fx, B2D_HEIGHT / 2], [0.0, 0.0, 1.0]])
+    canbus = np.zeros(18)
+    canbus[CANBUS_VELOCITY] = speed
+    return Observation(
+        images={c: rng.integers(0, 255, (B2D_HEIGHT, B2D_WIDTH, 3), dtype=np.uint8) for c in inputs.CAMERAS},
+        ego2world=_pose(t),
+        canbus=canbus,
+        timestamp_us=int(round(t * 1e6)),
+        command=Command.FOLLOW_REFERENCE,
+        nav_maneuver="TURN_LEFT",
+        nav_distance_m=37.4,
+        camera2image={c: intrinsics for c in inputs.CAMERAS},
+        camera2ego={c: _camera2ego(B2D_BEARINGS[c]) for c in inputs.CAMERAS},
+    )
+
+
+@pytest.fixture
+def no_resize(monkeypatch):
+    """Resizing to 1920x1080 is 30-40 ms a frame; these tests are about which frames are read."""
+    monkeypatch.setattr(inputs, "warp", lambda image, fx, cx, cy, hfov=None: np.zeros((9, 16, 3), np.uint8))
+
+
+def test_a_closed_loop_client_at_ten_hertz_fills_every_slot_with_its_own_frame(no_resize) -> None:
+    """Asked every 0.1 s (`planning_hz`), the client hands Edge exactly the frames its slots ask
+    for once 2 s have passed, and the route's next turn with its distance."""
+    policy, rng = _loaded(), np.random.default_rng(0)
+    for k in range(21):  # Bench2Drive's first tick is at 0.05 s; a plan every 0.1 s, 2 s of them
+        plan = policy.infer(_b2d_frame(0.05 + 0.1 * k, rng))
+    sample = policy.runs[-1]
+    for camera_id in (1, 6):
+        assert sample.frame_times_s[camera_id] == [-2.0, -1.0, -0.5, -0.1, 0.0]
+    for camera_id in (0, 2, 3, 5):
+        assert sample.frame_times_s[camera_id] == [-1.0, -0.1, 0.0]
+    assert sample.extrapolated_s == 0.0, "the pose history is the one recorded, none of it continued"
+    assert sample.nav_text == "Turn left in 37m"
+    assert plan.dt == 0.1 and len(plan.waypoints) == inputs.PLAN_STEPS
+
+
+def test_a_frame_sent_as_pixels_is_resized_once_not_once_per_plan_that_reads_it(no_resize) -> None:
+    """Each plan reads 22 frames, 6 of them new; the other 16 are resized frames kept from an
+    earlier plan. Before, with no file to know a frame by, all 22 were resized again."""
+    policy, rng = _loaded(), np.random.default_rng(0)
+    for k in range(25):
+        policy.infer(_b2d_frame(0.05 + 0.1 * k, rng))
+        assert policy._warp_misses == 6 * (k + 1), f"plan {k + 1}"
+    assert policy._warp_hits == 22 * 25 - 6 * 25
+
+
+def test_a_route_starts_from_its_first_frame_with_the_car_at_rest(no_resize) -> None:
+    """The first plan of a route has one frame: every slot reads it, and the 1.9 s of history
+    before it is the car standing where it is. A reset between routes forgets the last one,
+    though the next route's clock starts again at the same time."""
+    policy, rng = _loaded(), np.random.default_rng(0)
+    for k in range(5):
+        policy.infer(_b2d_frame(0.05 + 0.1 * k, rng))
+    policy.reset()
+    policy.infer(_b2d_frame(0.05, rng, speed=0.0))
+    sample = policy.runs[-1]
+    assert all(times == [0.0] * len(times) for times in sample.frame_times_s.values())
+    assert sample.extrapolated_s == pytest.approx(1.9)
+    assert np.allclose(sample.history_xyz, 0.0) and np.allclose(sample.history_rot, np.eye(3))
+    assert policy._warp_misses == 6 * 6, "the new route's first frame is resized, not the last route's taken"
 
 
 # -- model.yaml agrees with the policy ------------------------------------------------
@@ -311,6 +425,8 @@ def test_model_yaml_declares_the_cameras_and_spacing_the_policy_uses() -> None:
     # The README's models picture draws the camera frames at the card's times.
     assert spec.camera_frame_times_s == inputs.FRONT_OFFSETS_S
     assert spec.history_frames == len(inputs.FRONT_OFFSETS_S)
+    # A closed-loop client asks once per frame of the 0.1 s grid the slots and poses are on.
+    assert spec.planning_hz == pytest.approx(1 / inputs.HISTORY_DT_S)
 
 
 def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_through() -> None:
@@ -323,6 +439,21 @@ def test_model_yaml_declares_the_policys_defaults_and_passes_every_setting_throu
     knobs = {f"ALPAMAYO2_EDGE_{name.upper()}" for name in Settings.__dataclass_fields__}
     assert knobs == set(spec.runtime.env_passthrough)
     assert set(spec.runtime.tuning_env) == {"ALPAMAYO2_EDGE_SAVE_REASONING"}
+    # The one setting a site may change and stay ranked, with the line the report prints.
+    assert spec.ranked_with_note == ("ALPAMAYO2_EDGE_ABSENT_CAMERAS",)
+    assert "{value}" in spec.score_notes["ALPAMAYO2_EDGE_ABSENT_CAMERAS"]
+
+
+def test_model_yaml_caps_the_nodes_cpu_threads_with_a_speed_only_setting() -> None:
+    """Torch takes every core by default, and on a box shared with CARLA the vendor's processor
+    then took 1.4 s a plan against 0.18 s with 4 threads. OMP_NUM_THREADS is the runner's own
+    speed-only key for every model: the value in model.yaml is in no run id, and a site's value
+    keeps its run ranked."""
+    from paddock.runner import THREAD_ENV, _declared_env
+
+    spec = _spec()
+    assert spec.runtime.env["OMP_NUM_THREADS"] == "4"
+    assert "OMP_NUM_THREADS" in THREAD_ENV and "OMP_NUM_THREADS" not in _declared_env(spec)
 
 
 # -- a rationale that never reaches the trajectory ------------------------------------

@@ -1,7 +1,7 @@
 # Paddock leaderboard
 
-102 runs across 10 benchmarks.
-66 run(s) excluded as invalid — shown at the end, never averaged in.
+108 runs across 10 benchmarks.
+65 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
 
@@ -38,6 +38,7 @@
 | openpilot | full220-836dda734659a86c-2803bd | 216 | 43.422 | 55.145 | 0.813 | 0.227 | 1.000 | 0.000 | 317.833 |
 | alpamayo15 | full220-836dda734659a86c-f81033 | 216 | 37.663 | 56.494 | 0.740 | 0.407 | 1.000 | 0.000 | 1692.810 |
 | autoe2e | full220-836dda734659a86c-63902e | 216 | 14.363 | 27.804 | 0.548 | 0.796 | 1.000 | 0.000 | 2590.377 |
+| alpamayo2edge | full220-836dda734659a86c-56db50 | 216 | 13.740 | 38.839 | 0.481 | 0.657 | 1.000 | 0.000 | 1373.664 |
 | meteor | full220-836dda734659a86c-dda00e | 216 | 1.922 | 5.397 | 0.925 | 0.120 | 1.000 | 0.000 | 250.255 |
 
 ### n = 50, scene set 40c29d24
@@ -75,6 +76,7 @@
 
 | model | run | n | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | scored_horizon_s | ade@1s ↓ | ade@2s ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo2edge [1] | 20261112T012152-9b1e09 | 10165 | 0.438 | 0.130 | 0.462 | 1.013 | 6.000 | 0.086 | 0.225 |
 | qwendrive | 20261106T030530-7d9fd3 | 10165 | 0.589 | 0.212 | 0.615 | 1.316 | 5.000 | 0.154 | 0.326 |
 | alpamayo15 | 20261106T005600-6c52a2 | 10165 | 0.819 | 0.238 | 0.888 | 1.864 | 4.000 | 0.152 | 0.427 |
 | openpilot | 20261106T003719-5cde54 | 10165 | 0.843 | 0.407 | 0.938 | 1.611 | 10.000 | 0.299 | 0.548 |
@@ -83,6 +85,8 @@
 | visionpilot | 20261106T003749-c10a7f | 10165 | 3.592 | 1.372 | 4.010 | 7.415 | 4.000 | 0.964 | 2.126 |
 | drivejepa | 20261106T192049-391e2d | 10165 | 18.754 | 10.328 | 21.648 | 32.893 | 4.000 | 7.474 | 13.080 |
 | meteor | 20261106T064120-226c00 | 10165 | 30.167 | 16.702 | 35.804 | 51.507 | 3.000 | 11.841 | 21.621 |
+
+- [1] alpamayo2edge: slots with no source camera fed black frames; the front and telephoto real
 
 ## hugsim
 
@@ -94,6 +98,8 @@
 
 | model | run | n | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | inference_seconds ↓ | baseline_ade_drivejepa ↓ | min_ade@6 ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo2edge | 20261111T230906-22b8a7 | 223 | 0.752 | 0.400 | 0.847 | 1.393 | - | - | - |
+| alpamayo2edge | 20261111T223048-778679 | 223 | 0.762 | 0.400 | 0.855 | 1.423 | - | - | - |
 | qwendrive | 20260914T220841-5a91fd | 223 | 0.806 | 0.289 | 0.852 | 1.777 | - | - | - |
 | autoe2e | 20261020T220642-d63624 | 223 | 0.837 | 0.274 | 0.885 | 1.886 | - | - | - |
 | autoe2e | 20261020T220509-dee848 | 223 | 0.847 | 0.280 | 0.897 | 1.903 | - | - | - |
@@ -162,6 +168,7 @@
 | openpilot | 20260905T055713-11ac59 | 200 | 3.604 | 2.698 | 8.604 | 0.380 |
 | drivejepa | 20260905T220225-f11ac0 | 200 | 3.568 | 2.229 | 8.604 | 0.455 |
 | autoe2e | 20261026T233951-743060 | 200 | 3.162 | 3.721 | 8.604 | 0.420 |
+| alpamayo2edge | 20261111T231934-33adca | 200 | 2.918 | 3.634 | 8.604 | 0.540 |
 | meteor | 20260915T193036-d34559 | 200 | 2.644 | 5.051 | 8.604 | 0.480 |
 | qwendrive | 20260915T023604-12d5eb | 200 | 2.487 | 4.514 | 8.604 | 0.690 |
 | visionpilot | 20260905T121810-155d36 | 200 | 1.576 | 6.218 | 8.604 | 0.855 |
@@ -186,6 +193,7 @@
 | model | run | n | l2_avg ↓ | l2_1s ↓ | l2_uniad_1s ↓ | col_1s ↓ | col_uniad_1s ↓ | l2_2s ↓ | l2_uniad_2s ↓ |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | qwendrive | 20260915T190350-47479e | 5119 | 0.800 | 0.318 | 0.245 | 0.007 | 0.007 | 0.722 | 0.427 |
+| alpamayo2edge | 20261111T231928-e4e2d6 | 5119 | 1.128 | 0.455 | 0.322 | 0.007 | 0.008 | 1.058 | 0.611 |
 | constant_velocity | 20260914T225156-e5170c | 5119 | 1.288 | 0.372 | 0.260 | 0.008 | 0.008 | 1.151 | 0.594 |
 | constant_velocity | 20260907T093007-9697fe | 5119 | 1.288 | 0.372 | 0.259 | 0.008 | 0.008 | 1.151 | 0.594 |
 | alpamayo15 | 20260905T093547-3dd7cd | 5119 | 1.487 | 0.509 | 0.369 | 0.008 | 0.008 | 1.351 | 0.742 |
@@ -209,7 +217,6 @@
 - **neuroncap/visionpilot/legacy-INVALID_runs1_actor_not_rendered** — marked invalid at the source: the actor was not rendered, so the models were never shown the vehicle they were scored against. See patches/neuro-ncap/0002.
 - **navsim/drivejepa/legacy-2026.08.08.02.26.44** — aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.
 - **hugsim/drivejepa/campaign-87d4f5097a85db3c-ce3603** — Released Drive-JEPA (NAVSIM v2 ViT-L checkpoint), driven 22 Oct 2026 in two lanes sharing one scenario queue. The node was the drivejepa adapter as of paddock ac7788f plus a per-call record of the 32 candidates and their scores, which does not change the plan; its camera placement goes through lidar2ego, which the bridge sends as the identity, so the cameras land where ac7788f puts them. At that commit the adapter fed cameras uncropped and picked on the plain score; main now crops to the OpenScene camera (#106) and turns momentum selection on (#95), so a re-run on main would differ. Only the front camera was rendered: the released model's forward reads only the front camera. DRIVEJEPA_IMAGE_GEOMETRY, DRIVEJEPA_MOMENTUM were supplied by the ingest config: the campaign recorded no model env, so this is the operator's statement of how the node was configured, not a reading from it. scenarios attempted and never scored: scene-0166-medium-01 (exit 1 after 60 steps: IndexError: index is out of bounds for dimension with size 0).
-- **nuplan/alpamayo15/20261112T234833-9049e6** — site env override may change what was measured: ALPAMAYO_COSMOS (values in config.model_env)
 - **nuplan/drivejepa/20261112T012946-7361a6** — site env override may change what was measured: PYTHONNOUSERSITE (values in config.model_env)
 - **nuplan/openpilot/20261112T004253-422776** — site env override may change what was measured: CACHEDB, PADDOCK_FFMPEG, PYTHONNOUSERSITE, XDG_CACHE_HOME (values in config.model_env)
 - **navsim/alpamayo2edge/20261111T031938-f9f90a** — 2 scenario(s) failed in the scorer and are excluded
