@@ -778,8 +778,11 @@ failure.
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.466 | 0.650 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.640 | 0.766 |
 | visionpilot (synthesised trajectory) | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.747 | 0.676 |
+| vad (`VAD_base`, the road camera as CAM_FRONT, five slots black) | 3 s | 5.759 | 9.682 | 13.658 | — | — | — | 23.621 | 16.093 | 0.846 | 0.781 |
 | drivejepa (perception-based agent, NAVSIM v2; the road camera in 1 of 4 slots) | 4 s | 7.474 | 13.080 | 18.754 | 24.385 | — | — | 32.893 | 23.401 | 0.852 | 0.620 |
 | meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.892 | 0.034 |
+
+**VAD plans no faster than about 18 m/s,** the top of the nuScenes city driving it was trained on (run `20261112T213250-61c395`, all 10,165 keyframes). Where the recorded path averages 25 m/s or more over the next 3 s, its plan's median speed is 18.4 m/s. Two thirds of comma2k19's keyframes (6,689 of 10,165) average 20 m/s or more, and there its median ADE@3s is 20.27 m; below 20 m/s it is 1.36 m. The same ceiling showed in UniAD's partial run, whose full run is still going.
 
 The drivejepa row above is `20261106T192049-391e2d`, in which momentum was on and
 could not act: each sample reset the node. It is retired by the momentum-aware run

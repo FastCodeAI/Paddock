@@ -1,0 +1,136 @@
+{
+  "run_id": "20261112T213250-61c395",
+  "site": "uvcomma-fastcode-shakaal",
+  "benchmark": "comma2k19",
+  "model": "vad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-13T09:09:44+00:00",
+  "duration_s": 6667.7,
+  "repo_sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff",
+    "n_expected": 10165
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_RIGHT",
+      "CAM_FRONT_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "ground_truth_frame": "car (recorded future rotated by the route calibration)",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "ego_history_frame": "car (window poses rotated by the route calibration)",
+    "declared_env": {
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1",
+      "VAD_CHECKPOINT": "{weights}/vad/VAD_base.pth",
+      "VAD_CONFIG": "{repo}/projects/configs/VAD/VAD_base_stage_2.py"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "VAD",
+      "sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+      "pinned_sha": "1688c4b",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "00935356918b3469d86122bd7895ad8b06b368b9",
+      "dirty": false
+    },
+    "policy": {
+      "episode": 371,
+      "blank_views": [
+        "CAM_FRONT_RIGHT",
+        "CAM_FRONT_LEFT",
+        "CAM_BACK",
+        "CAM_BACK_LEFT",
+        "CAM_BACK_RIGHT"
+      ],
+      "source_size": {
+        "CAM_FRONT_RIGHT": [
+          1600,
+          900
+        ],
+        "CAM_FRONT_LEFT": [
+          1600,
+          900
+        ],
+        "CAM_BACK": [
+          1600,
+          900
+        ],
+        "CAM_FRONT": [
+          1164,
+          874
+        ],
+        "CAM_BACK_LEFT": [
+          1600,
+          900
+        ],
+        "CAM_BACK_RIGHT": [
+          1600,
+          900
+        ]
+      },
+      "quaternion_source": "ego2world",
+      "command": 2,
+      "command_record": {
+        "source": "given",
+        "command": 2,
+        "name": "FORWARD",
+        "given": "STRAIGHT"
+      },
+      "gravity_added": true,
+      "lidar_source": "nominal",
+      "plan_lidar": [
+        [
+          0.034,
+          6.026
+        ],
+        [
+          0.012,
+          12.085
+        ],
+        [
+          -0.039,
+          18.153
+        ],
+        [
+          -0.083,
+          24.165
+        ],
+        [
+          -0.13,
+          30.122
+        ],
+        [
+          -0.211,
+          36.055
+        ]
+      ],
+      "steps": 17,
+      "frames_fed": 17
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "resumed: 7946 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}

@@ -255,6 +255,7 @@ navsim = { run = "navsim/vad/20261110T095855-0ebf09", marks = "P" }
 navhard = { run = "navhard/vad/20261110T185531-0cecc0", marks = "P" }
 navsim_v1 = { run = "navsim_v1/vad/20261112T132424-25e0e5", marks = "P" }
 neuroncap = { run = "neuroncap/vad/20261110T033544-7f435b", marks = "A" }  # its scenes are nuScenes val scenes
+comma2k19 = { run = "comma2k19/vad/20261112T213250-61c395" }  # the road camera as CAM_FRONT, its five other slots black
 alpasim = { run = "alpasim/vad/20261110T153825-72448c" }  # six cameras, re-rendered as nuScenes' rig
 
 [cells.constant_velocity]
