@@ -144,6 +144,7 @@ bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", 
 bench2drive220 = { run = "bench2drive/openpilot/full220-836dda734659a86c-2803bd", marks = "P" }
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
+navhard = { run = "navhard/openpilot/20261113T112649-2fe1d7", note = "2 Hz" }  # below its 10 Hz minimum; each frame shown 10x; CUDA build, ranked with its note
 
 [cells.alpamayo15]
 nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd", marks = "A" }  # five nuScenes-built sets on its card
