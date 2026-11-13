@@ -6,7 +6,9 @@ runtime:
   kind: uv
   python: "3.12"
   venv: "{repo}/.venv"
-  pythonpath: ["{repo}"]
+  # The submodules hold opendbc, msgq, rednose and tinygrad at the pin; the venv does
+  # not install them, so their checkouts go on the path (opendbc is imported by the node).
+  pythonpath: ["{repo}", "{repo}/opendbc_repo", "{repo}/msgq_repo", "{repo}/rednose_repo", "{repo}/tinygrad_repo"]
   cwd: "{repo}"
   env:
     # The NV12 conversion finds ffmpeg in the node's own venv (nv12.py), so no path
