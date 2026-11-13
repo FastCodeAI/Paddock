@@ -133,7 +133,7 @@ driven on the default records exactly what it did before profiles existed.
 How to write one is in
 [adding-a-model.md](../adding-a-model.md#alpasim-settings).
 
-Seven models have a profile. Drive-JEPA's reproduces the settings of
+Eight models have a profile. Drive-JEPA's reproduces the settings of
 Drive-JEPA's native AlpaSim driver (adapter 0.1.4b) so a run through paddock
 can be checked against that driver's runs: one front camera at 20 Hz, a 3.0 s
 replayed warm-up, the shared 20 Hz scoring config and the 30 scenes pinned to
