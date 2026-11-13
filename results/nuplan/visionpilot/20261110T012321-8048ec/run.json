@@ -70,7 +70,7 @@
   },
   "status": "complete",
   "valid": false,
-  "superseded_by": "20261112T004207-8048ec",
-  "notes": "Superseded by 20261112T004207-8048ec: Same settings and numbers as the 12 Nov run; kept for the record.",
+  "superseded_by": "20261113T190336-8048ec",
+  "notes": "Superseded by 20261112T004207-8048ec: Same settings and numbers as the 12 Nov run; kept for the record. Superseded by 20261113T190336-8048ec: Replaced by a clean re-run on 13 Nov; same settings.",
   "ingested_from": ""
 }

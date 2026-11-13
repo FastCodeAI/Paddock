@@ -225,9 +225,9 @@
 - **nuplan/openpilot/20261112T004253-422776** — site env override may change what was measured: CACHEDB, PADDOCK_FFMPEG, PYTHONNOUSERSITE, XDG_CACHE_HOME (values in config.model_env)
 - **nuplan/visionpilot/20261112T004207-8048ec** — Superseded by 20261113T190336-8048ec: Re-run from a clean checkout; same settings.
 - **navsim/alpamayo2edge/20261111T031938-f9f90a** — 2 scenario(s) failed in the scorer and are excluded
-- **nuplan/visionpilot/20261110T012321-8048ec** — Superseded by 20261112T004207-8048ec: Same settings and numbers as the 12 Nov run; kept for the record.
-- **nuplan/meteor/20261110T010424-214b68** — Superseded by 20261112T012837-214b68: Same settings and numbers as the 12 Nov run; kept for the record.
-- **nuplan/constant_velocity/20261110T004701-f827db** — Superseded by 20261112T010902-f827db: Same settings and numbers as the 12 Nov run; kept for the record.
+- **nuplan/visionpilot/20261110T012321-8048ec** — Superseded by 20261112T004207-8048ec: Same settings and numbers as the 12 Nov run; kept for the record. Superseded by 20261113T190336-8048ec: Replaced by a clean re-run on 13 Nov; same settings.
+- **nuplan/meteor/20261110T010424-214b68** — Superseded by 20261112T012837-214b68: Same settings and numbers as the 12 Nov run; kept for the record. Superseded by 20261113T194349-e44306: Replaced by a clean re-run on 13 Nov; same settings.
+- **nuplan/constant_velocity/20261110T004701-f827db** — Superseded by 20261112T010902-f827db: Same settings and numbers as the 12 Nov run; kept for the record. Superseded by 20261113T190322-f827db: Replaced by a clean re-run on 13 Nov; same settings.
 - **comma2k19/drivejepa_free/20261106T053407-587a3e** — Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026.
 - **comma2k19/meteor/20261030T001935-0b8d0b** — Superseded by 20261106T064120-226c00: Re-run on 6 Nov 2026 with the clone at its pinned dc193a81 and scored against the ground truth in the car's frame; this row came from a clone at 8567eb0 and was scored against a ground truth in the camera's frame. The plans are the same in both runs.
 - **nuplan/qwendrive/20261028T044026-02ca5a** — site env override may change what was measured: QWENDRIVE_CHECKPOINT (values in config.model_env)
