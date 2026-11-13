@@ -156,7 +156,10 @@ score_notes:
   WARP_DEV: "tinygrad device {value} for the image warp"
 # Of those, what a site may set and stay ranked. Not the three camera numbers: nothing
 # in the record tells a value measured on the rig from one fitted to the test set. The CUDA
-# build is the same graph on another device, and its record says so in the note.
+# build is the same graph on another device, and its record says so in the note. DEV and
+# WARP_DEV are listed because a site sets them beside PADDOCK_OPENPILOT_CUDA_MODEL (the CUDA
+# path fixes the warp and queue devices in policy.py); the 0.0078 m check covers that build
+# with WARP_DEV=CPU only, not another device for the CPU graph.
 ranked_with_note: [PADDOCK_OPENPILOT_DESIRE, PADDOCK_OPENPILOT_CUDA_MODEL, DEV, WARP_DEV]
 
 benchmarks: [kitscenes, neuroncap, bench2drive, navsim, navhard, nuscenes, comma2k19, nuplan]
