@@ -449,3 +449,29 @@ closed-loop wire and neuroNCAP code are this branch's, but for two things that c
 nothing here: the stride helper was named `wire_stride`, and the adapter did not yet have
 `ALPAMAYO2_EDGE_ABSENT_CAMERAS`, whose default refuses a missing camera as it did then;
 neuroNCAP sends all five.
+
+### Bench2Drive
+
+Every route of `bench2drive220.xml` but the four set aside for every model, driven
+under the [220-route protocol](../benchmarks/bench2drive.md#the-220-route-protocol):
+asked at its declared 10 Hz, routes ended after 30 s without progress or at four times
+the expert's time, up to three attempts a route.
+
+| Routes | Driving score ↑ | Route completion ↑ | Infraction penalty ↑ | Run | How |
+|---|---:|---:|---:|---|---|
+| 216 of 220 | **13.74** | 38.84 % | 0.481 | `bench2drive/alpamayo2edge/full220-836dda734659a86c-56db50` | 4 workers on each of two A100s, 11.6 h |
+
+It ranks fourth of the five models in that column, just below AutoE2E (14.36), and
+behind openpilot (43.42) and Alpamayo 1.5 (37.66). The tables, and Bench2Drive's own
+scores for the record, are in [bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
+
+- **It completes 16 routes, and none is a success.** Each of the 16 has an
+  infraction, and 142 of the 216 routes have a collision.
+- **Its one ability is Traffic signs:** 52 of 94 routes got past their first junction
+  with no red light or stop sign run, the most of any model in the column.
+- **Most routes end on the 30 s rule:** 166 of 216, and 14 on the over-time rule.
+- **The model wrote `<NOMINAL>` in 18 % of plans** (18,069 of 99,399), against 37 %
+  of NAVSIM scenarios, and a rationale in the rest.
+- **One plan was drawn again.**
+- **With eight nodes sharing the two cards,** a plan took 2.1 s in the model at the
+  median, 14.2 s at most.
