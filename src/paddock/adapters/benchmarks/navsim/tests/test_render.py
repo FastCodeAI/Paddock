@@ -12,6 +12,8 @@ import json
 import types
 from pathlib import Path
 
+import numpy as np
+
 from paddock.adapters.benchmarks.navsim import render
 
 
@@ -120,3 +122,119 @@ def test_the_drawing_timeout_is_overridable(monkeypatch) -> None:
     for bad in ("0", "-1", "soon"):
         monkeypatch.setenv(render.ENV_TIMEOUT, bad)
         assert render.render_timeout_s() == float(render.DEFAULT_TIMEOUT_S)
+
+
+# ---------------------------------------------------------------------------
+# videos for the website
+# ---------------------------------------------------------------------------
+
+
+def _scored(model: str, cfg, rows: dict[str, tuple[float, list, list]], floor: bool = False):
+    """A run with dumps and records. `rows`: token -> (EPDMS, driving command, end point)."""
+    _dump(
+        cfg.runs / f"navsim/{model}/r1/chunks/000/trajectories.jsonl",
+        [
+            {
+                "token": token,
+                "log_name": f"log-{token}",
+                "driving_command": command,
+                "navsim_poses": [[end[0] / 2, end[1] / 2, 0.0], [end[0], end[1], 0.0]],
+            }
+            for token, (_, command, end) in rows.items()
+        ],
+    )
+    run = _run(model)
+    run.floor = floor
+    # As the scorer's CSV writes them: Python reprs, not JSON.
+    run.samples = [
+        {"sample_id": f"navsim/navtest/{t}", "native_id": repr({"token": t}), "metrics": repr({"epdms": s})}
+        for t, (s, _, _) in rows.items()
+    ]
+    return run
+
+
+LEFT, STRAIGHT = [1, 0, 0, 0], [0, 1, 0, 0]
+
+
+def _one_frame_logs(monkeypatch) -> None:
+    """Every scenario in a log of its own, and one frame enough to be picked."""
+    monkeypatch.setattr(render, "_order", lambda cfg, log: [log.removeprefix("log-")])
+    monkeypatch.setattr(render, "MIN_FRAMES", 1)
+
+
+def test_showcase_picks_each_kinds_widest_split_breaking_ties_by_where_plans_end(
+    tmp_path, monkeypatch
+) -> None:
+    _one_frame_logs(monkeypatch)
+    cfg = types.SimpleNamespace(runs=tmp_path)
+    a = _scored(
+        "a", cfg, {"t1": (1.0, LEFT, [10, 5]), "t2": (1.0, LEFT, [10, 5]), "t3": (0.0, LEFT, [10, 5])}
+    )
+    # t1 and t2 split the same way; b's plan ends further from a's on t2.
+    b = _scored(
+        "b", cfg, {"t1": (0.0, LEFT, [10, 4]), "t2": (0.0, LEFT, [10, -9]), "t3": (0.0, LEFT, [10, 5])}
+    )
+    picks = render.showcase([a, b], n=1, cfg=cfg)
+    assert picks == [
+        {
+            "sample": "navsim/navtest/t2",
+            "title": "Left turn, scenario t2",
+            "caption": "The left turn the models split on most, at 0.0 s: "
+            "1 of 2 score above 0.9 and 1 score below 0.1.",
+        }
+    ]
+
+
+def test_showcase_leaves_the_floor_out_of_the_picking(tmp_path, monkeypatch) -> None:
+    _one_frame_logs(monkeypatch)
+    cfg = types.SimpleNamespace(runs=tmp_path)
+    a = _scored("a", cfg, {"t1": (0.5, STRAIGHT, [10, 0]), "t2": (0.5, STRAIGHT, [10, 0])})
+    b = _scored("b", cfg, {"t1": (0.5, STRAIGHT, [10, 0]), "t2": (0.4, STRAIGHT, [10, 0])})
+    floor = _scored("cv", cfg, {"t1": (0.0, STRAIGHT, [10, 0]), "t2": (1.0, STRAIGHT, [10, 0])}, floor=True)
+    assert render.showcase([a, b, floor], n=1, cfg=cfg)[0]["sample"] == "navsim/navtest/t2"
+
+
+def test_a_run_whose_dumps_name_no_scenario_cannot_be_drawn(tmp_path) -> None:
+    cfg = types.SimpleNamespace(runs=tmp_path)
+    _dump(tmp_path / "navsim/old/r1/trajectories.jsonl", [{"navsim_poses": [[1.0, 0.0, 0.0]]}])
+    assert not render.drawable(_run("old"), cfg)
+    assert render.drawable(_scored("new", cfg, {"t1": (1.0, LEFT, [5, 0])}), cfg)
+
+
+def test_the_recorded_path_is_in_the_scored_frames_ego_frame() -> None:
+    import math
+
+    def frame(x, y, heading):
+        half = heading / 2
+        return {
+            "ego2global_translation": [x, y, 0.0],
+            "ego2global_rotation": [math.cos(half), 0.0, 0.0, math.sin(half)],  # w, x, y, z
+        }
+
+    # The car faces north (+y in the world) and drives on north, then 2 m west (its left).
+    frames = [
+        frame(100.0, 200.0, math.pi / 2),
+        frame(100.0, 210.0, math.pi / 2),
+        frame(98.0, 220.0, math.pi / 2),
+    ]
+    recorded = render._recorded(frames, 0, 8)
+    assert np.allclose(recorded, [[10.0, 0.0], [20.0, 2.0]])
+    assert render._recorded(frames, 2, 8) is None
+
+
+def test_a_scenario_is_picked_only_inside_a_long_enough_run_of_scored_frames(monkeypatch) -> None:
+    # One log: frames 0-9 all scored, a gap at 10, then 11-13.
+    order = [f"f{k}" for k in range(14)]
+    monkeypatch.setattr(render, "_order", lambda cfg, log: order)
+    tokens = {f"f{k}": f"navsim/navtest/f{k}" for k in [*range(10), 11, 12, 13]}
+    starts = render._starts(None, {"log": tokens})
+    assert set(starts) == {f"navsim/navtest/f{k}" for k in range(10)}  # 11-13 is 1.5 s, under MIN_FRAMES
+    # The clip plays from the run's start, so the pick is that far in.
+    assert starts["navsim/navtest/f6"] == 6 * render.FRAME_S
+
+
+def test_a_clip_is_capped_before_and_after_its_scenario() -> None:
+    always = lambda k: True  # noqa: E731
+    assert render._stretch(always, 50, 100) == (50 - render.BEFORE, 51 + render.AFTER)
+    assert render._stretch(always, 2, 5) == (0, 5)
+    assert render._stretch(lambda k: k != 48, 50, 100) == (49, 51 + render.AFTER)

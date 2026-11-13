@@ -686,6 +686,33 @@ foreign node, and a node that dies during the run is reported after it.
 `PADDOCK_BASE_PORT` gives each concurrent run its own range. This applies to
 any two concurrent paddock runs, not only NAVSIM.
 
+## Watching a scenario, every model's plan on it
+
+navtest scores a log's frames in unbroken runs of a few seconds, with gaps
+between. `paddock render --bench navsim --sample navsim/navtest/<token>` draws the
+run around that scenario: every frame all the given runs planned and were scored
+on, in order, two a second, at most 6 s before it and 4 s after. Each is the
+front camera (CAM_F0) with every run's plan, the eight poses the scorer was
+handed (the run's `trajectories.jsonl` dumps), and the recorded path (blue).
+Beside it are the same lines from above, with each run's score on that frame
+(`render_sample` in [render.py](../../src/paddock/adapters/benchmarks/navsim/render.py)).
+A run whose dumps do not name their scenario, as some early runs' do not, cannot
+be drawn and is left out. The road is drawn 0.35 m below OpenScene's ego origin,
+the rear axle: the median bottom of the cars within 30 m in the first four
+navtest logs. It needs ffmpeg and the dataset's logs and camera blobs, not the
+devkit.
+
+The website's NAVSIM videos come from `python -m tools.site.videos navsim --out
+DIR`, one set for v1 and v2, with v2's scores. For each kind (left, right,
+straight on, from the driving command) the scenario the models split on most
+(standard deviation of their scores), then the one they split on most of all, one
+per log. Only a scenario inside at least 4 s of frames every model was scored on
+can be picked, so its video has a plan on every frame. Not the hardest: a score
+here is mostly 0 or 1, and on 386 of the 12,146 scenarios the five models with
+dumps all score 0. Ties go to the harder scenario, then the one whose plans end
+furthest apart, then the lower id. The table's floor, constant velocity, is not
+counted.
+
 ## Support-matrix results
 
 The per-metric results behind this benchmark's column in the

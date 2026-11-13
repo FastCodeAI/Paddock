@@ -12,16 +12,31 @@ split the harness already makes for scoring. So this module selects the
 scenarios and gathers the plans, then hands a payload to ``draw_scenes.py``
 under the devkit's python. Colour stays paddock's, keyed by model name
 (``viz.palette``), so a model is the same colour here as in every other figure.
+
+The website's videos need no devkit (`viz.moment`): `showcase` picks the
+scenarios and `render_sample` draws the stretch of the log around one, every
+scored frame in order, 2 a second as recorded, each with every model's plan for
+it and the recorded path on the road
+(`paddock render --bench navsim --sample navsim/navtest/<token>`). Both read the
+plans from the dumps (`_dumps`) and the scores from samples.jsonl; `drawable`
+says whether a run kept the dumps.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
+import pickle
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+
+from paddock.adapters.benchmarks.navsim.convert import COMMAND_FROM_ONE_HOT
+from paddock.policy.protocol import Command
+from paddock.viz import moment, palette, video
 
 #: Panels in the comparison grid. Eight fits two rows at a readable size.
 N_SCENES = 8
@@ -150,19 +165,26 @@ def _plans(run, cfg) -> tuple[dict[str, list[list[float]]], dict[str, str]]:
     resampled from whatever the model emitted -- so the figure shows the plan
     that produced the score, not a re-derivation of it.
     """
-    out: dict[str, list[list[float]]] = {}
-    logs: dict[str, str] = {}
-    for path in _dumps(run, cfg):
+    rows = _rows(tuple(_dumps(run, cfg)))
+    return (
+        {token: row["navsim_poses"] for token, row in rows.items()},
+        {token: row["log_name"] for token, row in rows.items() if row.get("log_name")},
+    )
+
+
+@lru_cache(maxsize=32)
+def _rows(dumps: tuple[Path, ...]) -> dict[str, dict]:
+    """token -> its dumped row, later dumps winning. Cached: a run's dumps are read
+    once per picking and once per video otherwise, a few MB each time."""
+    out: dict[str, dict] = {}
+    for path in dumps:
         for line in path.read_text().splitlines():
             if not line:
                 continue
             row = json.loads(line)
-            poses = row.get("navsim_poses")
-            if row.get("token") and poses:
-                out[row["token"]] = poses
-                if row.get("log_name"):
-                    logs[row["token"]] = row["log_name"]
-    return out, logs
+            if row.get("token") and row.get("navsim_poses"):
+                out[row["token"]] = row
+    return out
 
 
 def written_paths(output: str) -> list[Path]:
@@ -228,24 +250,31 @@ def _scores(runs, token: str) -> dict[str, float]:
     found: dict[str, float] = {}
     for run in runs:
         for sample in run.samples:
-            native = sample.get("native_id")
-            if isinstance(native, str):
-                try:
-                    native = json.loads(native.replace("'", '"'))
-                except ValueError:
-                    native = {}
-            if (native or {}).get("token") != token:
+            if _field(sample, "native_id").get("token") != token:
                 continue
-            metrics = sample.get("metrics") or {}
-            if isinstance(metrics, str):
-                try:
-                    metrics = json.loads(metrics.replace("'", '"'))
-                except ValueError:
-                    metrics = {}
-            if "epdms" in metrics or "pdms" in metrics:
-                found[run.model] = float(metrics.get("epdms", metrics.get("pdms")))
+            headline = _headline(sample)
+            if headline is not None:
+                found[run.model] = headline
             break
     return found
+
+
+def _field(sample: dict, key: str) -> dict:
+    """A dict field of a record. The scorer's CSV writes them as Python reprs."""
+    value = sample.get(key) or {}
+    if isinstance(value, str):
+        try:
+            value = json.loads(value.replace("'", '"'))
+        except ValueError:
+            value = {}
+    return value if isinstance(value, dict) else {}
+
+
+def _headline(sample: dict) -> float | None:
+    """EPDMS for a v2 record, PDMS for a v1 one."""
+    metrics = _field(sample, "metrics")
+    value = metrics.get("epdms", metrics.get("pdms"))
+    return None if value is None else float(value)
 
 
 def caption(payload: dict, token: str) -> str:
@@ -309,3 +338,263 @@ def _scenarios(plans: dict[str, dict], logs: dict[str, str], limit: int) -> list
         if token not in chosen:
             chosen.append(token)
     return chosen
+
+
+# ---------------------------------------------------------------------------
+# videos for the website
+# ---------------------------------------------------------------------------
+
+#: How far below the ego origin the road is. OpenScene's ego frame sits at the rear
+#: axle, not on the road: the bottoms of the cars within 30 m of the ego, in the
+#: first four navtest logs, have a median height of -0.35 m.
+GROUND_Z = -0.35
+FRAME_S = 0.5  # OpenScene's logs are 2 Hz
+#: navtest scores a log's frames in unbroken runs of a few seconds, with gaps between.
+#: A scenario is picked only from a run at least this long, and its video plays the run,
+#: at most `BEFORE` frames before the scenario and `AFTER` after it.
+MIN_FRAMES = 8  # 4 s
+BEFORE, AFTER = 12, 8  # 6 s and 4 s
+NOUNS = {"left": "left turn", "right": "right turn", "straight": "moment driving straight on"}
+
+
+def drawable(run, cfg) -> bool:
+    """Whether a run kept the plans a video draws: dumps whose rows name their token."""
+    return bool(_rows(tuple(_dumps(run, cfg))))
+
+
+def showcase(runs, n: int = 4, cfg=None) -> list[dict]:
+    """The left turn, right turn and moment driving straight on that the models
+    disagree on most, then the scenario they disagree on most of all; one per log.
+    See `viz.moment.choose`.
+
+    The score is the run's headline (EPDMS for NAVSIM v2), the kind the driving
+    command the model was given, from its dump. The table's floor, constant
+    velocity, is not counted: it fails every turn, so it would pick only turns.
+
+    Each kind's pick is the scenario the models disagree on most, not the hardest:
+    any collision or wheel off the road scores 0, and on 386 of the 12,146
+    navtest scenarios the five models with dumps all score 0, so "hardest" was
+    a tie broken by the scenario's id.
+
+    Only a scenario inside an unbroken run of at least `MIN_FRAMES` scored frames
+    can be picked, so its video has every model's plan on every frame. That reads
+    each log's frame order, the logs' own pickles (about 12 s for navtest).
+    Returns [{"sample", "title", "caption"}].
+    """
+    scores: dict[str, dict[str, float]] = {}
+    kinds: dict[str, str] = {}
+    places: dict[str, str] = {}
+    ends: dict[str, list] = {}
+    for run in runs:
+        if getattr(run, "floor", False):
+            continue
+        rows = _rows(tuple(_dumps(run, cfg)))
+        for sample in run.samples:
+            token = _field(sample, "native_id").get("token")
+            headline = _headline(sample)
+            row = rows.get(token)
+            if row is None or headline is None or math.isnan(headline):
+                continue
+            sample_id = sample["sample_id"]
+            scores.setdefault(sample_id, {})[run.model] = headline
+            kinds[sample_id] = _kind(row)
+            ends.setdefault(sample_id, []).append(row["navsim_poses"][-1][:2])
+            places[sample_id] = row.get("log_name", token)
+    models = {r.model for r in runs if not getattr(r, "floor", False)}
+    by_log: dict[str, dict[str, str]] = {}
+    for sample_id, by in scores.items():
+        if set(by) == models:  # scored and dumped by every model
+            by_log.setdefault(places[sample_id], {})[_token(sample_id)] = sample_id
+    starts = _starts(cfg, by_log)
+    scores = {s: by for s, by in scores.items() if s in starts}
+    # Scores of 0 or 1 tie on hundreds of scenarios; among those, show the one whose
+    # plans end furthest apart, the measure `_scenarios` uses for the comparison grid.
+    apart = {s: _furthest_apart(points) for s, points in ends.items()}
+    picked = moment.choose(scores, kinds, places, n, higher_is_better=True, first="disagree", tiebreak=apart)
+    if not picked:
+        raise LookupError(
+            "no NAVSIM scenario was scored and dumped by every run given: "
+            + ", ".join(f"{r.model}/{r.run_id} ({len(r.samples)} records)" for r in runs)
+        )
+    return [
+        {
+            "sample": p["sample"],
+            "title": f"{moment.KIND_NAMES.get(p['kind'], 'A moment')}, scenario {_token(p['sample'])[:8]}",
+            "caption": _video_caption(p, starts[p["sample"]]),
+        }
+        for p in picked
+    ]
+
+
+def _starts(cfg, by_log: dict[str, dict[str, str]]) -> dict[str, float]:
+    """sample id -> seconds from its video's first frame to it, for each scenario that
+    sits in an unbroken run of at least `MIN_FRAMES` frames of its log in `by_log`
+    (log -> token -> sample id)."""
+    out: dict[str, float] = {}
+    for log, tokens in by_log.items():
+        order = _order(cfg, log)
+        for i, token in enumerate(order):
+            if token not in tokens:
+                continue
+            start, stop = _stretch(lambda k: order[k] in tokens, i, len(order))  # noqa: B023
+            if stop - start >= MIN_FRAMES:
+                out[tokens[token]] = (i - start) * FRAME_S
+    return out
+
+
+def _order(cfg, log: str) -> list[str]:
+    """The tokens of a log's frames, in the order they were recorded."""
+    from paddock.adapters.benchmarks.navsim.harness import NavsimBenchmark
+    from paddock.registry import Registry
+
+    harness = NavsimBenchmark(Registry.load().benchmarks["navsim"], cfg)
+    with (harness.dataset.resolve() / "navsim_logs" / harness.data_split / f"{log}.pkl").open("rb") as handle:
+        return [f["token"] for f in pickle.load(handle)]
+
+
+def _stretch(ok, i: int, n: int) -> tuple[int, int]:
+    """[start, stop) of the unbroken run of frames `ok` around frame `i`, at most
+    `BEFORE` frames before it and `AFTER` after."""
+    start = i
+    while start > 0 and i - start < BEFORE and ok(start - 1):
+        start -= 1
+    stop = i + 1
+    while stop < n and stop - i <= AFTER and ok(stop):
+        stop += 1
+    return start, stop
+
+
+def _token(sample_id: str) -> str:
+    """navsim/navtest/<token> -> <token>."""
+    return sample_id.rsplit("/", 1)[-1]
+
+
+def _kind(row: dict) -> str:
+    """Left, right or straight: the driving command the model was given, from its dump."""
+    hot = np.asarray(row.get("driving_command") or [0, 0, 0, 1]).ravel()
+    command = Command(COMMAND_FROM_ONE_HOT[int(np.argmax(hot))])
+    return {Command.LEFT: "left", Command.RIGHT: "right", Command.STRAIGHT: "straight"}.get(command, "")
+
+
+def _video_caption(pick: dict, at_s: float) -> str:
+    """How the models split, counted, as AlpaSim's captions do: a score here is mostly 0 or 1.
+    `at_s` is where the scenario is in its video."""
+    where = (
+        f"The {NOUNS.get(pick['kind'], 'moment')} the models split on most"
+        if pick["of_kind"]
+        else "Where the models split most"
+    )
+    values = list(pick["scores"].values())
+    high = sum(v > 0.9 for v in values)
+    low = sum(v < 0.1 for v in values)
+    return f"{where}, at {at_s:.1f} s: {high} of {len(values)} score above 0.9 and {low} score below 0.1."
+
+
+def _furthest_apart(points) -> float:
+    """The largest distance between any two of the plans' end points, metres."""
+    ends = np.asarray(points, dtype=np.float64)
+    if len(ends) < 2:
+        return 0.0
+    return float(np.max(np.linalg.norm(ends[:, None, :] - ends[None, :, :], axis=-1)))
+
+
+def render_sample(runs, sample_id: str, out_dir: Path, cfg) -> list[Path]:
+    """The stretch of the log around one scenario, as a video: every frame in the
+    unbroken run of frames all these runs planned and were scored on (`_stretch`),
+    in order, each with every run's plan for it. The poster is `sample_id`'s frame.
+
+    Writes `<token>.mp4` and a `.jpg` poster.
+    """
+    from paddock.adapters.benchmarks.navsim.harness import NavsimBenchmark
+    from paddock.registry import Registry
+
+    token = _token(sample_id)
+    found = []  # (run, token -> dumped row, token -> score), for the runs with this scenario
+    for run in runs:
+        rows = _rows(tuple(_dumps(run, cfg)))
+        scored = {_field(s, "native_id").get("token"): _headline(s) for s in run.samples}
+        if token in rows and scored.get(token) is not None:
+            found.append((run, rows, scored))
+    if not found:
+        raise LookupError(
+            f"no run given holds a plan for {sample_id}; looked in "
+            + ", ".join(f"{r.model}/{r.run_id}" for r in runs)
+        )
+    log = found[0][1][token].get("log_name")
+    harness = NavsimBenchmark(Registry.load().benchmarks["navsim"], cfg)
+    root = harness.dataset.resolve()
+    frames = _log_frames(root / "navsim_logs" / harness.data_split / f"{log}.pkl")
+    i = next((k for k, f in enumerate(frames) if f["token"] == token), None)
+    if i is None:
+        raise LookupError(f"{token} is not in log {log}")
+
+    def everyone(k: int) -> bool:  # the floor is drawn where it has a plan, never waited for
+        t = frames[k]["token"]
+        return all(
+            t in rows and scored.get(t) is not None
+            for run, rows, scored in found
+            if not getattr(run, "floor", False)
+        )
+
+    start, stop = _stretch(everyone, i, len(frames))
+    blobs = root / "sensor_blobs" / harness.data_split
+    steps = []
+    for k in range(start, stop):
+        t = frames[k]["token"]
+        front = frames[k]["cams"]["CAM_F0"]
+        # OpenScene's lidar frame is its ego frame (convert.LIDAR_IS_EGO), so sensor2lidar is cam2ego.
+        cam2ego = np.eye(4)
+        cam2ego[:3, :3] = np.asarray(front["sensor2lidar_rotation"], dtype=np.float64)
+        cam2ego[:3, 3] = np.asarray(front["sensor2lidar_translation"], dtype=np.float64)
+        steps.append(
+            moment.Step(
+                blobs / front["data_path"],
+                moment.Camera(front["cam_intrinsic"], cam2ego, GROUND_Z, front.get("distortion")),
+                [
+                    moment.Plan(
+                        run.label,
+                        palette.color(run.model),
+                        np.asarray(rows[t]["navsim_poses"])[:, :2],
+                        f"{scored[t]:.2f}",
+                    )
+                    for run, rows, scored in found
+                    if t in rows and scored.get(t) is not None
+                ],
+                _recorded(frames, k, N_POSES),
+                (k - start) * FRAME_S,
+                "the frame this clip was picked for" if k == i else "",
+            )
+        )
+    ffmpeg = video.find_ffmpeg()
+    if not ffmpeg:
+        raise RuntimeError("drawing a video needs ffmpeg: set PADDOCK_FFMPEG or put one on PATH")
+    return moment.write(
+        Path(out_dir) / token,
+        steps,
+        step_s=FRAME_S,
+        title=f"NAVSIM · log {log}",
+        score_name="score, 0 to 1 (higher is better)",
+        ffmpeg=ffmpeg,
+    )
+
+
+@lru_cache(maxsize=8)
+def _log_frames(path: Path) -> list[dict]:
+    with path.open("rb") as handle:
+        return pickle.load(handle)
+
+
+def _recorded(frames: list[dict], i: int, n: int) -> np.ndarray | None:
+    """Where the car went over the next `n` frames, in frame `i`'s ego frame (x forward, y left)."""
+    future = frames[i + 1 : i + 1 + n]
+    if not future:
+        return None
+
+    def pose(frame):
+        w, x, y, z = (float(v) for v in frame["ego2global_rotation"])
+        heading = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+        return np.asarray(frame["ego2global_translation"][:2], dtype=np.float64), heading
+
+    origin, heading = pose(frames[i])
+    back = np.array([[math.cos(heading), math.sin(heading)], [-math.sin(heading), math.cos(heading)]])
+    return np.array([back @ (pose(f)[0] - origin) for f in future])

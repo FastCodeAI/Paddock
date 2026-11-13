@@ -493,6 +493,29 @@ The lesson generalises past this adapter: **anything derived from calibration is
 episode state.** If a model caches it, `reset()` must clear it, and a test should
 say so. `tests/test_policy.py::test_reset_clears_the_camera_adapter` does.
 
+## Watching a scene, every model's plan on it
+
+The sample list scores one to six keyframes a scene, 9 s apart, so there is no
+run of scored keyframes to play as a drive.
+`paddock render --bench kitscenes --sample kitscenes/val/<scene>/40` shows each
+scored keyframe of the scene in turn: the front camera with every run's plan and
+the recorded path (blue) drawn on the road, held for 1 s. Then the next 4 s of the
+recorded drive play at 10 frames a second, with every plan and the recorded path
+held where they lie on the road. The car drives the recorded path past each plan,
+so a plan that is too fast is left ahead of the car and one that turns the wrong
+way leaves the road. Beside it are the same lines from above, with each run's ADE
+on that keyframe (`render_sample` in
+[render.py](../../src/paddock/adapters/benchmarks/kitscenes/render.py)). A held
+plan is drawn on a flat road at the ground offset (`ground_offset_m`), as every
+projection here is. It needs ffmpeg, from `PADDOCK_FFMPEG` or the PATH.
+
+The website's KITScenes videos come from `python -m tools.site.videos kitscenes
+--out DIR`, picked as nuScenes' are: the hardest left turn, right turn and moment
+driving straight on, then the keyframe where the models' errors spread most, one
+per scene, the floor drawn but not counted. The kind is read off the recorded
+path (VAD's rule: more than 2 m to one side at 3 s), because by default the
+models are given no turn command.
+
 ## Support-matrix results
 
 The per-metric results behind this benchmark's column in the
