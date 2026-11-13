@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-108 runs across 9 benchmarks.
+109 runs across 9 benchmarks.
 62 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -37,6 +37,7 @@
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | visionpilot | pooled220-86aa45e768a29a64-9f3c17 | 220 | 46.097 | 66.039 | 0.650 | 0.523 | 1.000 | 0.000 | 301.989 |
 | openpilot | full220-86aa45e768a29a64-102db6 | 220 | 43.871 | 55.961 | 0.811 | 0.232 | 1.000 | 0.000 | 176.775 |
+| constant_velocity [1] | full220-3mps-86aa45e768a29a64-c8f3e4 | 220 | 41.427 | 62.992 | 0.642 | 0.527 | 1.000 | 0.000 | 110.686 |
 | drivejepa | pooled220-86aa45e768a29a64-1507a1 | 220 | 40.742 | 52.674 | 0.827 | 0.241 | 1.000 | 0.000 | 168.731 |
 | alpamayo15 | full220-86aa45e768a29a64-600411 | 220 | 38.221 | 56.775 | 0.744 | 0.400 | 1.000 | 0.000 | 1007.200 |
 | qwendrive | pooled220-86aa45e768a29a64-a23127 | 220 | 27.409 | 61.695 | 0.467 | 0.786 | 1.000 | 0.000 | 227.102 |
@@ -44,6 +45,8 @@
 | vad | full220-86aa45e768a29a64-6cb75d | 220 | 15.582 | 31.454 | 0.672 | 0.527 | 1.000 | 0.000 | 549.497 |
 | autoe2e | full220-86aa45e768a29a64-740c68 | 220 | 14.290 | 27.717 | 0.547 | 0.800 | 1.000 | 0.000 | 594.700 |
 | meteor | full220-86aa45e768a29a64-2144df | 220 | 1.887 | 5.299 | 0.926 | 0.118 | 1.000 | 0.000 | 112.850 |
+
+- [1] constant_velocity: driven at a fixed 3 m/s, not the measured ego speed
 
 ### n = 50, scene set 40c29d24
 

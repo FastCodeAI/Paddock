@@ -206,6 +206,12 @@ bench2drive = { run = "bench2drive/autoe2e/full220-86aa45e768a29a64-740c68", not
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 
+[cells.uniad]
+bench2drive = { run = "bench2drive/uniad/full220-86aa45e768a29a64-fb1f0a", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
+
+[cells.vad]
+bench2drive = { run = "bench2drive/vad/full220-86aa45e768a29a64-6cb75d", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
+
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
 kitscenes = { value = 1.381, source = "docs/benchmarks/kitscenes.md" }
@@ -214,3 +220,4 @@ navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
 neuroncap = { value = 0, source = "docs/benchmarks/neuroncap.md", note = "by construction" }
 alpasim = { run = "alpasim/constant_velocity/legacy-cv_023_20hz_30scenes" }
+bench2drive = { run = "bench2drive/constant_velocity/full220-3mps-86aa45e768a29a64-c8f3e4", note = "3 m/s" }  # routes start at rest: a fixed target
