@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-115 runs across 9 benchmarks.
+117 runs across 9 benchmarks.
 63 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -98,10 +98,12 @@
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | drivejepa | fullplan-f7d8f9d4b9736ddd-b89341 | 420 | 0.371 | 0.621 | 47.182 | 0.703 | 0.960 | 0.650 | 0.873 |
 | qwendrive | fullplan-f7d8f9d4b9736ddd-1ddf85 | 420 | 0.348 | 0.523 | 46.659 | 0.617 | 0.927 | 0.552 | 0.928 |
+| uniad | fullplan-f7d8f9d4b9736ddd-9d698c | 420 | 0.261 | 0.350 | 45.720 | 0.543 | 0.910 | 0.379 | 0.475 |
 | constant_velocity | fullplan-f7d8f9d4b9736ddd-a8f5b7 | 420 | 0.242 | 0.656 | 28.578 | 0.729 | 0.930 | 0.686 | 1.000 |
 | alpamayo15 | fullplan-f7d8f9d4b9736ddd-7ea973 | 420 | 0.238 | 0.546 | 35.709 | 0.708 | 0.895 | 0.652 | 0.635 |
 | visionpilot | fullplan-f7d8f9d4b9736ddd-92c0b7 | 420 | 0.163 | 0.352 | 34.545 | 0.676 | 0.943 | 0.489 | 0.078 |
 | meteor | fullplan-f7d8f9d4b9736ddd-241d7f | 420 | 0.162 | 0.307 | 32.460 | 0.483 | 0.814 | 0.357 | 0.532 |
+| vad | fullplan-f7d8f9d4b9736ddd-9d698c | 420 | 0.096 | 0.544 | 15.857 | 0.626 | 0.894 | 0.573 | 0.956 |
 | openpilot | fullplan-f7d8f9d4b9736ddd-cac3b5 | 420 | 0.061 | 0.735 | 6.996 | 0.841 | 0.883 | 0.826 | 1.000 |
 | autoe2e | fullplan-f7d8f9d4b9736ddd-4d9640 | 420 | 0.043 | 0.275 | 13.653 | 0.448 | 0.489 | 0.370 | 0.649 |
 
