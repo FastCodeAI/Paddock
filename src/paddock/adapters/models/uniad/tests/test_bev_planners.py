@@ -873,3 +873,18 @@ def test_with_no_black_slot_the_backbone_runs_as_it_always_did() -> None:
     for got, want in zip(wrapped(x), _views_backbone([])(x)):  # noqa: B905
         np.testing.assert_array_equal(got, want)
     assert calls == [6] and wrapped.reused == 0
+
+
+@pytest.mark.parametrize(("model", "installed"), [("uniad", True), ("vad", False)])
+def test_only_uniad_runs_its_backbone_once_for_the_black_views(model: str, installed: bool) -> None:
+    """UniAD's backbone is most of a step (1.35x with the wrapper); VAD's is not (1.02x), and the batch of
+    one moves VAD's plans by up to 2.2 mm, so VAD's backbone is left as it is."""
+    import importlib
+    from types import SimpleNamespace
+
+    policy = importlib.import_module(f"paddock.adapters.models.{model}.policy").POLICY()
+    original = _views_backbone([])
+    model_stub = SimpleNamespace(img_backbone=SimpleNamespace(forward=original))
+    policy._install_view_features(model_stub, _numpy_ops())
+    assert (policy.view_features is not None) is installed
+    assert (model_stub.img_backbone.forward is not original) is installed

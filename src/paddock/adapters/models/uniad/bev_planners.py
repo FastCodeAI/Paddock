@@ -741,6 +741,11 @@ class BevPlannerPolicy(Policy):
     #: The environment variable that continues the plan past its own 3 s (`extend_horizon`); unset, the plan
     #: is the model's. NAVSIM scores 4 s and refuses a shorter plan; nothing else needs it.
     horizon_env = ""
+    #: Run the image backbone once for the black views a one-camera source leaves (`BlankViewFeatures`),
+    #: not on every step. Off unless a model turns it on where it pays: on 8 comma2k19-shaped steps UniAD's
+    #: ResNet-101 took 1.35x less time a step with it (plans within 3.6e-4 m), while VAD's ResNet-50 is too
+    #: small a share of its step to matter (1.02x) and the batch of one moved its plans by up to 2.2e-3 m.
+    reuse_blank_views = False
 
     def __init__(self) -> None:
         self.config = os.environ.get(self.config_env)
@@ -757,7 +762,8 @@ class BevPlannerPolicy(Policy):
         self.threads = 1
         self._prepare_pool: ThreadPoolExecutor | None = None
         self._views_pool: ThreadPoolExecutor | None = None
-        #: The backbone wrapper that reuses a black view's features (`BlankViewFeatures`), set by `_build`.
+        #: The backbone wrapper that reuses a black view's features (`BlankViewFeatures`), set by `_build`
+        #: where `reuse_blank_views` is on.
         self.view_features: BlankViewFeatures | None = None
         self._begin_episode()
 
@@ -904,6 +910,13 @@ class BevPlannerPolicy(Policy):
                 with contextlib.suppress(Exception):  # the step failed; its error is the one that matters
                     pending.result()
         return out
+
+    def _install_view_features(self, model: Any, ops: Any) -> None:
+        """Wrap `model`'s image backbone in `BlankViewFeatures`, where `reuse_blank_views` is on."""
+        if not self.reuse_blank_views:
+            return
+        self.view_features = BlankViewFeatures(model.img_backbone.forward, ops)
+        model.img_backbone.forward = self.view_features
 
     def _prepare_frame(self, obs: Observation) -> tuple[np.ndarray, str, dict[str, Any], Any]:
         """All a step needs before the model: (lidar2ego, where it came from, results, prepared input)."""
@@ -1133,8 +1146,7 @@ class Mmdet3dPlannerPolicy(BevPlannerPolicy):
         model.cuda()
         self.model = model.eval()
         ops = SimpleNamespace(equal=torch.equal, cat=torch.cat, clone=lambda t: t.clone())
-        self.view_features = BlankViewFeatures(model.img_backbone.forward, ops)
-        model.img_backbone.forward = self.view_features
+        self._install_view_features(model, ops)
         self.pipeline = Compose(without_loaders(cfg.data.test.pipeline, self.drop_steps, self.collect_keys))
         self._torch, self._collate, self._to_tensor = torch, collate, to_tensor
         self._box_type, self._box_mode = get_box_type("LiDAR")
