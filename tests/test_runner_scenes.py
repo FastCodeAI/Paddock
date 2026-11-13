@@ -1091,6 +1091,163 @@ def test_a_model_with_no_auxiliary_heads_writes_no_extras_key(tmp_path, monkeypa
     assert records and all("extras" not in r for r in records)
 
 
+# ---- scene order: one in-order pass per sequence ------------------------
+
+
+def _nuscenes_in_order(tmp_path, monkeypatch, sequence: str):
+    """The real nuScenes harness on a synthetic val index: two scenes, one turning."""
+    import math
+
+    from paddock.adapters.benchmarks.nuscenes import harness as NH
+    from paddock.adapters.benchmarks.nuscenes.loader import Keyframe
+    from paddock.registry import Registry
+
+    cfg = _cfg(tmp_path)
+    harness = NH.BENCHMARK(Registry.load().benchmarks["nuscenes"], cfg)
+    monkeypatch.setattr(
+        harness, "setting", lambda key, default=None: {"sequence": sequence}.get(key, default)
+    )
+    scenes = []
+    for s, (name, n) in enumerate((("scene-0003", 13), ("scene-0012", 10))):
+        frames, x, y, yaw = [], 0.0, 0.0, 0.0
+        for i in range(n):
+            pose = np.eye(4)
+            pose[:2, :2] = [[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]]
+            pose[0, 3], pose[1, 3] = x, y
+            canbus = np.zeros(18)
+            canbus[13] = 4.0 + i * 0.1
+            box = np.array([[x + 12.0, y + 1.0, yaw, 4.0, 2.0]])
+            frames.append(
+                Keyframe(
+                    f"{name}-{i}", name, i, 10_000_000 * s + i * 500_000, pose, boxes_world=box, canbus=canbus
+                )
+            )
+            yaw += math.pi / 10 if s == 0 and 5 <= i < 10 else 0.0
+            x, y = x + 2.0 * math.cos(yaw), y + 2.0 * math.sin(yaw)
+        scenes.append(frames)
+    monkeypatch.setattr(harness, "_index", lambda: scenes)
+    return cfg, harness
+
+
+def _serve_in_process(monkeypatch, policy):
+    """The real policy server, in this process: `/infer_sequence` and `/infer_each` as a node answers them."""
+    import contextlib
+
+    import httpx
+    from fastapi.testclient import TestClient
+
+    from paddock.policy.server import build_app
+    from paddock.runtime import ports, proc
+
+    client = TestClient(build_app(policy))
+
+    @contextlib.contextmanager
+    def _node(_model, _cfg, port, *_a, **_k):
+        yield f"http://127.0.0.1:{port}"
+
+    def _post(url, json=None, timeout=None, **_kwargs):
+        return client.post("/" + url.rsplit("/", 1)[1], json=json)
+
+    def _get(url, timeout=None, **_kwargs):
+        return client.get("/" + url.rsplit("/", 1)[1])
+
+    monkeypatch.setattr(proc, "model_node", _node)
+    monkeypatch.setattr(ports, "find_free", lambda port: port)
+    monkeypatch.setattr(httpx, "post", _post)
+    monkeypatch.setattr(httpx, "get", _get)
+
+
+class _FromThisFrame:
+    """A model with no temporal state: the plan is a function of the frame it is asked about alone."""
+
+    @staticmethod
+    def plan(obs) -> np.ndarray:
+        speed, turn = float(obs.canbus[13]), {0: -0.4, 1: 0.4, 2: 0.0, 3: 0.0}[int(obs.command)]
+        steps = np.arange(1, 7)
+        return np.c_[speed * 0.5 * steps, turn * steps**2 / 6]
+
+
+def _records(cfg, model: str) -> list[dict]:
+    (directory,) = list((cfg.runs / "nuscenes" / model).iterdir())
+    return [json.loads(line) for line in (directory / "samples.jsonl").read_text().splitlines()]
+
+
+def test_a_model_with_no_temporal_state_scores_the_same_in_scene_order_as_in_windows(
+    tmp_path, monkeypatch
+) -> None:
+    """Scene order changes how a model reaches each keyframe, never what is scored.
+
+    For a model whose plan depends only on the frame it is asked about, the two orders must give the same
+    record, sample for sample: same ids, same plans, same metrics. A model that counts frames since its
+    reset is the control -- the same test sees the orders differ for it, so the equality is not vacuous.
+    """
+    from paddock import runner
+    from paddock.policy.protocol import Policy, Trajectory
+
+    class Stateless(Policy):
+        cameras = ()
+
+        def infer(self, obs):
+            return Trajectory(_FromThisFrame.plan(obs), dt=0.5)
+
+    class Counting(Stateless):
+        def reset(self) -> None:
+            self.n = 0
+
+        def infer(self, obs):
+            self.n += 1
+            return Trajectory(_FromThisFrame.plan(obs) * (1 + 0.01 * self.n), dt=0.5)
+
+    model = _model_spec()
+    got: dict[tuple[str, str], list[dict]] = {}
+    for kind, policy in (("stateless", Stateless()), ("counting", Counting())):
+        for sequence in ("window", "scene"):
+            where = tmp_path / kind / sequence
+            where.mkdir(parents=True)
+            _isolate_results(where, monkeypatch)
+            cfg, harness = _nuscenes_in_order(where, monkeypatch, sequence)
+            _serve_in_process(monkeypatch, policy)
+            rc = runner._run_open_loop(cfg, harness, harness.spec, model, 9000, None, lambda _s: None)
+            assert rc == 0
+            got[kind, sequence] = _records(cfg, model.name)
+
+    window, scene = got["stateless", "window"], got["stateless", "scene"]
+    assert len(window) == (13 - 6) + (10 - 6), "every keyframe with a full 3 s future"
+    assert [r["sample_id"] for r in scene] == [r["sample_id"] for r in window]
+    assert [r["prediction"] for r in scene] == [r["prediction"] for r in window]
+    assert [r["metrics"] for r in scene] == [r["metrics"] for r in window]
+    assert len({tuple(map(tuple, r["prediction"])) for r in window}) > 3, "plans that differ by frame"
+
+    counted_window, counted_scene = got["counting", "window"], got["counting", "scene"]
+    assert [r["prediction"] for r in counted_scene] != [r["prediction"] for r in counted_window]
+
+
+def test_a_failed_sequence_fails_its_samples_and_counts_once_against_the_node(tmp_path, monkeypatch) -> None:
+    """One request per scene: if it fails, every sample in it is a failure, and the node's wedge count
+    goes up by one -- not by the 30-odd samples a scene holds, which would end a sweep on one bad scene."""
+    import httpx
+
+    from paddock import runner
+
+    _isolate_results(tmp_path, monkeypatch)
+    cfg, harness = _nuscenes_in_order(tmp_path, monkeypatch, "scene")
+    calls: list[int] = []
+
+    def _down(url, json=None, timeout=None, **_kwargs):
+        calls.append(len(json["observations"]))
+        assert url.endswith("/infer_each") and timeout >= 600.0
+        raise httpx.ReadTimeout("node stopped answering")
+
+    _stub_open_loop_nodes(monkeypatch)
+    monkeypatch.setattr(httpx, "post", _down)
+    said: list[str] = []
+    rc = runner._run_open_loop(cfg, harness, harness.spec, _model_spec(), 9000, None, said.append)
+    assert rc == 1, "nothing scored, so nothing is recorded"
+    assert calls == [7, 4], "both scenes were tried, each from its first keyframe to its last scored one"
+    assert sum("FAILED (7 sample(s))" in line or "FAILED (4 sample(s))" in line for line in said) == 2
+    assert not any("consecutive" in line for line in said), "two failed requests are not a wedged node"
+
+
 # --------------------------------------------------------------------------
 # What a run records about itself, and when it gives up
 # --------------------------------------------------------------------------

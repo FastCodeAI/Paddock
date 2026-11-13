@@ -23,6 +23,7 @@ base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/22
 # still score 5.0.
 [notes]
 neuroncap = "neuroNCAP rebuilds each scene from one real recorded drive and adds the other car to it. It draws that car only roughly, and a model that drives far from the recorded path sees a smeared view. The score counts only collisions, so a drive like that can still score 5."
+alpasim = "AlpaSim rebuilds each scene from one real recorded drive. Every tile is the wide front camera; some models also see side and rear cameras that are not shown. The green line is the route and the pink or orange line is the model's plan. Scoring stops at the first collision, when the car leaves the road, or 4 m from the route; the picture after that point can smear. The picture can also smear while a car is still scored, when it drifts from the recorded drive."
 
 [[video]]
 benchmark = "neuroncap"
@@ -51,6 +52,34 @@ title = "Car crossing from the side, scene 0108"
 caption = "Where the models disagree most: their averages run from 0.0 to 5.0 of 5. Run 2 of 10, the most typical one."
 src = "neuroncap/side-0108-run1.mp4"
 poster = "neuroncap/side-0108-run1.jpg"
+
+[[video]]
+benchmark = "alpasim"
+title = "Scene bae463d3"
+caption = "The hardest scene: the models average 0.22 of 1. One drive per model."
+src = "alpasim/scene-bae463d3.mp4"
+poster = "alpasim/scene-bae463d3.jpg"
+
+[[video]]
+benchmark = "alpasim"
+title = "Scene 5f064b02"
+caption = "The second hardest scene: the models average 0.23 of 1. One drive per model."
+src = "alpasim/scene-5f064b02.mp4"
+poster = "alpasim/scene-5f064b02.jpg"
+
+[[video]]
+benchmark = "alpasim"
+title = "Scene 8023dce5"
+caption = "Where the models split most: 3 of 8 score above 0.9 and 5 score below 0.1. One drive per model."
+src = "alpasim/scene-8023dce5.mp4"
+poster = "alpasim/scene-8023dce5.jpg"
+
+[[video]]
+benchmark = "alpasim"
+title = "Scene 04749bb9"
+caption = "Where the models split next most: 4 of 8 score above 0.9 and 2 score below 0.1. One drive per model."
+src = "alpasim/scene-04749bb9.mp4"
+poster = "alpasim/scene-04749bb9.jpg"
 
 # HUGSIM: python -m tools.site.videos hugsim (render.py); nothing driven again.
 [[video]]
