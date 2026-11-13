@@ -127,4 +127,4 @@ ranked_with_note: [ALPAMAYO2_EDGE_ABSENT_CAMERAS]
 
 # One key: two `benchmarks:` lines keep only the last.
 # comma2k19 needs ALPAMAYO2_EDGE_ABSENT_CAMERAS=black (see above).
-benchmarks: [navsim, navsim_v1, bench2drive, kitscenes, nuscenes, comma2k19, neuroncap]
+benchmarks: [navsim, navsim_v1, navhard, bench2drive, kitscenes, nuscenes, comma2k19, neuroncap]

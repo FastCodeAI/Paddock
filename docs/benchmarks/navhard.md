@@ -8,7 +8,7 @@
 | Dataset | `navhard` |
 | Primary metric | `epdms` |
 | Adapter | [`adapters/benchmarks/navhard/`](../../src/paddock/adapters/benchmarks/navhard/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -119,7 +119,7 @@ maps, checked by size and sha256.
 
 ## Results
 
-All nine runs are the full split, 450 stage-one frames, all 450 scored, and carry
+All ten runs are the full split, 450 stage-one frames, all 450 scored, and carry
 `sequences_sha256: 3af39efa412cc8df`, so they are the same frames. In each, the
 per-frame mean matches the devkit's combined row (`by_group.source_aggregates.paddock_check`).
 NC is no at-fault collisions and DAC drivable-area compliance.
@@ -130,6 +130,7 @@ NC is no at-fault collisions and DAC drivable-area compliance.
 | Qwen-Drive 1.0 | 0.3124 | 0.763 | 0.427 | 0.969 | 0.880 | 0.812 | 0.745 | `20261111T060112-5231af` | true |
 | Alpamayo 1.5 | 0.1928 | 0.507 | 0.366 | 0.924 | 0.664 | 0.841 | 0.650 | `20261111T090014-04904f` | true |
 | VisionPilot ∗ | 0.1921 | 0.453 | 0.390 | 0.921 | 0.618 | 0.847 | 0.672 | `20261110T165413-30c0d8` | true |
+| Alpamayo 2 Edge | 0.1796 | 0.501 | 0.340 | 0.912 | 0.636 | 0.808 | 0.647 | `20261113T111924-f36c51` | true |
 | UniAD ⊟ | 0.1234 | 0.386 | 0.300 | 0.890 | 0.527 | 0.806 | 0.535 | `20261110T092734-19b732` | true |
 | Baseline (Constant Velocity) | 0.1148 | 0.290 | 0.342 | 0.889 | 0.429 | 0.832 | 0.591 | `20261110T085953-e122fd` | true |
 | VAD ⊟ | 0.0990 | 0.343 | 0.250 | 0.860 | 0.522 | 0.769 | 0.491 | `20261110T185531-0cecc0` | true |
@@ -164,6 +165,13 @@ again), are ranked with that note (see ⊟ in
 
 ◊ METEOR plans 3 s and is continued to 4 s by `METEOR_HORIZON_S`, which its
 model.yaml lists as ranked with a note.
+
+Alpamayo 2 Edge is built for 0.1 s frames (`native_input_hz: 10`) and gets the
+2 Hz history every row here gets. Its adapter fills each 0.1 s slot with the
+newest real frame at or before that slot's time, labelled with the time it was
+taken, and rebuilds the 0.1 s pose history from the 2 Hz poses
+([docs/models/alpamayo2edge.md](../models/alpamayo2edge.md#navhard)). Its NAVSIM
+cells are on the same 2 Hz frames.
 
 The constant-velocity row is paddock's own agent, run with no model process.
 Neither it nor any row here is comparable with navtest EPDMS or with published
