@@ -1,0 +1,159 @@
+{
+  "run_id": "20261112T012152-9b1e09",
+  "site": "renesas-sjccomp250",
+  "benchmark": "comma2k19",
+  "model": "alpamayo2edge",
+  "mode": "open_loop",
+  "started_utc": "2026-11-12T01:21:52+00:00",
+  "duration_s": 20173.2,
+  "repo_sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff",
+    "n_expected": 10165
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "ground_truth_frame": "car (recorded future rotated by the route calibration)",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "ego_history_frame": "car (window poses rotated by the route calibration)",
+    "declared_env": {
+      "ALPAMAYO2_EDGE_ABSENT_CAMERAS": "refuse",
+      "ALPAMAYO2_EDGE_CHECKPOINT": "{weights}/Alpamayo2-Edge",
+      "ALPAMAYO2_EDGE_FRAMES": "nearest",
+      "ALPAMAYO2_EDGE_HISTORY": "hermite",
+      "ALPAMAYO2_EDGE_SAMPLES": "1",
+      "ALPAMAYO2_EDGE_SEED": "43",
+      "HF_HUB_OFFLINE": "1"
+    },
+    "model_env": {
+      "ALPAMAYO2_EDGE_ABSENT_CAMERAS": "black"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo2-edge",
+      "sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+      "pinned_sha": "02f55a7",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "8c5ed2f43b6a378a8bb56151096ce0c424f0ba42",
+      "dirty": false
+    },
+    "policy": {
+      "settings": {
+        "frames": "nearest",
+        "history": "hermite",
+        "samples": 1,
+        "seed": 43,
+        "nav_distance_m": null,
+        "save_reasoning": false,
+        "absent_cameras": "black"
+      },
+      "checkpoint": "Alpamayo2-Edge",
+      "slots": [
+        "0: CAM_FRONT_LEFT",
+        "1: CAM_FRONT",
+        "2: CAM_FRONT_RIGHT",
+        "3: CAM_BACK_LEFT",
+        "5: CAM_BACK_RIGHT",
+        "6: CAM_FRONT, 30 deg crop"
+      ],
+      "slot_geometry": {
+        "1": {
+          "bearing_deg": 0.5,
+          "hfov_deg": 65.1
+        },
+        "6": {
+          "bearing_deg": 0.5,
+          "hfov_deg": 30.0
+        }
+      },
+      "plans": 2542,
+      "nominal_rationales": 1913,
+      "drawn_again": 0,
+      "mean_ms": {
+        "inputs": 329.8,
+        "model": 2880.2,
+        "rest": 0.1
+      },
+      "warp_cache": {
+        "entries": 128,
+        "hits": 0,
+        "misses": 25420
+      },
+      "last": {
+        "nav_text": "Continue straight",
+        "black_slots": [
+          0,
+          2,
+          3,
+          5
+        ],
+        "frame_times_s": {
+          "0": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "1": [
+            -2.0,
+            -1.0,
+            -0.5,
+            -0.1,
+            0.0
+          ],
+          "2": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "3": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "5": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "6": [
+            -2.0,
+            -1.0,
+            -0.5,
+            -0.1,
+            0.0
+          ]
+        },
+        "history_extrapolated_s": 0.0,
+        "reasoning": "<NOMINAL>",
+        "plan_reach_m": 116.3,
+        "seed": 43
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

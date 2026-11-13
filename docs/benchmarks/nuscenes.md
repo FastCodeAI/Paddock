@@ -8,7 +8,7 @@
 | Dataset | `nuscenes` |
 | Primary metric | `l2_avg` |
 | Adapter | [`adapters/benchmarks/nuscenes/`](../../src/paddock/adapters/benchmarks/nuscenes/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -41,11 +41,12 @@ gate's nuScenes subset runs this way (docs/gate.md). The list is recorded in
   history to difference. Six cameras as `image_paths` with the dataset's
   intrinsics and `cam2ego`; LIDAR_TOP ego pose; CAN-bus 18-float status
   (nearest `pose` message); `lidar2ego` for models that project through the
-  lidar frame.
-* **Command:** VAD's rule from the recorded future: lateral offset of the 3 s
+  lidar frame. UniAD and VAD (and their Bench2Drive checkpoints) are sent their
+  own datasets' versions of these instead, below.
+* **Command:** VAD's threshold on the recorded future in the ego frame: lateral offset of the 3 s
   pose ≥ 2 m → left, ≤ −2 m → right, else straight (val: 88 / 5 / 7 %). Sent as
   the 4-way `command` and as `nav_maneuver` / `nav_distance_m`, which Alpamayo
-  turns into its instruction text.
+  turns into its instruction text. UniAD and VAD get their own repos' rules (below).
 * **Metrics** (per sample, aggregated by the runner):
   `l2_{1,2,3}s`, `l2_avg` — L2 at exactly that horizon (VAD style) and their
   mean; `l2_uniad_{1,2,3}s`, `l2_uniad_avg` — mean over every 0.5 s step up to
@@ -56,6 +57,119 @@ gate's nuScenes subset runs this way (docs/gate.md). The list is recorded in
   against every annotated box of the future keyframe in the current ego frame
   (separating-axis test); `ade_3s`. Primary metric: `l2_avg`.
 
+## The datasets' own inputs (UniAD, VAD)
+
+```yaml
+# adapters/models/uniad/model.yaml (vad: `nuscenes: vad`)
+inputs:
+  nuscenes: uniad
+```
+
+UniAD and VAD were trained, and their authors evaluate them, on what their converters write into an info
+file and their datasets build from it. Four of those inputs are not what the harness builds for every other
+model, so a model that declares `inputs.nuscenes` in its model.yaml is sent its dataset's instead
+(`adapters/benchmarks/nuscenes/infos.py`), in windows and in scene order alike:
+
+| input | every other model | a model with `inputs.nuscenes` (the converter / dataset) | on val's 6,019 keyframes |
+|---|---|---|---|
+| canbus 3:7 | the CAN-bus message's orientation | the LIDAR_TOP ego pose's quaternion as stored, sign and all; the datasets then put its w four times (`bev_planners.nuscenes_can_bus`) | stored with w < 0 on 2,512 (41.7%) |
+| `camera2ego` | the camera's calibration | the camera where it was when it fired: `obtain_sensor2top`'s camera → its own ego pose → global → the keyframe's LIDAR_TOP ego → lidar, as `lidar2ego @ sensor2lidar` | moves a camera by up to 0.57 m (median 0.09 m) |
+| canbus 7:16 | the nearest `pose` message | `_get_can_bus_info`'s: the first message after the keyframe, in the file's order | another message on 2,916; up to 0.80 m/s² accel, 0.12 rad/s rotation rate, 0.085 m/s velocity |
+| command | VAD's threshold, ego frame | each repo's rule on the lidar's 3 s pose in the keyframe's lidar frame: VAD's converter (float64), UniAD's `get_sdc_planning_label` (the ego box under the lidar, in float32 as its box methods compute) | another command on 62 (UniAD) / 65 (VAD) of the 5,119 scored |
+
+canbus 0:3 and 16:18 hold the ego translation and the dataset's heading (wrapped to [0, 360)), as
+`get_data_info` leaves them; ego2world, the images, intrinsics, `lidar2ego` and timestamps are the same for
+every model. The run records the convention (`inputs: uniad` in its config), so these runs have ids of their
+own and `--resume` will not continue a run made before them. Every other model is sent exactly what it was:
+over all 5,119 samples the wire payloads of drivejepa, qwendrive, alpamayo15, visionpilot, openpilot (its
+CAM_FRONT history), autoe2e (13-keyframe windows), meteor and constant_velocity (both orders) hash the same
+before and after this change, as do their run configs (10 Nov 2026), and `tests/test_infos.py` pins it.
+
+The two commands differ from each other on 5 val keyframes: UniAD's label sits 0.78 m below the lidar (the
+ego box's bottom), which the pitch between two keyframes moves by up to 9 cm. No val keyframe is within
+2.2 mm of a ±2 m threshold, against 0.33 mm between UniAD's float32 arithmetic and exact arithmetic, so the
+order of float32 operations cannot change a command (measured over val; `infos.uniad_offset`), and UniAD's own
+`get_sdc_planning_label`, run on every val keyframe, gives the same command on each (below).
+
+These numbers come from the tables once: `sample_data`, `ego_pose` and `calibrated_sensor` reduced to the
+val keyframes' LIDAR_TOP and camera records, and each val scene's CAN-bus `pose` file, cached beside the
+index (`infos_cache`, Site setup). The camera geometry is built from the stored quaternions with
+pyquaternion's own arithmetic (`infos.rotation_matrix`): the converter's camera-to-lidar transform runs
+through global coordinates a couple of kilometres out, where a rotation equal to the last bit moved
+`lidar2img` by 1.4e-9.
+
+**Verified** against the repos' own code, on what the adapter's own `_results` hands its test pipeline:
+
+* all 6,019 val keyframes, against the repos' converter functions run on each (`infos_reference.py`:
+  `_get_can_bus_info`, `obtain_sensor2top`, UniAD's `get_sdc_planning_label`, VAD's converter lines,
+  `get_data_info`'s lines): `lidar2img` within 1.3e-12, `can_bus` exact but for 16:18 (one ulp of the
+  heading in degrees, 5.7e-14: the adapter takes it from `ego2world`), `l2g` and timestamp exact, the command
+  the same on every keyframe, for UniAD and for VAD (10 Nov 2026; opt-in, `UNIAD_VAD_INFOS_REFERENCE`).
+  The same comparison for the inputs every model gets, which UniAD and VAD were sent before: `lidar2img` off
+  by up to 860 (a translation entry; cameras up to 0.57 m away), canbus 3:7 by up to 2.0 (w's sign),
+  canbus 7:16 by up to 0.80, and 69 (UniAD) / 72 (VAD) commands, 62 / 65 of them scored;
+* two val scenes through the repos' datasets themselves (`scene_reference.py`): scene-0103, and scene-0916,
+  whose stored quaternion changes sign mid-scene and which turns both ways -- every keyframe within 1e-9
+  of what the dataset handed the model (`tests/test_scene_golden.py`, in `make check`).
+
+## Scene order (UniAD, VAD)
+
+```toml
+[benchmarks.nuscenes]
+sequence = "scene"                                 # default "window"
+# scene_models = "uniad, vad"  # the default: the models scene order may run
+```
+
+By default (`window`) every scored keyframe is its own episode: the node is reset and fed the keyframes
+before it, then it (above), so a model steps up to five times per sample. In scene order each val scene is
+one episode, which is how UniAD's and VAD's own test scripts run the val set: the node is reset at the
+scene's first keyframe and plans from every keyframe in turn (`/infer_each`, `Policy.infer_each`), and each
+keyframe is scored from the plan it made there. The scored keyframes, their ground truth, commands and
+metrics are the window's, keyframe for keyframe; what changes is what stands behind each plan -- the scene
+so far, with whatever state the model carries from keyframe to keyframe (UniAD: the previous BEV grid, its
+tracks, the CAN-bus delta from the last keyframe; VAD: the grid and the delta). Each keyframe carries its
+own command, as it does in the datasets. A resumed, limited or sample-listed run feeds a scene again from
+its first keyframe, so a plan never depends on what else was skipped. 5,119 model steps in all, against
+about 24,100 in windows.
+
+The run config records `sequence: scene` (and drops `history_seconds`, which would be a scene's length),
+so a scene-order run has its own id; a window run's config, and so its id, is unchanged. Preflight refuses
+scene order for any model outside `scene_models`: it feeds a whole scene from one reset to a model that may
+read a fixed window (Drive-JEPA, Alpamayo) or build a window-shaped history of its own (QwenDrive's dense
+poses), and that has to be shown harmless before such a model is listed. It cannot be combined with
+`camera_history`, which replaces the keyframes with camera sweeps.
+
+**Verified** (`make check-uniad-vad`, `adapters/models/uniad/tests/test_scene_golden.py`):
+`scene_reference.py` runs each repo's own evaluation on scene-0103 and scene-0916 -- its converter's info
+file, the config's test dataset and pipeline, its dataloader, and the model called keyframe after keyframe
+with its own state handling -- and paddock's harness builds the same scenes from nuScenes' tables, with each
+model's own dataset inputs ("The datasets' own inputs", above), and sends them in scene order as the runner does, to `/infer_each`:
+at every keyframe sent (34 of scene-0103's 40 and 35 of scene-0916's 41: scene order feeds a scene up to
+its last scored keyframe) the plan is the repo's own loop's, a maximum difference of 0.000 m for UniAD and for
+VAD (10 Nov 2026, RTX PRO 6000, the card shared). The unit tests (`tests/test_scene_order.py`, and
+`test_a_model_with_no_temporal_state_scores_the_same_in_scene_order_as_in_windows` in
+`tests/test_runner_scenes.py`) pin the scored set, the order, resumes and limits, the refusals, and that a
+model without temporal state scores the same in either order.
+
+**Not the repo's full val loop at scene starts (UniAD).** UniAD's `forward_test` records the new scene token
+before it checks for a first frame, so in its own loop over the whole val set the first keyframe of every
+scene but the first takes its CAN-bus position and heading deltas from the last keyframe of the scene before
+it in time. Paddock resets at every scene start, as a freshly built model starts -- what the repo's loop
+does for its first scene. On scene-0103, whose predecessor in time is scene-0102 (3.6 s earlier), the repo's
+loop would plan 1.58 m differently at the first keyframe and 4.80 m at the second, under 0.15 m from the
+sixth and under 0.03 m from the eleventh (the fixture's `after_previous_scene` variant, measured, not
+asserted); scene-0916, whose predecessor in the loop is scene-0802, a log six days earlier, 0.035 / 0.011 m and
+at most 0.047 m after. VAD checks for a first frame by its previous grid and has no
+such carry.
+
+**UniAD and VAD runs before the datasets' own inputs** (5730097 and earlier, among them the stored
+window runs of 9 Nov) were sent the inputs every model gets. Fed those for scene-0103 (34 scored keyframes),
+scene order was within 1.26 m of UniAD's own loop (median 0.27 m) and windows within 2.03 m (median 0.72 m);
+for VAD 2.22 m (median 0.93 m) and 3.49 m (median 1.46 m). One input at a time, the quaternion's sign was
+most of it (median 0.29 m UniAD, 0.89 m VAD; max 1.44 / 2.06 m), the cameras' own ego poses next (0.12 /
+0.04 m) and the CAN-bus message least (0.05 / 0.06 m); scene-0103 has no keyframe where the commands
+differ. Those runs are not comparable with runs made since, which record `inputs` in their config.
+
 ## Site setup
 
 ```toml
@@ -65,7 +179,13 @@ version = "v1.0-trainval"
 
 [benchmarks.nuscenes]
 index_cache = "/path/to/cache/nuscenes_val_index.pkl"   # optional; default <repo>/.cache/; or a directory
+infos_cache = "/path/to/cache/nuscenes_val_infos.pkl"   # optional; default beside index_cache's file; or a directory
 ```
+
+`infos_cache` holds the datasets' own inputs (above), built the first time a model that asks for them runs:
+`sample_data` and `ego_pose` once more (about 15 s from a local disk, 5 GB of memory at its peak) and the
+val scenes' CAN-bus `pose` files; 4 MB. Its key is its own (root, version, scene set, schema), so it is
+never read as the index or the index as it.
 
 The loader reads the `v1.0-trainval` JSON tables directly (no devkit): the
 1.3 GB `sample_data`, `ego_pose` and `sample_annotation` tables are each loaded
@@ -228,6 +348,11 @@ intersection, the command rule, plan resampling (including the origin anchor and
 the mid-turn distance), the scorer's point vs cumulative conventions, that absent
 box data omits the collision metrics rather than zeroing them, and that the index
 cache rebuilds when the dataset/version/scene set changes.
+`tests/test_infos.py`: each of the converters' computations (the CAN-bus message at and around the
+keyframe, each camera at its own pose, the stored quaternion, both commands at a scene's end and where the
+lever arm of the lidar decides them), the tables read into them, their cache, that only a model that
+declares `inputs.nuscenes` gets them and its run records it, and that every other model's observations are
+byte for byte what the harness built before them.
 
 **Verified vs. what is not.** These are self-consistency tests: they pin the L2
 and collision arithmetic and the frame conventions this adapter implements,
@@ -273,6 +398,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
+| Alpamayo 2 Edge | 0.455 | 1.058 | 1.870 | 1.128 | 0.630 | 0.957 | 0.920 |
 | Drive-JEPA | 0.957 | 2.158 | 3.917 | 2.344 | 1.328 | 1.996 | 1.628 |
 | VisionPilot | 0.748 | 1.463 | 2.625 | 1.612 | 1.029 | 1.419 | 2.579 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
@@ -283,6 +409,11 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision
 is predicted ego-footprint overlap with annotated boxes, not an observed crash.
+
+Alpamayo 2 Edge (run `20261111T231928-e4e2d6`) was built for frames 0.1 s apart and is
+given the 2 Hz keyframes every row gets; its plan, 64 points 0.1 s apart, is read at its
+own points at every 0.5 s. [Its page](../models/alpamayo2edge.md#nuscenes) says how its
+input is built.
 
 ⧗ AutoE2E (`kitscenes-epoch-5`, run `20261023T004711-eedbe2`, valid) is fed the
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2

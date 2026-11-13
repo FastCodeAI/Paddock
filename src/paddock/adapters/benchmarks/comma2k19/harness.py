@@ -111,6 +111,7 @@ from paddock.policy.protocol import (
     Command,
     Observation,
     Trajectory,
+    grid_stride,
 )
 from paddock.runtime import env as env_builder
 from paddock.runtime import gpu
@@ -127,6 +128,7 @@ EVAL_HORIZON_S = 3.0
 #: comma's dataset for comma's model. Segments are 60 s, so the recording is
 #: nowhere near the binding constraint.
 N_GT_POSES = 20
+
 
 #: See the module docstring: 96 fills the small model's feature buffer, 128
 #: the big model's, and one default has to clear both.
@@ -674,6 +676,12 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         recording -- comma2k19 holds 20 Hz and someone asked for less -- so the
         remedy named is the rate, not the dataset.
         """
+        if grid_stride(model.waypoint_dt, INTERVAL_S) is None:
+            return [
+                f"{model.name} plans {model.waypoint_dt:g} s apart; comma2k19 scores a plan's own "
+                f"points at every {INTERVAL_S:g} s and does not interpolate one, so the spacing "
+                f"must divide {INTERVAL_S:g} s"
+            ]
         return input_rate_problems(
             model_name=model.name,
             min_input_hz=model.min_input_hz,
@@ -1275,22 +1283,41 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         """
         gt_xy = np.asarray(sample.ground_truth, dtype=np.float64)[:, :2]
         gt_t = INTERVAL_S * np.arange(1, len(gt_xy) + 1)
+        # A plan finer than INTERVAL_S is scored on its own points at every
+        # INTERVAL_S, not on all of them against a truth interpolated onto its
+        # grid: that would score the model against a smoothed recording, and
+        # average its error over more, earlier points than any other row's --
+        # Alpamayo 2 Edge's 0.1 s plan over 30 points to 3 s where every other
+        # model is averaged over 6. A plan 0.5 s apart, every model before Edge,
+        # is the same array, so its scores do not move.
+        stride = grid_stride(prediction.dt, INTERVAL_S)
+        if stride is None:
+            raise ValueError(f"a plan {prediction.dt:g} s apart has no points on the {INTERVAL_S:g} s grid")
+        scored = (
+            prediction
+            if stride == 1
+            else Trajectory(
+                prediction.waypoints[stride - 1 :: stride], dt=INTERVAL_S, extras=prediction.extras
+            )
+        )
         # t = 0 is known exactly -- it is the ego origin, by construction of the
         # ego frame -- and supplying it keeps `align` from discarding the first
-        # waypoints of a model planning on a grid finer than INTERVAL_S, which
-        # it would otherwise trim for falling before the recorded range.
+        # waypoints of a plan that starts before the recorded range.
         pred, gt, _ = T.align(
-            prediction.xy,
-            prediction.times(),
+            scored.xy,
+            scored.times(),
             np.vstack([np.zeros((1, 2)), gt_xy]),
             np.concatenate([[0.0], gt_t]),
         )
-        # After alignment both sides sit on the prediction's grid, so that is
+        # After alignment both sides sit on the scored plan's grid, so that is
         # the spacing every horizon index is counted in. How far the pair
         # actually reached comes back as `scored_horizon_s`.
-        out = MC.score_trajectory(pred, gt, interval_s=prediction.dt, eval_horizon_s=EVAL_HORIZON_S)
+        out = MC.score_trajectory(pred, gt, interval_s=scored.dt, eval_horizon_s=EVAL_HORIZON_S)
+        # The lead-vehicle check reads the whole plan at its own spacing. Comfort
+        # is handed the whole plan too, but `metrics.comfort` moves a plan finer
+        # than 0.5 s onto the 0.5 s grid before measuring, as on every benchmark.
         out.update(AUX.score(sample, prediction, pred, gt))
-        out.update(SC.score(out, pred, gt, interval_s=prediction.dt, eval_horizon_s=EVAL_HORIZON_S))
+        out.update(SC.score(out, pred, gt, interval_s=scored.dt, eval_horizon_s=EVAL_HORIZON_S))
         return out
 
 

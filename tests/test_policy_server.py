@@ -66,3 +66,40 @@ def test_a_model_that_only_records_is_not_asked_to_plan() -> None:
     with TestClient(build_app(policy)) as client:
         client.post("/observe", json=_body())
     assert (policy.recorded, policy.infers) == (1, 0)
+
+
+class _Stepping(Policy):
+    """Counts frames since its last reset; the plan says which frame of the episode it came from."""
+
+    cameras = ()
+
+    def __init__(self) -> None:
+        self.resets, self.since_reset, self.primed = 0, 0, []
+
+    def reset(self) -> None:
+        self.resets += 1
+        self.since_reset = 0
+
+    def infer(self, obs: Observation) -> Trajectory:
+        self.since_reset += 1
+        self.primed.append(self.self_prime)
+        return Trajectory(np.ones((6, 2)) * self.since_reset, extras={"ts": obs.timestamp_us})
+
+
+def test_infer_each_resets_once_and_answers_every_frame_in_order() -> None:
+    """One episode per request: a plan per frame, the state carried across them, self-priming off."""
+    policy = _Stepping()
+    frames = []
+    for i in range(4):
+        body = _body()
+        body["timestamp"] = 1_000_000 + 500_000 * i
+        frames.append(body)
+    with TestClient(build_app(policy)) as client:
+        answer = client.post("/infer_each", json={"observations": frames})
+    assert answer.status_code == 200
+    plans = answer.json()["plans"]
+    assert [p["trajectory"][0][0] for p in plans] == [1.0, 2.0, 3.0, 4.0]
+    assert [p["extras"]["ts"] for p in plans] == [1_000_000, 1_500_000, 2_000_000, 2_500_000]
+    assert all(p["dt"] == 0.5 for p in plans)
+    assert policy.resets == 1 and policy.primed == [False] * 4
+    assert policy.self_prime is True, "restored for the closed-loop calls that follow"

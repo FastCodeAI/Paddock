@@ -1,0 +1,65 @@
+# How the AlpaSim benchmark drives VAD through paddock's bridge.
+#
+# Read by adapters/benchmarks/alpasim/harness.py (profile_for). The four keys
+# below are required; an unknown or missing key fails the run with this file's
+# name. Without this file the model's cameras would never reach its node, and
+# AlpaSim would refuse it before starting.
+# See docs/adding-a-model.md, "AlpaSim settings".
+#
+# UniAD's profile, flag for flag (models/uniad/alpasim.yaml, where every flag
+# is explained; a test checks the two agree): VAD reads the same six nuScenes
+# cameras at the same 1600 x 900 load size, steps at the same 2 Hz on the same
+# BEVFormer grid and reads the same CAN-bus layout. AlpaSim's six cameras are
+# re-rendered as nuScenes' rig every 0.5 s (paddock_bridge_nuscenes_rig.yaml)
+# and renamed to the node's names; the node is asked every 0.5 s, the warm-up
+# goes to /observe, and canbus carries ego-frame velocity and acceleration.
+# AlpaSim's route rides along with its frame's time, and the node derives the
+# right / left / forward command from it by the datasets' own rule.
+
+# Driver config under adapters/benchmarks/alpasim/configs/driver/, shared with uniad.
+driver: paddock_bridge_nuscenes_rig
+
+# Extra bridge.py flags.
+bridge_args:
+  # AlpaSim id=the node's camera name; the tele camera's id carries CAM_BACK.
+  - --camera-name
+  - camera_front_wide_120fov=CAM_FRONT
+  - --camera-name
+  - camera_cross_left_120fov=CAM_FRONT_LEFT
+  - --camera-name
+  - camera_cross_right_120fov=CAM_FRONT_RIGHT
+  - --camera-name
+  - camera_rear_left_70fov=CAM_BACK_LEFT
+  - --camera-name
+  - camera_front_tele_30fov=CAM_BACK
+  - --camera-name
+  - camera_rear_right_70fov=CAM_BACK_RIGHT
+  # Each camera's pinhole K from start_session.
+  - --pinhole-intrinsics
+  # A replan every 0.5 s (planning_hz 2); equals the cameras' frame_interval_us.
+  - --replan-every-us
+  - "500000"
+  # Both must equal paddock_bridge_nuscenes_rig.yaml's control step (not its
+  # cameras' 500 ms) and force_gt_duration_us; a test checks they do.
+  - --frame-interval-us
+  - "50000"
+  - --force-gt-us
+  - "3000000"
+  # canbus[13] / [14] = forward / sideways speed, warm-up zeros replaced from
+  # the poses: nuScenes' CAN-bus vel.
+  - --canbus-ego-frame
+  # canbus[7] / [8] = the simulator's forward / sideways acceleration:
+  # nuScenes' CAN-bus accel (gravity added by the adapter).
+  - --canbus-acceleration
+  # The route, as route_xy, and the time of its frame, as route_timestamp_us:
+  # the node derives the command from the route (bev_planners.route_command).
+  - --send-route
+  - --send-route-time
+  # Not passed, as for UniAD: --observe-between-replans, --pad-ego-history,
+  # --waypoint-dt (the default 0.5 s is VAD's spacing).
+
+# Under adapters/benchmarks/alpasim/scenes/: each scene pinned to one artifact.
+scenes_csv: public_2601_30scenes_26p01.csv
+
+# Write the bridge's per-replan log next to the run's samples.jsonl.
+replan_log: true
