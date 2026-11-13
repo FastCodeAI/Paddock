@@ -55,6 +55,15 @@ ASSIGNED: dict[str, str] = {
     # of the candidates tried: under colour blindness it stays 20.0 from
     # visionpilot's #e7298a, its nearest, and 25.1 from alpamayo15 (OKLab x100).
     "alpamayo2edge": "#3f007d",
+    # The hash gave uniad #9467bd, the purple METEOR left because it could not be
+    # told from alpamayo15's; and vad #e377c2, two steps from visionpilot's pink.
+    # By the same measure as above (OKLab x100, nearest model under colour
+    # blindness, then ground truth's blue), each at least 1.8:1 against both chart
+    # surfaces: uniad 10.1 from wajepa, 23.4 from ground truth; vad 10.0 from
+    # autoe2e, 28.3. The palette is crowded enough that no colour clears 20 from
+    # ground truth and 8 from every model at once.
+    "uniad": "#900000",
+    "vad": "#70d0a0",
 }
 
 #: Drawn from for models with no assigned colour.

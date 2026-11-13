@@ -425,16 +425,26 @@ def load_or_build_index(root: Path, version: str, scene_names: list[str], cache:
     # SAME ordering (the key is order-independent, so the build must be too).
     scene_names = sorted(scene_names)
     key = _cache_key(root, version, scene_names)
+    return cached(cache, key, lambda: build_index(root, version, scene_names, log=log), log=log)
+
+
+def cached(cache: Path | None, key: dict, build, log=print, what: str = "index"):
+    """The value pickled at `cache` under `key`, or `build()`'s, then written there whole for the next run.
+
+    A cache whose key differs (another root, version, scene set or schema), or that cannot be read, is
+    rebuilt rather than trusted; `what` names it in the log. The index and the datasets' own inputs
+    (`infos`) are each cached this way, under keys of their own.
+    """
     if cache is not None and cache.exists():
         try:
             with cache.open("rb") as handle:
                 blob = pickle.load(handle)
             if isinstance(blob, dict) and blob.get("key") == key:
                 return blob["index"]
-            log(f"nuscenes: index cache {cache} does not match this dataset/version/scenes; rebuilding")
+            log(f"nuscenes: {what} cache {cache} does not match this dataset/version/scenes; rebuilding")
         except Exception as exc:  # noqa: BLE001 -- a bad cache must never be fatal; rebuild
-            log(f"nuscenes: could not read index cache {cache} ({exc}); rebuilding")
-    index = build_index(root, version, scene_names, log=log)
+            log(f"nuscenes: could not read {what} cache {cache} ({exc}); rebuilding")
+    index = build()
     if cache is not None:
         cache.parent.mkdir(parents=True, exist_ok=True)
         # Written whole under another name, then renamed: parallel lanes share one
