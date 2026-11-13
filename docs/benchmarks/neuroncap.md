@@ -754,12 +754,12 @@ nuScenes checkpoints, given the six surround cameras. neuroNCAP asks every 0.1 s
 the adapter steps the model every 0.5 s, the 2 Hz it was trained at, and answers
 the calls in between from the plan it holds.
 
-§ Not run — zero by construction. Every neuroNCAP scenario is staged so that an
-ego holding its current velocity collides at full speed. A run that avoids the
-collision scores a flat **5**; a run that collides scores
-`4 · max(0, 1 − v_impact / v_reference)`, which is 0 when the two speeds are
-equal. The baseline therefore scores 0 in all three scenarios with a 100%
-collision rate.
+§ Run `20261112T200906-cce2d4` (valid): the floor holds the speed it has, straight ahead, as on every
+benchmark but Bench2Drive. Every neuroNCAP scenario is staged so that an ego holding its current velocity
+collides, and 194 of the 200 runs do (frontal 50 of 50, side 49 of 50, stationary 95 of 100). A run that
+avoids the collision scores a flat **5**; a run that collides scores `4 · max(0, 1 − v_impact / v_reference)`,
+which is 0 when the two speeds are equal. The six runs the scenario jitter let through give 0.15 of its
+0.60, and impacts a little slower than the reference speed the rest; its median run scores 0.007.
 
 Note the discontinuity: **a single run scores either exactly 5, or at most 4** —
 grazing an obstacle at walking pace scores 4, not 4.9. Anything between the two
@@ -783,7 +783,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | UniAD ⊡ | 3.23 ±2.29 | 0.77 ±1.52 | 1.62 ±2.34 | **2.21** | 59.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
-| Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
+| Baseline (Constant Velocity) § | 0.95 ±1.11 | 0.33 ±0.42 | 0.17 ±0.71 | **0.60** | 97.0% |
 
 ⊙ Momentum-aware, run `20261110T204020-036fb3` (valid): the default protocol at the
 same 20 pairs x 10 seeded runs, with the selection stage model.yaml has declared on

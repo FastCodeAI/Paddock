@@ -508,7 +508,7 @@
 <text x="780" y="666" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
 <rect class="r6" x="819" y="640.5" width="72" height="43" rx="4"/>
 <rect class="floorline" x="819" y="640.5" width="72" height="43" rx="4"/>
-<text x="855" y="661.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0</text>
+<text x="855" y="661.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">0.60</text>
 <text x="855" y="676.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#11 · floor</text>
 <rect class="r5" x="894" y="640.5" width="72" height="43" rx="4"/>
 <rect class="floorline" x="894" y="640.5" width="72" height="43" rx="4"/>

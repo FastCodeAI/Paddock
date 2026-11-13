@@ -259,11 +259,11 @@ alpasim = { run = "alpasim/vad/20261110T153825-72448c" }  # six cameras, re-rend
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
-kitscenes = { value = 1.381, source = "docs/benchmarks/kitscenes.md" }
+kitscenes = { run = "kitscenes/constant_velocity/20261112T200903-f1ac77" }
 comma2k19 = { run = "comma2k19/constant_velocity/20261106T045541-d0cdb5" }
 navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
 navhard = { run = "navhard/constant_velocity/20261110T085953-e122fd" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
 bench2drive = { run = "bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac" }
-neuroncap = { value = 0, source = "docs/benchmarks/neuroncap.md", note = "by construction" }
+neuroncap = { run = "neuroncap/constant_velocity/20261112T200906-cce2d4" }
 alpasim = { run = "alpasim/constant_velocity/legacy-cv_023_20hz_30scenes" }

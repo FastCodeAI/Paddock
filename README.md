@@ -145,9 +145,9 @@ Before comparing numbers:
   (30 scenes, one rollout each) a difference under about 0.16 is within two
   standard errors.
 - **Constant velocity is a floor, defined per benchmark, and ranked like a model.**
-  It extrapolates the recorded speed in open loop, holds a fixed 3 m/s target on
-  Bench2Drive, and scores 0 on neuroNCAP by construction: every scenario is
-  staged so that holding speed collides.
+  It holds the speed it has, straight ahead, on every benchmark but Bench2Drive, whose routes
+  start at rest, so there it holds a fixed 3 m/s target. On neuroNCAP every scenario is staged
+  so that holding speed collides: 194 of its 200 runs do, and it scores 0.60.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
   and were imported into `results/`; Alpamayo's, AutoE2E's, Qwen-Drive's, UniAD's and
   VAD's are the exceptions, run through paddock's bridge (UniAD's and VAD's six cameras
