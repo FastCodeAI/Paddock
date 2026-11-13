@@ -1023,9 +1023,15 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
                 )
         return reasons
 
+    def rate_problems(self, min_input_hz: float, model_name: str, supplied_hz: float) -> list[str]:
+        """Why a model cannot be scored at the rate this run feeds it: `input_rate_problems`.
+        A method so that a benchmark whose rate is the same for every model (navhard) can
+        say otherwise."""
+        return input_rate_problems(min_input_hz, model_name, supplied_hz)
+
     def model_problems(self, model, limit: int | None = None) -> list[str]:
         hz = self.input_rate(model.min_input_hz, getattr(model, "native_input_hz", 0.0))
-        problems = input_rate_problems(float(model.min_input_hz or 0.0), model.name, hz)
+        problems = self.rate_problems(float(model.min_input_hz or 0.0), model.name, hz)
         # Cameras and the dense history are the proxy's concern; a node-less
         # agent (baseline, human, replay) loads no sensors at all.
         if self._agent() == self.PROXY_AGENT:
@@ -1330,7 +1336,7 @@ class NavsimBenchmark(ExternallyScoredBenchmark):
         # The runner has already asked `model_problems`; asked again here so a
         # caller that skips the runner is refused the same way.
         hz = self.input_rate(config.get("min_input_hz", 0.0), config.get("native_input_hz", 0.0))
-        problems = input_rate_problems(
+        problems = self.rate_problems(
             float(config.get("min_input_hz") or 0.0), str(config.get("model", "this model")), hz
         ) + limit_problems(limit, self.MIN_SCENARIOS)
         if self._agent() == self.PROXY_AGENT:

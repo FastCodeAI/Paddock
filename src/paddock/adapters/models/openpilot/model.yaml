@@ -135,6 +135,12 @@ capabilities:
 # comma2k19 needs no such setting: it is native 20 Hz, exactly supercombo's own
 # input rate, so no frame-repeat trick is needed at all -- see
 # docs/benchmarks/comma2k19.md.
+#
+# navhard is the exception that is scored anyway: its synthetic scenes exist only at
+# 2 Hz for every model, so there is no denser rate to feed and 2 Hz is the benchmark's
+# own (navhard/harness.py). Each 0.5 s frame is shown 10 times (`_repeats`); the run
+# config records `below_min_input_hz`, and the score measures supercombo at a rate it
+# reads as near standstill.
 # Settings that change what a score means. The leaderboard prints the line under
 # any ranked run that set one to something other than the declared default.
 score_notes:
@@ -146,4 +152,4 @@ score_notes:
 # in the record tells a value measured on the rig from one fitted to the test set.
 ranked_with_note: [PADDOCK_OPENPILOT_DESIRE]
 
-benchmarks: [kitscenes, neuroncap, bench2drive, navsim, nuscenes, comma2k19, nuplan]
+benchmarks: [kitscenes, neuroncap, bench2drive, navsim, navhard, nuscenes, comma2k19, nuplan]

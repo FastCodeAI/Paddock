@@ -597,3 +597,31 @@ print("ok")
     }
     result = subprocess.run([python, "-c", code], env=env, capture_output=True, text=True, timeout=600)
     assert result.returncode == 0, result.stderr[-3000:]
+
+
+# -- the input rate: 2 Hz for every model ------------------------------------------
+
+
+def test_a_model_below_its_minimum_rate_is_scored_at_2_hz_and_says_so(tmp_path: Path, monkeypatch) -> None:
+    """navtest without nuPlan refuses openpilot (min_input_hz 10). navhard has no denser
+    rate for any model, so it scores it at 2 Hz, stored valid, and its config says so."""
+    from paddock.adapters.benchmarks.navsim.harness import ENV_ALLOW_SLOW, INPUT_HZ
+    from paddock.adapters.benchmarks.navsim.tests.test_harness import _harness as navsim_harness
+    from paddock.adapters.benchmarks.navsim.tests.test_harness import _navsim_site
+    from paddock.registry import Registry
+
+    models = Registry.load().models
+    openpilot, alpamayo = models["openpilot"], models["alpamayo15"]
+    assert openpilot.min_input_hz > INPUT_HZ and "navhard" in openpilot.benchmarks
+    monkeypatch.delenv(ENV_ALLOW_SLOW, raising=False)
+
+    navtest = navsim_harness(_navsim_site(tmp_path / "navtest", monkeypatch))
+    assert any("needs 10 Hz" in p for p in navtest.model_problems(openpilot))
+
+    harness = _harness(_navhard_site(tmp_path, monkeypatch))
+    assert not any("Hz" in p for p in harness.model_problems(openpilot))
+    assert harness.model_run_config(openpilot)["input_hz"] == INPUT_HZ
+    assert harness.model_run_config(openpilot)["below_min_input_hz"] == openpilot.min_input_hz
+    assert harness.invalid_reasons() == [] and harness.run_config()["allow_slow"] is False
+    # a model that asks for no more than 2 Hz keeps the config (and run id) it had
+    assert "below_min_input_hz" not in harness.model_run_config(alpamayo)

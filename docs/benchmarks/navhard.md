@@ -8,7 +8,7 @@
 | Dataset | `navhard` |
 | Primary metric | `epdms` |
 | Adapter | [`adapters/benchmarks/navhard/`](../../src/paddock/adapters/benchmarks/navhard/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -51,7 +51,12 @@ data and are never ranked against each other.
 - **2 Hz only.** The synthetic scenes exist only at OpenScene's 2 Hz, so there
   is no denser history to give a model: every model here gets a 2 Hz history,
   including Qwen-Drive and AutoE2E, whose navtest cells use nuPlan's 10 Hz.
-  OpenPilot, which needs 10 Hz (`min_input_hz`), is refused.
+  OpenPilot, whose `min_input_hz` is 10, is scored at it too and ranked: 2 Hz
+  is this benchmark's rate for every model, not a shortfall of the site. Its
+  adapter shows each 0.5 s frame 10 times to its 20 Hz model, and its run
+  config records `below_min_input_hz`. supercombo infers its own speed from
+  the change between frames, so it reads held frames as near standstill (as
+  on HUGSIM at 4 Hz); its score measures it at that rate.
 
 ### Metrics
 

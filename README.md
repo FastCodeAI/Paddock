@@ -121,8 +121,9 @@ Before comparing numbers:
   types. AlpaSim is 30 of the 913 scenes in `public_2601`. NAVSIM v2 is
   `navtest`, stage one only; its public leaderboard uses `navhard`, two stages,
   which is the "NAVSIM v2 hard" column ([its page](docs/benchmarks/navhard.md)).
-  OpenPilot has no navhard cell: it needs 10 Hz input (`min_input_hz`), and
-  navhard is served at 2 Hz (see its page).
+  navhard is served at 2 Hz for every model, so OpenPilot, which wants 10 Hz
+  (`min_input_hz`), is scored at 2 Hz there with each frame held (see its page);
+  its cell is to follow.
 - **Bench2Drive has two columns.** The one headed "216 of 220 routes" is every
   model driven the same way over all 220 routes but the four set aside for every
   model (CARLA crashes on route 11715 whichever model drives, and crashed on 3800,

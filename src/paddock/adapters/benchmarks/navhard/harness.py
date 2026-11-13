@@ -25,8 +25,12 @@ What differs from navsim, and why:
   above; its mean over frames is the devkit's `extended_pdm_score_combined`,
   which the harness checks against the CSV and refuses on a mismatch. A frame
   whose pair partner has no score is left out, as the devkit's pair mean does.
-* Models needing more than OpenScene's 2 Hz are refused: the synthetic scenes
-  exist only at 2 Hz, so no denser history exists to give them.
+* Every model is fed OpenScene's 2 Hz, including one whose `min_input_hz` is
+  higher (openpilot's 10): the synthetic scenes exist only at 2 Hz, so 2 Hz is
+  this benchmark's rate for every model, not a shortfall of the site, and it is
+  scored and ranked at it. Its run config says so (`below_min_input_hz`, the
+  minimum it declares). openpilot's adapter shows each 0.5 s frame 10 times to
+  its 20 Hz model (`_repeats`), as it shows HUGSIM's 0.25 s frames 5 times.
 
 **Streamed mode** (`PADDOCK_NAVHARD_STREAMED=1`; off by default). Upstream's
 v2.2 scorer hands no agent a previous plan, and each scenario reaches the node
@@ -227,6 +231,20 @@ class NavhardBenchmark(NavsimBenchmark):
     @property
     def split(self) -> str:
         return self.setting("split", SPLIT) or SPLIT
+
+    # -- input rate (module docstring) -----------------------------------------
+
+    def rate_problems(self, min_input_hz: float, model_name: str, supplied_hz: float) -> list[str]:
+        """None: 2 Hz is navhard's rate for every model (module docstring)."""
+        return []
+
+    def model_run_config(self, model) -> dict[str, Any]:
+        config = super().model_run_config(model)
+        minimum = float(getattr(model, "min_input_hz", 0.0) or 0.0)
+        # Only when it applies: every other model's config, and so its run id, stays as it was.
+        if minimum > float(config["input_hz"]):
+            config["below_min_input_hz"] = minimum
+        return config
 
     # -- streamed mode (module docstring) ----------------------------------
 
