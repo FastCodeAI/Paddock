@@ -888,3 +888,30 @@ def test_only_uniad_runs_its_backbone_once_for_the_black_views(model: str, insta
     policy._install_view_features(model_stub, _numpy_ops())
     assert (policy.view_features is not None) is installed
     assert (model_stub.img_backbone.forward is not original) is installed
+
+
+def test_the_black_slots_reach_the_backbone_wrapper_in_camera_order(monkeypatch) -> None:
+    """A one-camera source's five black slots are named by their index in the model's camera order,
+    the order the views are batched in, and handed to the wrapper before the step runs."""
+    from types import SimpleNamespace
+
+    from paddock.adapters.models.uniad.policy import POLICY
+
+    policy = POLICY()
+    monkeypatch.setattr(policy, "_results", lambda obs, lidar2ego: {})
+    monkeypatch.setattr(policy, "_prepare", lambda results: None)
+    prepared = policy._prepare_frame(_front_only())
+    slots = prepared[2]["blank_slots"]
+    assert slots == [1, 2, 3, 4, 5]
+    assert [bp.NUSC_CAMERAS[i] for i in slots] == policy.diagnostics()["blank_views"]
+
+    seen = {}
+    policy.view_features = SimpleNamespace(blank=[], reused=0)
+
+    def step(batch, results):
+        seen["blank"] = list(policy.view_features.blank)
+        return np.zeros((6, 2))
+
+    monkeypatch.setattr(policy, "_run", step)
+    policy._run_prepared(_front_only(), prepared)
+    assert seen["blank"] == [1, 2, 3, 4, 5]
