@@ -140,7 +140,8 @@ Before comparing numbers:
 - **Both NAVSIM columns are open loop.** The plan is simulated for 4 s to score it,
   but the model never sees what happened, so errors do not compound.
 - **Open-loop L2 rewards a straight line.** On nuScenes, constant velocity
-  (0.641) beats every learned model except Qwen-Drive, whose cell is adapted.
+  (0.641) beats every learned model except Qwen-Drive (0.450, adapted) and
+  Alpamayo 2 Edge (0.630).
 - **Close closed-loop scores are often ties.** On neuroNCAP (20 scenario pairs,
   10 runs each) the top three are statistically indistinguishable. On AlpaSim
   (30 scenes, one rollout each) a difference under about 0.16 is within two

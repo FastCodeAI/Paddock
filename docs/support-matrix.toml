@@ -19,7 +19,7 @@ key = "nuscenes"
 name = "nuScenes"
 loop = "open"
 header = "cumulative L2 avg ↓ (m)"
-metric = "l2_uniad_avg"  # not the primary l2_avg: the column is the UniAD-style cumulative L2
+metric = "l2_uniad_avg"  # not the primary l2_avg: cumulative L2, the ST-P3/VAD convention (`uniad` in the key is historical)
 decimals = 3
 
 [[benchmark]]
