@@ -1,11 +1,11 @@
 {
-  "run_id": "20261028T040412-c7e38e",
+  "run_id": "20261113T175630-abc9d8",
   "site": "renesas-sjc",
   "benchmark": "nuplan",
   "model": "autoe2e",
   "mode": "open_loop",
-  "started_utc": "2026-10-28T04:04:12+00:00",
-  "duration_s": 1613.6,
+  "started_utc": "2026-11-13T17:56:30+00:00",
+  "duration_s": 808.4,
   "repo_sha": "40a75cf8a26b60f6b094125e3924fe0bdb427b02",
   "dataset": {
     "name": "nuplan",
@@ -31,14 +31,12 @@
     "eval_horizon_s": 3.0,
     "camera": "CAM_F0",
     "declared_env": {
-      "AUTOE2E_CHECKPOINT": "{weights}checkpoint.pt",
+      "AUTOE2E_CHECKPOINT": "{weights}/auto_e2e/models/kitscenes-epoch-5/checkpoint.pt",
+      "AUTOE2E_EGO_HISTORY": "real",
       "AUTOE2E_REF_HEIGHT_M": "2.1",
       "AUTOE2E_REPLAN_S": "0",
       "AUTOE2E_REPO": "{repo}",
       "AUTOE2E_ROUTE": "1"
-    },
-    "model_env": {
-      "AUTOE2E_CHECKPOINT": "<site path:5a590cbb>"
     }
   },
   "hardware": {},
@@ -50,14 +48,14 @@
       "at_pin": true
     },
     "paddock": {
-      "sha": "9671b4996435d238f85937e4ddba30a903831043",
-      "dirty": true
+      "sha": "e37facd39bcaf331316d82f6b8a5e659befb440f",
+      "dirty": false
     },
     "policy": {
-      "checkpoint": "models/nuplan-epoch-5/checkpoint.pt",
-      "checkpoint_sha256": "ca8b43d7a777d6fd9195bb253d1452f3cd645f7aab3bd0e36b1f74ffb31df29b",
+      "checkpoint": "models/kitscenes-epoch-5/checkpoint.pt",
+      "checkpoint_sha256": "120a21639d9767d512eea645be0a83b01476c9e0366a8b957ac51b7ead1bd762",
       "config": {
-        "training_stage": "nuplan_full",
+        "training_stage": "kitscenes_finetune",
         "backbone": "res_net_50",
         "embed_dim": 256,
         "num_views": 6,
@@ -67,6 +65,7 @@
       "route": true,
       "bf16": true,
       "replan_s": 0.0,
+      "ego_history": "real",
       "calls": 351,
       "map_calls": 0,
       "route_calls": 0,
@@ -91,20 +90,20 @@
         "map_valid": false,
         "route_valid": false,
         "destination": false,
-        "pack_s": 2.441,
-        "model_s": 1.092,
-        "accel_0": 0.029,
-        "kappa_0": -0.043,
+        "pack_s": 1.091,
+        "model_s": 1.097,
+        "accel_0": -0.08,
+        "kappa_0": -0.0217,
         "end_6s": [
-          0.35,
-          -0.0
+          0.61,
+          0.0
         ]
       }
     }
   },
   "status": "complete",
-  "valid": false,
+  "valid": true,
   "superseded_by": "",
-  "notes": "site env override may change what was measured: AUTOE2E_CHECKPOINT (values in config.model_env)",
+  "notes": "",
   "ingested_from": ""
 }
