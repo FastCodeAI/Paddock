@@ -1269,6 +1269,7 @@ def test_the_models_planning_rate_reaches_the_client_and_the_record(tmp_path, mo
     assert harness.model_run_config(models["alpamayo15"]) == {"infer_hz": 10.0}, (
         "frames and poses 0.1 s apart"
     )
+    assert harness.model_run_config(models["alpamayo2edge"]) == {"infer_hz": 10.0}, "the same 0.1 s grid"
     assert harness.model_run_config(models["openpilot"]) == {}, "no planning_hz: asked every tick"
     assert harness.model_run_config(models["qwendrive"]) == {"infer_hz": 2.0, "observe_hz": 10.0}, (
         "plans at 2 Hz, its pose history is on a 0.1 s grid: frames handed between plans, recorded"

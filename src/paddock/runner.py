@@ -35,6 +35,7 @@ from paddock.benchmark import (
     ClosedLoopBenchmark,
     ExternallyScoredBenchmark,
     OpenLoopBenchmark,
+    SampleSequence,
 )
 from paddock.config import SiteConfig
 from paddock.policy.protocol import Trajectory
@@ -1088,6 +1089,25 @@ def _batches(source: Iterator, size: int, prefetch: bool) -> Iterator[list]:
         yield item
 
 
+#: Seconds `/infer_each` may take per frame of the sequence before the request is abandoned. A window
+#: of five frames gets 600 s, which stays the floor; a 40-keyframe nuScenes scene gets 2400 s.
+SEQUENCE_TIMEOUT_PER_FRAME_S = 60.0
+
+
+def _unscored_sequences(sequences: Iterator[SampleSequence], done: set[str]) -> Iterator[SampleSequence]:
+    """Each sequence with the samples already scored left out of `scored`, and none that has nothing left.
+
+    Its frames are kept whole: a resumed sequence is fed again from its start, so a sample scored on
+    this attempt sees the state it would have had on the first.
+    """
+    import dataclasses
+
+    for sequence in sequences:
+        left = [(index, sample) for index, sample in sequence.scored if sample.sample_id not in done]
+        if left:
+            yield dataclasses.replace(sequence, scored=left)
+
+
 def _run_open_loop(
     cfg: SiteConfig,
     harness: OpenLoopBenchmark,
@@ -1112,6 +1132,11 @@ def _run_open_loop(
     is image decoding rather than the forward pass, which is most of them, this
     is the difference between a sweep that takes a day and one that takes an
     hour.
+
+    A harness that scores in order (`in_sequence`) hands over whole sequences
+    instead, each one `/infer_each` request: reset once, a plan from every frame,
+    and a record for each sample scored from the plan at its frame. Each
+    sequence is still self-contained, so the same holds per sequence.
     """
     import httpx
 
@@ -1168,28 +1193,61 @@ def _run_open_loop(
 
     failures = 0
     nodes = max(1, harness.node_count(model_spec))
+    in_sequence = harness.in_sequence()
 
-    def score_one(job: tuple[str, object]) -> dict | None:
-        """One sample through one node. Runs on a worker thread."""
+    def prediction_from(body: dict) -> Trajectory:
+        return Trajectory(
+            body["trajectory"],
+            dt=model_spec.waypoint_dt,
+            # Auxiliary heads (pose, lead, sigma, lane geometry), when
+            # the model produces them. A harness scores what is here
+            # and returns NaN for what is not, so the same metric list
+            # holds across models -- see `protocol.EXTRAS_KEYS`.
+            extras=body.get("extras"),
+        )
+
+    def score_one(job: tuple[str, object]) -> list[dict | None]:
+        """One sample through one node, as a one-record list. Runs on a worker thread."""
         policy_url, sample = job
         try:
             payload = {"observations": [o.to_wire() for o in sample.observations]}
             response = httpx.post(f"{policy_url}/infer_sequence", json=payload, timeout=600.0)
             response.raise_for_status()
-            body = response.json()
-            prediction = Trajectory(
-                body["trajectory"],
-                dt=model_spec.waypoint_dt,
-                # Auxiliary heads (pose, lead, sigma, lane geometry), when
-                # the model produces them. A harness scores what is here
-                # and returns NaN for what is not, so the same metric list
-                # holds across models -- see `protocol.EXTRAS_KEYS`.
-                extras=body.get("extras"),
-            )
+            prediction = prediction_from(response.json())
             metrics = harness.score(sample, prediction)
         except Exception as exc:  # noqa: BLE001 - one bad sample must not end the run
             echo(f"  {sample.sample_id}: FAILED - {exc}")
-            return None
+            return [None]
+        return [make_record(sample, prediction, metrics)]
+
+    def score_sequence(job: tuple[str, SampleSequence]) -> list[dict | None]:
+        """One whole sequence through one node, every frame in order; a record per scored sample."""
+        policy_url, sequence = job
+        try:
+            payload = {"observations": [o.to_wire() for o in sequence.observations]}
+            # A step per frame, so the wait grows with the sequence; a window's 600 s is the floor.
+            timeout = max(600.0, SEQUENCE_TIMEOUT_PER_FRAME_S * len(sequence.observations))
+            response = httpx.post(f"{policy_url}/infer_each", json=payload, timeout=timeout)
+            response.raise_for_status()
+            plans = response.json()["plans"]
+            if len(plans) != len(sequence.observations):
+                raise ValueError(f"{len(plans)} plans for {len(sequence.observations)} frames")
+        except Exception as exc:  # noqa: BLE001 - one bad sequence must not end the run
+            echo(f"  {sequence.sequence_id}: FAILED ({len(sequence.scored)} sample(s)) - {exc}")
+            return [None] * len(sequence.scored)
+        out: list[dict | None] = []
+        for index, sample in sequence.scored:
+            try:
+                prediction = prediction_from(plans[index])
+                metrics = harness.score(sample, prediction)
+            except Exception as exc:  # noqa: BLE001 - one bad sample must not end the run
+                echo(f"  {sample.sample_id}: FAILED - {exc}")
+                out.append(None)
+                continue
+            out.append(make_record(sample, prediction, metrics))
+        return out
+
+    def make_record(sample, prediction: Trajectory, metrics: dict) -> dict:
         return {
             "sample_id": sample.sample_id,
             "native_id": sample.native_id,
@@ -1239,12 +1297,20 @@ def _run_open_loop(
 
                 pool = stack.enter_context(ThreadPoolExecutor(nodes, thread_name_prefix="infer"))
                 journal = stack.enter_context((artifacts / PARTIAL_SAMPLES).open("a"))
-                stream = harness.samples(limit=outstanding, skip=done)
                 # `skip` is an optimisation the harness may decline; scoring a
                 # sample twice is not. One id appearing twice in samples.jsonl
                 # double-counts it in every aggregate, so the guarantee is
                 # enforced here and the saving is left to the harness.
-                stream = (s for s in stream if s.sample_id not in done)
+                if in_sequence:
+                    units: Iterator = _unscored_sequences(
+                        harness.sequences(limit=outstanding, skip=done), done
+                    )
+                    score_unit = score_sequence
+                else:
+                    units = (
+                        s for s in harness.samples(limit=outstanding, skip=done) if s.sample_id not in done
+                    )
+                    score_unit = score_one
 
                 # Per node, not per run. One counter over the whole stream
                 # could not fire above one node: a batch of four with one
@@ -1252,19 +1318,23 @@ def _run_open_loop(
                 # it, and the sweep ran its full length paying a 600 s timeout
                 # a batch. Which is the fortnight this guard exists to end.
                 consecutive: dict[str, int] = dict.fromkeys(urls, 0)
-                for batch in _batches(stream, nodes, prefetch=nodes > 1):
+                for batch in _batches(units, nodes, prefetch=nodes > 1):
                     before = len(samples)
                     jobs = list(zip(urls, batch, strict=False))
-                    for (node_url, _), record in zip(jobs, pool.map(score_one, jobs), strict=False):
-                        if record is None:
-                            failures += 1
-                            consecutive[node_url] += 1
-                            continue
-                        consecutive[node_url] = 0
-                        samples.append(record)
-                        # Flushed per batch, not per sample: a killed run loses
-                        # at most one batch, and `--resume` re-scores it.
-                        journal.write(json.dumps(record, default=store.json_default) + "\n")
+                    for (node_url, _), records in zip(jobs, pool.map(score_unit, jobs), strict=False):
+                        # Counted per request: a sequence that failed is one failure of its
+                        # node, not one per sample it held, or one bad scene would end a run.
+                        scored_any = False
+                        for record in records:
+                            if record is None:
+                                failures += 1
+                                continue
+                            scored_any = True
+                            samples.append(record)
+                            # Flushed per batch, not per sample: a killed run loses
+                            # at most one batch, and `--resume` re-scores it.
+                            journal.write(json.dumps(record, default=store.json_default) + "\n")
+                        consecutive[node_url] = 0 if scored_any else consecutive[node_url] + 1
                     journal.flush()
                     if len(samples) // 25 != before // 25:
                         # The benchmark's own headline, not `ade`: nuScenes calls
@@ -1283,7 +1353,8 @@ def _run_open_loop(
                         # samples that is two weeks of four pinned nodes to
                         # produce a run `_validity` marks invalid anyway.
                         aborted = (
-                            f"aborted after {consecutive[wedged]} consecutive sample failures on "
+                            f"aborted after {consecutive[wedged]} consecutive "
+                            f"{'sequence' if in_sequence else 'sample'} failures on "
                             f"{wedged}; that node is not scoring, and the samples are not the cause"
                         )
                         echo("  " + aborted)

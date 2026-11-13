@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from paddock.adapters.benchmarks.bench2drive import recorder
+from paddock.policy.protocol import Trajectory
 
 
 class _Node:
@@ -27,8 +28,8 @@ class _Node:
     def post(self, url, json, timeout):
         self.calls += 1
         reach = float(self.calls)
-        plan = [[reach + i, 0.0] for i in range(6)]
-        return types.SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"trajectory": plan})
+        plan = Trajectory([[reach + i, 0.0] for i in range(6)], dt=0.5).to_wire()
+        return types.SimpleNamespace(raise_for_status=lambda: None, json=lambda: plan)
 
 
 def _client(agent_module, hz: float):
