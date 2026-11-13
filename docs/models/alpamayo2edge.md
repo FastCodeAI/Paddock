@@ -437,7 +437,7 @@ is the scenario's command, so a turn has no distance ("Turn right").
 | 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54 % | `neuroncap/alpamayo2edge/20261111T231934-33adca` |
 
 Fifth of the eight model rows on the full set: below Drive-JEPA (4.13), Alpamayo 1.5 (3.73), OpenPilot
-(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.58). Side impacts are
+(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.49). Side impacts are
 its weak column: 38 of 50 side runs collided, every run in `side-0103` and `side-0921`. It
 avoided every collision in four pairs: `stationary-0106`, `stationary-0108`, `side-0108` and
 `frontal-0346`.
