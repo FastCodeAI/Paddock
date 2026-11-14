@@ -457,18 +457,28 @@ neuroNCAP sends all five.
 
 ### Bench2Drive
 
-Every route of `bench2drive220.xml` but the four set aside for every model, driven
-under the [220-route protocol](../benchmarks/bench2drive.md#the-220-route-protocol):
-asked at its declared 10 Hz, routes ended after 30 s without progress or at four times
-the expert's time, up to three attempts a route.
+Every route of `bench2drive220.xml`, driven under the
+[220-route protocol](../benchmarks/bench2drive.md#the-220-route-protocol): asked at its
+declared 10 Hz, routes ended after 30 s without progress or at four times the expert's
+time, up to three attempts a route. 216 routes were driven on two A100s; the four that
+site set aside for every model (3800, 11715, 23695, 24071) were driven here later under
+patch 0003, from the same commit (`f873bc2`), and pooled with them.
 
 | Routes | Driving score ↑ | Route completion ↑ | Infraction penalty ↑ | Run | How |
 |---|---:|---:|---:|---|---|
-| 216 of 220 | **13.74** | 38.84 % | 0.481 | `bench2drive/alpamayo2edge/full220-836dda734659a86c-56db50` | 4 workers on each of two A100s, 11.6 h |
+| 220 of 220 | **13.87** | 38.78 % | 0.483 | `bench2drive/alpamayo2edge/full220-86aa45e768a29a64-ffe60a` | 216 routes: 4 workers on each of two A100s, 11.6 h; 4 routes: one RTX PRO 6000 Blackwell, 1 h |
 
-It ranks fourth of the five models in that column, just below AutoE2E (14.36), and
-behind openpilot (43.42) and Alpamayo 1.5 (37.66). The tables, and Bench2Drive's own
-scores for the record, are in [bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
+It replaces the 216-route record `full220-836dda734659a86c-56db50` (13.74). It ranks
+tenth of the eleven models in that column, just below AutoE2E (14.29) and above METEOR
+(1.89). The tables, and Bench2Drive's own scores for the 216 routes, are in
+[bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
+
+- **The four routes driven here** scored 16.55 (3800), 41.46 (11715), 21.11 (23695)
+  and 4.77 (24071). The 30 s rule ended three of them and the over-time rule 11715;
+  23695 and 24071 have a collision. Each scored on its first attempt, and patch 0003
+  acted on 11715, 23695 and 24071.
+
+The rest of this part is over the 216 routes driven on the A100s.
 
 - **It completes 16 routes, and none is a success.** Each of the 16 has an
   infraction, and 142 of the 216 routes have a collision.
