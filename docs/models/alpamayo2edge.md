@@ -174,7 +174,6 @@ Each is read from the environment of the node; `model.yaml` declares the default
 | `ALPAMAYO2_EDGE_NAV_DISTANCE_M` | unset | a distance for turns the source gives none ("Turn left in 20m") | no |
 | `ALPAMAYO2_EDGE_SAVE_REASONING` | `0` | `1` keeps the rationale's first 400 characters in each plan's extras | yes |
 | `ALPAMAYO2_EDGE_ABSENT_CAMERAS` | `refuse` | `black`: a slot whose camera the source never sends gets a black frame at each time it asks for, and is named in `black_slots`. comma2k19 needs it | yes, with a note |
-| `ALPAMAYO2_EDGE_THREADS` | `4` | torch's CPU threads in the node; the plan is the same at any count | yes |
 
 No default was chosen by scoring navtest. They are the vendor's settings, plus the
 reasons above.
@@ -191,10 +190,16 @@ Edge on comma2k19, set it for that pairing alone in `paddock.toml`:
 ALPAMAYO2_EDGE_ABSENT_CAMERAS = "black"
 ```
 
-`ALPAMAYO2_EDGE_THREADS` exists because torch takes every core by default. On a
-48-core machine shared with CARLA, the vendor's processor then took 1.4 s to pack one
-plan's 22 frames, where 4 threads take 0.18 s and 16 take 0.07 s. The packed pixels
-and the plan were bit-identical at 2, 4, 8, 16 and 48 threads, on one input.
+`model.yaml` also sets `OMP_NUM_THREADS` to 4, the CPU threads torch and numpy use in
+the node, because torch takes every core by default. On a 48-core machine shared with
+CARLA, the vendor's processor then took 1.4 s to pack one plan's 22 frames, where 4
+threads take 0.18 s and 16 take 0.07 s. The packed pixels and the plan were
+bit-identical at 2, 4, 8, 16 and 48 threads, on one input. The runner counts
+`OMP_NUM_THREADS` as a speed setting for every model, so a site that sets its own in
+`[models.alpamayo2edge.env]` in `paddock.toml` keeps its run ranked. Edge's Bench2Drive
+record was driven when the 4 threads came from a setting of Edge's own,
+`ALPAMAYO2_EDGE_THREADS`, which its notes name: it set torch's threads alone and left
+numpy's at every core.
 
 The seed is set before every plan. A plan therefore depends on its input alone, not
 on the node, the order, a retry or a resumed run. It is still one draw: on one
@@ -449,3 +454,29 @@ closed-loop wire and neuroNCAP code are this branch's, but for two things that c
 nothing here: the stride helper was named `wire_stride`, and the adapter did not yet have
 `ALPAMAYO2_EDGE_ABSENT_CAMERAS`, whose default refuses a missing camera as it did then;
 neuroNCAP sends all five.
+
+### Bench2Drive
+
+Every route of `bench2drive220.xml` but the four set aside for every model, driven
+under the [220-route protocol](../benchmarks/bench2drive.md#the-220-route-protocol):
+asked at its declared 10 Hz, routes ended after 30 s without progress or at four times
+the expert's time, up to three attempts a route.
+
+| Routes | Driving score ↑ | Route completion ↑ | Infraction penalty ↑ | Run | How |
+|---|---:|---:|---:|---|---|
+| 216 of 220 | **13.74** | 38.84 % | 0.481 | `bench2drive/alpamayo2edge/full220-836dda734659a86c-56db50` | 4 workers on each of two A100s, 11.6 h |
+
+It ranks fourth of the five models in that column, just below AutoE2E (14.36), and
+behind openpilot (43.42) and Alpamayo 1.5 (37.66). The tables, and Bench2Drive's own
+scores for the record, are in [bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
+
+- **It completes 16 routes, and none is a success.** Each of the 16 has an
+  infraction, and 142 of the 216 routes have a collision.
+- **Its one ability is Traffic signs:** 52 of 94 routes got past their first junction
+  with no red light or stop sign run, the most of any model in the column.
+- **Most routes end on the 30 s rule:** 166 of 216, and 14 on the over-time rule.
+- **The model wrote `<NOMINAL>` in 18 % of plans** (18,069 of 99,399), against 37 %
+  of NAVSIM scenarios, and a rationale in the rest.
+- **One plan was drawn again.**
+- **With eight nodes sharing the two cards,** a plan took 2.1 s in the model at the
+  median, 14.2 s at most.

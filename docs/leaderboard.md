@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-109 runs across 9 benchmarks.
+110 runs across 9 benchmarks.
 62 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -47,6 +47,12 @@
 | meteor | full220-86aa45e768a29a64-2144df | 220 | 1.887 | 5.299 | 0.926 | 0.118 | 1.000 | 0.000 | 112.850 |
 
 - [1] constant_velocity: driven at a fixed 3 m/s, not the measured ego speed
+
+### n = 216, scene set 836dda73
+
+| model | run | n | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_runs ↑ | n_crashed ↑ | duration_s ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo2edge | full220-836dda734659a86c-56db50 | 216 | 13.740 | 38.839 | 0.481 | 0.657 | 1.000 | 0.000 | 1373.664 |
 
 ### n = 50, scene set 40c29d24
 

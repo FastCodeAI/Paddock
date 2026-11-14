@@ -1058,7 +1058,7 @@ by succeeding: completed, with no infraction but a minimum-speed one. A traffic-
 route also earns that one if the car got past its first junction with no red
 light or stop sign run.
 
-The four paragraphs below describe the 216 routes driven at `a100-gpu-vm-002`.
+The five paragraphs below describe the 216 routes driven at `a100-gpu-vm-002`.
 
 **OpenPilot** drives through openpilot's own longitudinal planner and its
 driver-resume nudge (P), asked every 20 Hz tick, as in its 50-route cell. CARLA
@@ -1095,6 +1095,17 @@ here under patch 0003 (*Routes set aside*); every other route scored on its firs
 here, and is second to openpilot on driving score: 88 routes have a collision, and
 the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
 best ability is Traffic signs, 49 of 94 routes.
+
+**Alpamayo 2 Edge** is asked at its declared 10 Hz, the last plan followed in between,
+with five of paddock's cameras, a telephoto crop of the front one, and the route as
+navigation text; the controller follows its plan's own points every 0.5 s. CARLA
+crashed once, on route 23670's first attempt, 66 s in, and the route scored on its
+next. It completes 16 of its 216 routes, and none is a success: each of the 16 has an
+infraction, and 142 of the 216 routes have a collision. Its median route completion
+is 35%, and 19 routes end under 1%. The 30 s rule ended 166 routes and the
+over-time rule 14. Its one ability credit is Traffic signs, for 52 of 94 routes that
+got past their first junction with no red light or stop sign run, the most of any
+model here (Alpamayo 1.5: 49).
 
 ### The 50 routes are not a sample of the 220
 
