@@ -217,7 +217,9 @@ bridge drives them all.
 
 **Checked.** `tests/test_alpasim_inputs.py` covers the slots, the uncropped frames,
 the route and its move into the newest frame, and that the route port agrees with
-alpamayo15's port of the same function. Run on the real checkpoint on an H200 with
+alpamayo15's port of the same function. `tests/test_alpasim_vendor.py`, in the model's
+environment, puts a full-size 1920×1080 AlpaSim sample with the telephoto through
+NVIDIA's `validate_sample` and `prepare_model_inputs`. Run on the real checkpoint on an H200 with
 AlpaSim-shaped requests (20 Hz pixels at 1916×1080, no intrinsics, the telephoto, a
 route 0.5 s old), one plan took 0.5 s after the first, every slot's frame times were
 the vendor's, and a turn 24 m ahead on a route 0.5 s old at 8 m/s read "Turn left
@@ -293,7 +295,8 @@ the same steps (`prepare_inputs`). A test checks that both give the same tensors
 ## Tests
 
 `make check` runs `tests/test_inputs.py` and `tests/test_policy.py` in paddock's own
-environment, with the model stubbed. `tests/test_vendor_inputs.py` needs the model's
+environment, with the model stubbed. `tests/test_vendor_inputs.py` and
+`tests/test_alpasim_vendor.py` need the model's
 environment and the checkpoint's config, tokenizer and processor. It runs on the CPU
 and loads no weights. `make check-alpamayo2edge` runs the whole folder there, and
 fails rather than skips when the environment or the checkpoint is missing:
