@@ -505,6 +505,9 @@ other groups, read from each run's resolved config.
   ([docs/models/alpamayo2edge.md](../models/alpamayo2edge.md#on-alpasim-through-the-bridge)).
   Made by `results/alpasim/alpamayo2edge/20261112T220852-f6d995`; the
   first-ten row is the first ten scenes of that run, not a second sweep.
+  That run's `config.cameras` lists the five cameras in Edge's `model.yaml`;
+  the telephoto, the sixth, is asked for by the profile's `--camera-name`
+  flags, which the record keeps under `config.bridge_args`.
 - **The cameras are not the recorded ones.** METEOR expects pinhole images, so
   the six cameras are rendered as pinholes with square pixels and no
   distortion, each at the narrower of METEOR's own camera and the recorded
