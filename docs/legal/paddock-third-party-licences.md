@@ -203,6 +203,90 @@ one is in pull request #183, which is not merged yet, and two wait on Legal:
 7. **Paddock's model comparison page** gives each model's weights licence as its
    publisher states it (pull request #182, merged).
 
+### 4.1 Downloads
+
+Paddock hosts nothing. Every download runs on the user's own machine, from the owner's own
+host, when the user asks for it. Checked on 16 November against `main`.
+
+| What | From | Licence shown to the user | Terms check |
+|---|---|---|---|
+| Upstream code, 20 repositories, each at a pinned commit (`paddock setup`) | GitHub | No | None; each repository's own licence applies |
+| nuScenes (`paddock data fetch`) | Motional's own download host | Yes: "CC BY-NC-SA 4.0, non-commercial use only; nuScenes also asks every user to register at nuscenes.org" | `--accept-terms`. The host does not check registration. |
+| nuPlan, and NAVSIM's maps | Motional's own download bucket | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
+| NAVSIM's scenes (OpenScene) | Hugging Face, `OpenDriveLab/OpenScene` | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
+| KITScenes | Hugging Face, gated: the user's own login, which must have accepted KIT's terms | Yes: CC BY-NC 4.0, non-commercial use only | KIT's gate, and `--accept-terms` |
+| neuroNCAP's renderer files | Dropbox, the link in neuro-ncap's own download script | Yes: nuScenes' terms, which the renderers inherit | `--accept-terms` |
+| HUGSIM's scenes | Hugging Face, `XDimLab/HUGSIM` | Yes, as "MIT" | None. The scenes include ones rebuilt from Waymo data, and Waymo's licence lets data be shared only with people registered with Waymo who agreed to its terms. |
+| comma2k19 | Hugging Face, `commaai/comma2k19` | Yes: MIT | None needed |
+| CARLA 0.9.15, for Bench2Drive | CARLA's own release bucket | Yes: MIT code, CC BY assets, Unreal Engine's own licence | None |
+| Weights of Alpamayo 2 Edge, AutoE2E, METEOR and WA-JEPA (`paddock setup --model`) | Hugging Face, the publishers' own repositories | No | None. AutoE2E's weights are non-commercial (CC BY-NC-SA 4.0) and download without a notice. |
+| Weights of openpilot and VisionPilot | Inside their code repositories (git LFS for openpilot) | No | None; MIT and Apache-2.0 |
+| Weights of Alpamayo 1.5, Drive-JEPA, Qwen-Drive, UniAD and VAD | The publisher's own link, which each model's page gives; the user fetches them | On the model pages that link to them | Alpamayo 1.5's model card says non-commercial; VAD's weights state no licence |
+| Python packages | PyPI and PyTorch's package index | No | Paddock's own dependencies are all permissive (section 4.4) |
+
+### 4.2 Videos and images
+
+**In the repository**, every image is Paddock's own: the logo (`paddock.svg`), the social
+preview card (`social-preview.png`, text only), and two charts drawn from the results
+(`models.svg`, and `support-matrix.svg`, whose AlpaSim column shows AlpaSim scores). There
+are no dataset images and no videos.
+
+**On the website**, which is built only once the repository is public, `tools/site/media.toml`
+lists eight videos with a still image each. They are hosted outside git, on a team member's
+personal Hugging Face account, as `naren-fastcode/paddock-videos`:
+
+| Videos | What they show | Licence position | What to know |
+|---|---|---|---|
+| Four neuroNCAP clips | Renderings of nuScenes scenes 0923, 0278, 0966 and 0108, rebuilt by neuroNCAP's renderers, with another car added | nuScenes' terms: CC BY-NC-SA 4.0, non-commercial, with credit. The dataset's card was tagged CC BY-NC-SA 4.0 and credited nuScenes on 11 November. | The website page itself credits no dataset beside them. Whether they show identifiable faces or licence plates has not been checked. |
+| Four AlpaSim clips, added on 12 November | Renderings of NVIDIA's scenes bae463d3, 5f064b02, 8023dce5 and 04749bb9; each caption gives the scene's scores | NVIDIA's agreement forbids distributing derived works of the scenes (§4.6) and treats benchmark results as confidential (§3) | Not publishable without NVIDIA's written permission. Whether they were ever publicly reachable has not been checked: ask the dataset's owner. |
+
+The dataset was public and ungated on 11 November. On 16 November Hugging Face no longer
+serves it to anyone not logged in, so it is private or deleted; `main`'s website list still
+points to it. The website also offers every result, AlpaSim's included, as a `data.json`
+download.
+
+### 4.3 References and names
+
+- **References.** The README's tables link each model's code, with its licence as GitHub
+  reports it, and its paper; and each benchmark's own site and paper. All eleven code
+  licences in the README match the projects' own LICENSE files.
+- **Citations.** The README asks users to cite each model and benchmark they run, and
+  `CITATION.cff` lets them cite Paddock as Renesas's work.
+- **Names, no logos.** Models, datasets and companies are named only to describe them.
+  There is no third-party logo in the README, the documents or the website. The website
+  loads no outside fonts or scripts; the only things it loads from elsewhere are the videos
+  and their stills (section 4.2). The README and THIRD_PARTY_NOTICES.md say that being
+  listed does not mean a project endorses Paddock; Motional's terms forbid implying its
+  endorsement or using its name or logo without consent.
+- **Badges.** The website lets a model's publisher embed a "Paddock" badge showing the
+  model's score: Paddock's own name, beside Paddock's own measurement.
+- **Attribution lines the datasets ask for.** KITScenes' paper is cited in the README.
+  Waymo's licence asks work made with its data to carry an attribution sentence; none
+  appears, and the two HUGSIM runs include scenes rebuilt from Waymo data.
+- **"Paddock ships no weights and no datasets."** The README says this, and the website
+  says Paddock ships none of the models, benchmarks and datasets. It is true of weights and
+  of whole datasets; the repository does hold the small dataset excerpts in section 4.
+
+### 4.4 Release hygiene
+
+- **Who owns the code.** `LICENSE` and the README name Renesas Electronics Corporation as
+  the copyright holder. The commits on `main` come from 11 authors, writing from
+  `renesas.com`, `fastcode.ai`, Gmail and GitHub's private no-reply addresses.
+- **Code written with an AI assistant.** 407 of the 413 commits on `main` that are not
+  merges carry a "Co-Authored-By: Claude" line: they were written with Anthropic's AI
+  coding assistant.
+- **Secrets.** No access token or private key is in the files or the history (searched for
+  Hugging Face, GitHub, AWS, Slack, OpenAI and Google keys, and private-key blocks).
+- **Paddock's own dependencies** are all under permissive licences: BSD, MIT, and
+  matplotlib's own. None is copyleft, and Paddock ships none of them; users install them.
+  Each model's environment installs its own packages, such as PyTorch, which this review
+  did not cover.
+- **Git history.** It holds the real AlpaSim test files and results, and internal
+  analysis. The plan is to publish Paddock as a new repository without history.
+- **Contributions.** Apache-2.0 makes contributions Apache-2.0 unless stated otherwise.
+  There is no contributor agreement and no sign-off requirement.
+- **The name "Paddock"** has not been checked for trademark conflicts.
+
 ## 5. How others report results on these benchmarks
 
 - **Companies publish scores on these non-commercial datasets, with credit.** NVIDIA
