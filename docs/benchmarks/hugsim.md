@@ -333,6 +333,6 @@ recorded none, so an older run keeps its id.
 ## Support-matrix results
 
 The README's support matrix has a HUGSIM column: each model's HD-Score (0–1) from its run in
-[Results](#results), ten of the matrix's eleven models. Alpamayo 2 Edge has not been driven here.
+[Results](#results), all eleven of the matrix's models.
 The column's notes give the rate where a model is asked slower than every step (2 Hz) or below its
 own minimum (openpilot, 4 Hz; see the caveat above).
