@@ -211,8 +211,8 @@ host, when the user asks for it. Checked on 16 November against `main`.
 | What | From | Licence shown to the user | Terms check |
 |---|---|---|---|
 | Upstream code, 20 repositories, each at a pinned commit (`paddock setup`) | GitHub | No | None; each repository's own licence applies |
-| nuScenes (`paddock data fetch`) | Motional's own download host | Yes: "CC BY-NC-SA 4.0, non-commercial use only; nuScenes also asks every user to register at nuscenes.org" | `--accept-terms`. The host does not check registration. |
-| nuPlan, and NAVSIM's maps | Motional's own download bucket | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
+| nuScenes (`paddock data fetch`) | Motional's own download host, at the addresses nuscenes.org gives only after sign-in | Yes: "CC BY-NC-SA 4.0, non-commercial use only; nuScenes also asks every user to register at nuscenes.org" | `--accept-terms`. The host does not check registration, so publishing these addresses lets a user skip Motional's sign-in. Motional's own tutorials link directly only to nuScenes' small "mini" sample. |
+| nuPlan, and NAVSIM's maps | Motional's own download bucket, at the addresses NAVSIM's own download scripts publish | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
 | NAVSIM's scenes (OpenScene) | Hugging Face, `OpenDriveLab/OpenScene` | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
 | KITScenes | Hugging Face, gated: the user's own login, which must have accepted KIT's terms | Yes: CC BY-NC 4.0, non-commercial use only | KIT's gate, and `--accept-terms` |
 | neuroNCAP's renderer files | Dropbox, the link in neuro-ncap's own download script | Yes: nuScenes' terms, which the renderers inherit | `--accept-terms` |
@@ -260,9 +260,11 @@ download.
   endorsement or using its name or logo without consent.
 - **Badges.** The website lets a model's publisher embed a "Paddock" badge showing the
   model's score: Paddock's own name, beside Paddock's own measurement.
-- **Attribution lines the datasets ask for.** KITScenes' paper is cited in the README.
-  Waymo's licence asks work made with its data to carry an attribution sentence; none
-  appears, and the two HUGSIM runs include scenes rebuilt from Waymo data.
+- **Attribution lines the datasets ask for.** KITScenes' paper is cited in the README, but
+  KIT's terms also say: "If the dataset is used in media, a link to our websites
+  (kitscenes.com) is included." No page in the repository links to kitscenes.com. Waymo's
+  licence asks work made with its data to carry an attribution sentence; none appears,
+  and the two HUGSIM runs include scenes rebuilt from Waymo data.
 - **"Paddock ships no weights and no datasets."** The README says this, and the website
   says Paddock ships none of the models, benchmarks and datasets. It is true of weights and
   of whole datasets; the repository does hold the small dataset excerpts in section 4.
@@ -272,6 +274,16 @@ download.
 - **Who owns the code.** `LICENSE` and the README name Renesas Electronics Corporation as
   the copyright holder. The commits on `main` come from 11 authors, writing from
   `renesas.com`, `fastcode.ai`, Gmail and GitHub's private no-reply addresses.
+- **Names in the run records.** Every run record names the "site" that produced it, and
+  these names would be published with the results. Of the 163 records, 55 contain a
+  contributor's user name or first name (such as `hpcai-skodate` and
+  `fastcode-navvrat-b2d-pooled`), 109 contain the contractor's name, FastCode, and 12 a
+  Renesas host name (such as `renesas-sjc`).
+- **Disclaimers.** Apache-2.0 disclaims any warranty for the code. Nothing says that the
+  scores are Paddock's own research measurements, not safety assessments, or that they can
+  differ from the publishers' own figures. The README's only statement of this kind is
+  that being listed does not mean a project endorses Paddock.
+- **Export control** has not been checked. Paddock implements no encryption.
 - **Code written with an AI assistant.** 407 of the 413 commits on `main` that are not
   merges carry a "Co-Authored-By: Claude" line: they were written with Anthropic's AI
   coding assistant.
@@ -568,6 +580,13 @@ Added to Paddock on 12 November. No results yet.
 - **Re-checked on 16 November 2026 against `main` at `73e9ac6`.** Every licence tag and
   model card above is unchanged, and NVIDIA's AlpaSim agreement is word for word the same.
   KITScenes' terms gained one term, on aerial features, which Paddock does not use.
+- **Also checked on 16 November**: every binary and large file in the repository (none
+  holds dataset images or video; the large JSON files are Paddock's own results and test
+  data, one of them NAVSIM's own simulator run on made-up plans); the fields of all 163
+  run records; the download addresses in `datasets.yaml`, against those Motional's
+  nuScenes tutorials and NAVSIM's download scripts publish; and what the website loads
+  from other hosts (only the videos and their stills; it sets no cookies and has no
+  analytics).
 - **Not checked**: PandaSet's licence text; WA-JEPA's training data beyond Paddock's
   notes; and the licences of the software libraries each model installs, such as
   PyTorch, which Paddock does not ship.
