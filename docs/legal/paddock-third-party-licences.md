@@ -15,10 +15,11 @@ user downloads those from their owners.
 
 **Our recommendation: release once four conditions are met.**
 
-1. Nothing from NVIDIA's AlpaSim is published: no scores, page or videos (Q1).
-2. Motional confirms in writing that this release is non-commercial use (Q2).
-3. Legal confirms that Renesas owns all of Paddock's code (Q3).
-4. The changes that the answers call for are made (listed in section 6).
+1. 🔴 Nothing from NVIDIA's AlpaSim is published: no scores, page or videos (Q1).
+2. 🔴 Motional confirms in writing that this release is non-commercial use (Q2).
+3. 🔴 Legal confirms that Renesas owns all of Paddock's code (Q3).
+4. The changes that the answers call for are made (listed in section 6, each marked
+   with the colour of its question).
 
 Terms used below:
 
@@ -34,52 +35,63 @@ Terms used below:
   settings.
 - **Hugging Face**: a public website that hosts models, datasets and videos.
 
-**How to use the list.** Each question takes a yes or a no. Tier 1 needs discussion.
-Tiers 2 and 3 can be settled in one vote, accepting every recommendation unless someone
-objects. Each question number links to its background and to what follows from each
-answer (Part B, section 1). Write the answers in the last column; committing them to this
-branch keeps a record of the decisions.
+**Colours.** Every question, and every part of the release in Part B, carries one of
+three colours:
 
-### Tier 1. Decide in the meeting
+| Colour | On a question | On a part of the release |
+|---|---|---|
+| 🔴 Red: critical | It can block the release or expose Renesas to a claim. Decide it in the meeting. | Left out of the release, unless its owner gives permission |
+| 🟡 Amber: non-critical | Low risk, or a cheap fix. Accept the recommendation unless someone objects. | Released after a change, or on a condition such as Q2 |
+| 🟢 Green: clear decision | Nothing left to weigh. Confirm it for the record. | Released as it is, or nothing left to do |
 
-| # | Question | We recommend | Answer |
-|---|---|---|---|
-| [Q1](#q1-alpasim) | May Paddock publish anything from AlpaSim: its scores, page, chart column, videos or captions? | **No**, unless NVIDIA agrees in writing | |
-| [Q2](#q2-non-commercial-use) | Is Renesas publishing this free evaluation a non-commercial use, as most of the datasets require? | **Yes**, confirmed in writing by Motional | |
-| [Q3](#q3-who-owns-the-code) | Does Renesas own all of Paddock's code, including work by people outside Renesas? | **Yes**, once the contracts confirm it | |
-| [Q4](#q4-the-results-licence) | Must results from Motional's data carry Motional's licence (CC BY-NC-SA 4.0), not Paddock's Apache-2.0? | **Yes** | |
-| [Q5](#q5-dataset-excerpts) | May the repository keep small, credited excerpts of nuScenes, KITScenes and Bench2Drive data? | **Yes**, if Q2 is yes | |
-| [Q6](#q6-videos-of-nuscenes-scenes) | May the website show four videos rendered from nuScenes scenes? | **Yes**, once checked for faces and licence plates, moved to a Renesas account and credited | |
-| [Q7](#q7-bench2drive-patches) | May Paddock publish two patches to Bench2Drive's code, whose licence forbids sharing changed versions? | **No**, until Bench2Drive accepts the fixes or allows it | |
+**How to use the list.** Each question takes a yes or a no. The 7 red questions in Tier
+1 need discussion. The 9 amber questions in Tier 2, and then the 10 green ones in Tier
+3, can each be settled in one vote, accepting every recommendation unless someone
+objects. Part B, section 1, gives each question's background and what follows from
+each answer, under the same number. Write the answers in the last column; the Paddock
+team then commits them to the git branch `legal/release-licence-review`, which keeps a
+record of the decisions.
 
-### Tier 2. Accept the recommendations unless someone objects
-
-| # | Question | We recommend | Answer |
-|---|---|---|---|
-| [Q8](#q8-models-under-non-commercial-terms) | May Paddock publish scores of models whose weights or training data are non-commercial? | **Yes**, under Q2 | |
-| [Q9](#q9-nuscenes-sign-in) | May the repository publish nuScenes download addresses that nuscenes.org gives only after sign-in? | **No**: users sign in and download themselves | |
-| [Q10](#q10-hugsim) | Should Paddock treat HUGSIM's scenes as non-commercial and Waymo-restricted, though they are tagged MIT? | **Yes** | |
-| [Q11](#q11-credit-lines) | Should the results carry the credit lines that Waymo and KIT ask for? | **Yes** | |
-| [Q12](#q12-weights-notices) | Should `paddock setup` show each model's weights licence, and ask users to accept non-commercial ones? | **Yes** | |
-| [Q13](#q13-names-in-the-run-records) | May the run records be published as they are, although they name contributors, FastCode and Renesas hosts? | **No**: use neutral names in the release | |
-| [Q14](#q14-disclaimer) | Should the README and website say that the scores are research measurements, not safety assessments? | **Yes** | |
-| [Q15](#q15-openpilots-indemnity) | Is openpilot's request that every user indemnify comma.ai acceptable? | **Yes**: Paddock does not redistribute openpilot | |
-| [Q16](#q16-code-written-with-an-ai-assistant) | May Renesas publish code written mostly with an AI coding assistant? | **Yes**, subject to Renesas's AI policy | |
-
-### Tier 3. Confirm for the record
+### 🔴 Tier 1. Critical: decide in the meeting
 
 | # | Question | We recommend | Answer |
 |---|---|---|---|
-| [Q17](#q17-linking-not-hosting) | Is it acceptable to point users to each owner's downloads and host nothing, for all upstream code, weights and data? | **Yes** | |
-| [Q18](#q18-a-new-repository) | Publish Paddock as a new repository, without its history, under a GitHub organisation Renesas controls? | **Yes** | |
-| [Q19](#q19-third-party-notices) | Is THIRD_PARTY_NOTICES.md enough, once the four items it misses are added? | **Yes** | |
-| [Q20](#q20-names-and-logos) | Is it acceptable to name models, datasets and companies to describe them, with no logos? | **Yes** | |
-| [Q21](#q21-the-name-paddock) | Should the name "Paddock" be searched for trademark conflicts before release? | **Yes** | |
-| [Q22](#q22-contributions) | Is Apache-2.0's default for contributions enough, without a contributor agreement? | **Yes** | |
-| [Q23](#q23-dependencies) | Are Paddock's own dependencies acceptable: all permissive, and none shipped? | **Yes** | |
-| [Q24](#q24-kitscenes-scores-now) | Publish KITScenes' scores now, labelled preliminary, though KIT asks users to wait for a stable release? | **Yes** | |
-| [Q25](#q25-export-control) | Can Paddock be published as open source without an export-control filing? | **Yes**, once Renesas's export-control office confirms | |
-| [Q26](#q26-website-legal-notices) | Should the website link to Renesas's privacy and legal pages? | **Yes** | |
+| 🔴 Q1 | May Paddock publish anything from AlpaSim: its scores, page, chart column, videos or captions? | **No**, unless NVIDIA agrees in writing | |
+| 🔴 Q2 | Is Renesas publishing this free evaluation a non-commercial use, as most of the datasets require? | **Yes**, confirmed in writing by Motional | |
+| 🔴 Q3 | Does Renesas own all of Paddock's code, including work by people outside Renesas? | **Yes**, once the contracts confirm it | |
+| 🔴 Q4 | Must results from Motional's data carry Motional's licence (CC BY-NC-SA 4.0), not Paddock's Apache-2.0? | **Yes** | |
+| 🔴 Q5 | May the repository keep small, credited excerpts of nuScenes, KITScenes and Bench2Drive data? | **Yes**, if Q2 is yes | |
+| 🔴 Q6 | May the website show four videos rendered from nuScenes scenes? | **Yes**, once checked for faces and licence plates, moved to a Renesas account and credited | |
+| 🔴 Q7 | May Paddock publish two patches to Bench2Drive's code, whose licence forbids sharing changed versions? | **No**, until Bench2Drive accepts the fixes or allows it | |
+
+### 🟡 Tier 2. Non-critical: accept the recommendations unless someone objects
+
+| # | Question | We recommend | Answer |
+|---|---|---|---|
+| 🟡 Q8 | May Paddock publish scores of models whose weights or training data are non-commercial? | **Yes**, under Q2 | |
+| 🟡 Q9 | May the repository publish nuScenes download addresses that nuscenes.org gives only after sign-in? | **No**: users sign in and download themselves | |
+| 🟡 Q10 | Should Paddock treat HUGSIM's scenes as non-commercial and Waymo-restricted, though they are tagged MIT? | **Yes** | |
+| 🟡 Q11 | Should the results carry the credit lines that Waymo and KIT ask for? | **Yes** | |
+| 🟡 Q12 | Should `paddock setup` show each model's weights licence, and ask users to accept non-commercial ones? | **Yes** | |
+| 🟡 Q13 | May the run records be published as they are, although they name contributors, FastCode and Renesas hosts? | **No**: use neutral names in the release | |
+| 🟡 Q14 | Should the README and website say that the scores are research measurements, not safety assessments? | **Yes** | |
+| 🟡 Q15 | Is openpilot's request that every user indemnify comma.ai acceptable? | **Yes**: Paddock does not redistribute openpilot | |
+| 🟡 Q16 | May Renesas publish code written mostly with an AI coding assistant? | **Yes**, subject to Renesas's AI policy | |
+
+### 🟢 Tier 3. Clear decisions: confirm for the record
+
+| # | Question | We recommend | Answer |
+|---|---|---|---|
+| 🟢 Q17 | Is it acceptable to point users to each owner's downloads and host nothing, for all upstream code, weights and data? | **Yes** | |
+| 🟢 Q18 | Publish Paddock as a new repository, without its history, under a GitHub organisation Renesas controls? | **Yes** | |
+| 🟢 Q19 | Is THIRD_PARTY_NOTICES.md enough, once the four items it misses are added? | **Yes** | |
+| 🟢 Q20 | Is it acceptable to name models, datasets and companies to describe them, with no logos? | **Yes** | |
+| 🟢 Q21 | Should the name "Paddock" be searched for trademark conflicts before release? | **Yes** | |
+| 🟢 Q22 | Is Apache-2.0's default for contributions enough, without a contributor agreement? | **Yes** | |
+| 🟢 Q23 | Are Paddock's own dependencies acceptable: all permissive, and none shipped? | **Yes** | |
+| 🟢 Q24 | Publish KITScenes' scores now, labelled preliminary, though KIT asks users to wait for a stable release? | **Yes** | |
+| 🟢 Q25 | Can Paddock be published as open source without an export-control filing? | **Yes**, once Renesas's export-control office confirms | |
+| 🟢 Q26 | Should the website link to Renesas's privacy and legal pages? | **Yes** | |
 
 **With the recommended answers, the release contains** Paddock's code under Apache-2.0,
 with complete third-party notices; scores on nine benchmarks, credited and marked with
@@ -94,11 +106,11 @@ downloads that show each licence and ask users to accept terms where the owner h
 ## 1. The questions in detail
 
 Each question's background, with the section that holds the evidence, and what follows
-from each answer. The recommended answer is marked.
+from each answer. Each opens with its colour, and the recommended answer is marked.
 
 #### Q1. AlpaSim
 
-AlpaSim's scenes come under NVIDIA's AV NuRec Dataset License Agreement, accepted by
+🔴 **Critical.** AlpaSim's scenes come under NVIDIA's AV NuRec Dataset License Agreement, accepted by
 click-through. It treats "any results of benchmarking" as NVIDIA's confidential
 information (its §3), forbids derivative works and distributing the data (§4.6), and
 allows use only for internal development "using NVIDIA technology" (§1). Paddock holds 15
@@ -116,7 +128,7 @@ videos rendered from NVIDIA's scenes, whose captions give each scene's scores (s
 
 #### Q2. Non-commercial use
 
-Eight of the ten benchmarks may be used only non-commercially: through Motional's data
+🔴 **Critical.** Eight of the ten benchmarks may be used only non-commercially: through Motional's data
 (nuScenes, nuPlan, NAVSIM v1 and v2, and neuroNCAP), KIT's data (KITScenes), HUGSIM's
 source data (Waymo's among it), and Bench2Drive's own code. Creative Commons says the
 test "turns on the use, not the identity of the reuser". Motional's FAQ names
@@ -132,7 +144,7 @@ non-commercial. Against that, the release also showcases Renesas's work (section
 
 #### Q3. Who owns the code
 
-`LICENSE`, the README and `CITATION.cff` name Renesas Electronics Corporation as the
+🔴 **Critical.** `LICENSE`, the README and `CITATION.cff` name Renesas Electronics Corporation as the
 copyright holder. The commits come from 11 authors, writing from `renesas.com`,
 `fastcode.ai`, Gmail and GitHub's private addresses, and the repository sits in the
 `FastCodeAI` GitHub organisation (section 6.4).
@@ -144,7 +156,7 @@ copyright holder. The commits come from 11 authors, writing from `renesas.com`,
 
 #### Q4. The results' licence
 
-Motional's terms say: "Use of any data derived from the Datasets, which may appear in any
+🔴 **Critical.** Motional's terms say: "Use of any data derived from the Datasets, which may appear in any
 format such as tables and charts, is also subject to these Dataset Terms." The scores on
 nuScenes, nuPlan, NAVSIM and neuroNCAP are such derived data. Paddock's own licence,
 Apache-2.0, allows commercial use, which Motional's terms do not. THIRD_PARTY_NOTICES.md
@@ -159,7 +171,7 @@ themselves, and the website's footer names only Apache-2.0 (sections 5 and 9).
 
 #### Q5. Dataset excerpts
 
-The repository holds three small excerpts of non-commercial data: a verbatim subset of
+🔴 **Critical.** The repository holds three small excerpts of non-commercial data: a verbatim subset of
 nuScenes' tables for two scenes, with no images and no annotations (UniAD's and VAD's test
 data); the list of the 223 KITScenes keyframes Paddock scores; and the names of two
 Bench2Drive routes. Each licence allows sharing such parts for non-commercial use with
@@ -174,7 +186,7 @@ credit; Bench2Drive's allows exact copies, not changed ones (section 6).
 
 #### Q6. Videos of nuScenes scenes
 
-The website would show four neuroNCAP videos: renderings of nuScenes scenes 0923, 0278,
+🔴 **Critical.** The website would show four neuroNCAP videos: renderings of nuScenes scenes 0923, 0278,
 0966 and 0108 with another car added, so nuScenes' licence applies (non-commercial, with
 credit, CC BY-NC-SA 4.0). They sit in a team member's personal Hugging Face dataset, which
 was public on 11 November and is not publicly reachable on 16 November. Nobody has
@@ -188,7 +200,7 @@ beside them (section 6.2).
 
 #### Q7. Bench2Drive patches
 
-Paddock carries two patches to Bench2Drive's evaluator. Bench2Drive is licensed
+🔴 **Critical.** Paddock carries two patches to Bench2Drive's evaluator. Bench2Drive is licensed
 CC BY-NC-ND 4.0, which allows sharing exact copies but not changed versions. The edited
 file carries Intel's MIT header from CARLA, but the lines the patches change were written
 by Bench2Drive, not CARLA (sections 6 and 9).
@@ -200,7 +212,7 @@ by Bench2Drive, not CARLA (sections 6 and 9).
 
 #### Q8. Models under non-commercial terms
 
-Some models are non-commercial through their weights or their training data. AutoE2E's
+🟡 **Non-critical.** Some models are non-commercial through their weights or their training data. AutoE2E's
 weights are CC BY-NC-SA 4.0. Alpamayo 1.5's licence is permissive, but its model card says
 "ready for non-commercial use". Qwen-Drive and VisionPilot were trained partly on Waymo
 data, and Waymo's licence covers models trained on it. Drive-JEPA and WA-JEPA, and UniAD
@@ -213,7 +225,7 @@ scores only, never weights (section 8).
 
 #### Q9. nuScenes sign-in
 
-nuScenes asks every user to register at nuscenes.org before downloading. Paddock's
+🟡 **Non-critical.** nuScenes asks every user to register at nuscenes.org before downloading. Paddock's
 download recipe uses the addresses that nuscenes.org gives after sign-in, and Motional's
 host does not check registration, so a public recipe lets anyone skip the sign-in.
 Paddock shows the terms and requires `--accept-terms`, but cannot check registration.
@@ -227,7 +239,7 @@ addresses are different: NAVSIM's own download scripts publish them (section 6.1
 
 #### Q10. HUGSIM
 
-HUGSIM's scenes are tagged MIT on Hugging Face, with no licence text, but are rebuilt from
+🟡 **Non-critical.** HUGSIM's scenes are tagged MIT on Hugging Face, with no licence text, but are rebuilt from
 nuScenes, KITTI-360 and Waymo data, all non-commercial. Waymo's licence also lets its data
 be shared only with people registered with Waymo who accepted its terms. Paddock's
 download recipe shows "MIT" and asks for nothing (sections 6.1 and 9).
@@ -240,7 +252,7 @@ download recipe shows "MIT" and asks for nothing (sections 6.1 and 9).
 
 #### Q11. Credit lines
 
-Waymo's licence asks work made with its data to carry an attribution sentence; HUGSIM's
+🟡 **Non-critical.** Waymo's licence asks work made with its data to carry an attribution sentence; HUGSIM's
 results include scenes rebuilt from Waymo data and carry none. KIT's terms say: "If the
 dataset is used in media, a link to our websites (kitscenes.com) is included"; no page
 links there (section 6.3).
@@ -251,7 +263,7 @@ links there (section 6.3).
 
 #### Q12. Weights notices
 
-`paddock setup` downloads several models' weights from their publishers' own repositories
+🟡 **Non-critical.** `paddock setup` downloads several models' weights from their publishers' own repositories
 without showing their licence. AutoE2E's are non-commercial (CC BY-NC-SA 4.0). Datasets
 with terms already need `--accept-terms` (section 6.1).
 
@@ -261,7 +273,7 @@ with terms already need `--accept-terms` (section 6.1).
 
 #### Q13. Names in the run records
 
-Each run record names the "site" that produced it, and would be published with the
+🟡 **Non-critical.** Each run record names the "site" that produced it, and would be published with the
 results. Of the 163 records, 55 contain a contributor's user name or first name, 109
 contain FastCode's name, and 12 a Renesas host name (section 6.4).
 
@@ -271,7 +283,7 @@ contain FastCode's name, and 12 a Renesas host name (section 6.4).
 
 #### Q14. Disclaimer
 
-Apache-2.0 disclaims any warranty for the code, but nothing says what the scores are. They
+🟡 **Non-critical.** Apache-2.0 disclaims any warranty for the code, but nothing says what the scores are. They
 compare other companies' models, NVIDIA's among them, under Paddock's own settings, and
 can differ from the publishers' own figures (section 6.4).
 
@@ -282,7 +294,7 @@ can differ from the publishers' own figures (section 6.4).
 
 #### Q15. openpilot's indemnity
 
-openpilot's README says "Any user of this software shall indemnify and hold harmless
+🟡 **Non-critical.** openpilot's README says "Any user of this software shall indemnify and hold harmless
 Comma.ai, Inc." against claims arising from its use. Paddock does not redistribute
 openpilot: each user downloads it, so the indemnity is between that user and comma.ai.
 Renesas's own test runs made Renesas such a user (section 8).
@@ -292,7 +304,7 @@ Renesas's own test runs made Renesas such a user (section 8).
 
 #### Q16. Code written with an AI assistant
 
-407 of the 413 commits on `main` that are not merges carry a "Co-Authored-By: Claude"
+🟡 **Non-critical.** 407 of the 413 commits on `main` that are not merges carry a "Co-Authored-By: Claude"
 line: they were written with Anthropic's AI coding assistant. Whether this affects
 copyright, or Renesas's policy, is for Legal (section 6.4).
 
@@ -301,7 +313,7 @@ copyright, or Renesas's policy, is for Legal (section 6.4).
 
 #### Q17. Linking, not hosting
 
-Paddock names each upstream project and links to the exact version. `paddock setup` and
+🟢 **Clear decision.** Paddock names each upstream project and links to the exact version. `paddock setup` and
 `paddock data fetch` download code, weights and data on the user's own machine, from the
 owner's own host, when the user asks. The repository holds none of them, apart from the
 excerpts in Q5, the patches, and the copied lines that THIRD_PARTY_NOTICES.md lists
@@ -312,7 +324,7 @@ excerpts in Q5, the patches, and the copied lines that THIRD_PARTY_NOTICES.md li
 
 #### Q18. A new repository
 
-The git history holds the real AlpaSim test files and results, internal analysis, and
+🟢 **Clear decision.** The git history holds the real AlpaSim test files and results, internal analysis, and
 every contributor's name and e-mail address. The plan is to publish Paddock as a new
 repository with no history. Today it is private, in the `FastCodeAI` GitHub organisation
 (section 6.4).
@@ -323,7 +335,7 @@ repository with no history. Today it is private, in the `FastCodeAI` GitHub orga
 
 #### Q19. Third-party notices
 
-THIRD_PARTY_NOTICES.md lists the files that hold other projects' material (copied and
+🟢 **Clear decision.** THIRD_PARTY_NOTICES.md lists the files that hold other projects' material (copied and
 adapted code, patches, test data and excerpts), each with its source and licence, and the
 dataset behind each benchmark's results. It misses four items: the nuScenes table excerpt,
 scene 0916 in UniAD's and VAD's test data, the KITScenes keyframe list, and the lines
@@ -334,7 +346,7 @@ UniAD's and VAD's tests repeat verbatim (section 6).
 
 #### Q20. Names and logos
 
-Models, datasets and companies are named only to describe them, and there is no
+🟢 **Clear decision.** Models, datasets and companies are named only to describe them, and there is no
 third-party logo anywhere. The README and THIRD_PARTY_NOTICES.md say that being listed
 does not mean a project endorses Paddock; Motional's terms forbid implying its
 endorsement. A model's publisher may embed a "Paddock" badge showing its model's score
@@ -345,14 +357,14 @@ endorsement. A model's publisher may embed a "Paddock" badge showing its model's
 
 #### Q21. The name "Paddock"
 
-Nobody has checked "Paddock" for trademark conflicts in software (section 6.4).
+🟢 **Clear decision.** Nobody has checked "Paddock" for trademark conflicts in software (section 6.4).
 
 - **Yes (recommended):** search before release.
 - **No:** release under the name as it is.
 
 #### Q22. Contributions
 
-Under Apache-2.0, contributions are licensed under Apache-2.0 unless the contributor says
+🟢 **Clear decision.** Under Apache-2.0, contributions are licensed under Apache-2.0 unless the contributor says
 otherwise. Paddock has no contributor agreement and no sign-off requirement (section 6.4).
 
 - **Yes (recommended).**
@@ -360,7 +372,7 @@ otherwise. Paddock has no contributor agreement and no sign-off requirement (sec
 
 #### Q23. Dependencies
 
-Paddock's own dependencies are all under permissive licences (BSD, MIT and matplotlib's
+🟢 **Clear decision.** Paddock's own dependencies are all under permissive licences (BSD, MIT and matplotlib's
 own); none is copyleft, and Paddock ships none of them. Each model's environment installs
 its own packages, such as PyTorch, which this review did not cover (section 6.4).
 
@@ -369,7 +381,7 @@ its own packages, such as PyTorch, which this review did not cover (section 6.4)
 
 #### Q24. KITScenes' scores now
 
-KITScenes' dataset card says: "For final benchmark reporting, please wait for a more
+🟢 **Clear decision.** KITScenes' dataset card says: "For final benchmark reporting, please wait for a more
 stable public release." We read this as a request, not one of KIT's terms. Nothing in
 Paddock labels its KITScenes scores as preliminary (section 9).
 
@@ -378,7 +390,7 @@ Paddock labels its KITScenes scores as preliminary (section 9).
 
 #### Q25. Export control
 
-Not checked by us. Paddock is evaluation software, implements no encryption, and would be
+🟢 **Clear decision.** Not checked by us. Paddock is evaluation software, implements no encryption, and would be
 published as open source (section 6.4).
 
 - **Yes (recommended), once Renesas's export-control office confirms.**
@@ -386,7 +398,7 @@ published as open source (section 6.4).
 
 #### Q26. Website legal notices
 
-The website sets no cookies, runs no analytics, and loads only the videos and their
+🟢 **Clear decision.** The website sets no cookies, runs no analytics, and loads only the videos and their
 stills from another host, Hugging Face. Its footer gives Paddock's licence, but it has no
 privacy notice or terms of use (sections 6.2 and 6.3).
 
@@ -397,63 +409,67 @@ privacy notice or terms of use (sections 6.2 and 6.3).
 
 | Part of the release | Release? | Why | How to make it a clear yes |
 |---|---|---|---|
-| Paddock's code | Yes, after the clean-ups in section 6 | Upstream code is linked, not copied. No upstream code licence is copyleft. The few copied lines are under MIT or Apache-2.0, except in two Bench2Drive patches. | Q3, Q7, Q19 |
-| Download recipes and `paddock setup` | Yes, after three changes | Each download comes from its owner's own host. But nuScenes' recipe skips Motional's sign-in, HUGSIM's shows only "MIT", and model weights download without their licence. | Q9, Q10, Q12 |
-| Results on comma2k19 | Yes | The data is MIT. | Credit comma.ai |
-| Results on nuScenes, nuPlan, NAVSIM v1 and v2, and neuroNCAP | Yes, if non-commercial (Q2) | Motional's data is for non-commercial use, and its terms cover derived "tables and charts". Its FAQ names "educational use and some research use" as free, and prices commercial use. | Credit, and a CC BY-NC-SA 4.0 notice on these results (Q4). For a firm yes, Motional's written confirmation. |
-| Results on KITScenes | Yes, if non-commercial (Q2) | CC BY-NC 4.0; the data is "intended for academic research". KIT asks users to wait for a more stable release before final benchmark reporting. | Credit with a link to kitscenes.com (Q11), labelled preliminary (Q24). For a firm yes, KIT's confirmation. |
-| Results on HUGSIM | Yes, if non-commercial (Q2) | Its scenes are rebuilt from nuScenes, KITTI-360 and Waymo data, all non-commercial. | Credit, including Waymo's sentence (Q10, Q11) |
-| Results on Bench2Drive | Yes, if non-commercial (Q2) | The benchmark's code is CC BY-NC-ND 4.0. | Credit. For a firm yes, Thinklab's confirmation. |
-| Scores of models under non-commercial terms | Yes, if non-commercial (Q2) | AutoE2E's weights are non-commercial, and Alpamayo 1.5's card says the same. Waymo's licence covers models trained on its data, which Qwen-Drive and VisionPilot partly were. Paddock publishes scores only. | Q8 |
-| Results, page, chart column, videos and captions on AlpaSim | No | NVIDIA's agreement treats "any results of benchmarking" as confidential, forbids sharing derived works, and limits use to internal development with NVIDIA technology. | NVIDIA's written permission (Q1) |
-| Run records | Yes, with neutral site names | Their site names identify contributors, FastCode and Renesas hosts. | Q13 |
-| Videos of nuScenes scenes on the website | Yes, if non-commercial (Q2) | Renderings of nuScenes scenes: non-commercial, with credit, under nuScenes' licence. | Q6 |
-| Excerpts of nuScenes, KITScenes and Bench2Drive data | Yes, if non-commercial (Q2) | Small and credited, under their datasets' licences. | Q5, Q19 |
+| Paddock's code | 🟡 Yes, after the clean-ups in section 6 | Upstream code is linked, not copied. No upstream code licence is copyleft. The few copied lines are under MIT or Apache-2.0, except in two Bench2Drive patches. | Q3, Q7, Q19 |
+| Download recipes and `paddock setup` | 🟡 Yes, after three changes | Each download comes from its owner's own host. But nuScenes' recipe skips Motional's sign-in, HUGSIM's shows only "MIT", and model weights download without their licence. | Q9, Q10, Q12 |
+| Results on comma2k19 | 🟢 Yes | The data is MIT. | Credit comma.ai |
+| Results on nuScenes, nuPlan, NAVSIM v1 and v2, and neuroNCAP | 🟡 Yes, if non-commercial (Q2) | Motional's data is for non-commercial use, and its terms cover derived "tables and charts". Its FAQ names "educational use and some research use" as free, and prices commercial use. | Credit, and a CC BY-NC-SA 4.0 notice on these results (Q4). For a firm yes, Motional's written confirmation. |
+| Results on KITScenes | 🟡 Yes, if non-commercial (Q2) | CC BY-NC 4.0; the data is "intended for academic research". KIT asks users to wait for a more stable release before final benchmark reporting. | Credit with a link to kitscenes.com (Q11), labelled preliminary (Q24). For a firm yes, KIT's confirmation. |
+| Results on HUGSIM | 🟡 Yes, if non-commercial (Q2) | Its scenes are rebuilt from nuScenes, KITTI-360 and Waymo data, all non-commercial. | Credit, including Waymo's sentence (Q10, Q11) |
+| Results on Bench2Drive | 🟡 Yes, if non-commercial (Q2) | The benchmark's code is CC BY-NC-ND 4.0. | Credit. For a firm yes, Thinklab's confirmation. |
+| Scores of models under non-commercial terms | 🟡 Yes, if non-commercial (Q2) | AutoE2E's weights are non-commercial, and Alpamayo 1.5's card says the same. Waymo's licence covers models trained on its data, which Qwen-Drive and VisionPilot partly were. Paddock publishes scores only. | Q8 |
+| Results, page, chart column, videos and captions on AlpaSim | 🔴 No | NVIDIA's agreement treats "any results of benchmarking" as confidential, forbids sharing derived works, and limits use to internal development with NVIDIA technology. | NVIDIA's written permission (Q1) |
+| Run records | 🟡 Yes, with neutral site names | Their site names identify contributors, FastCode and Renesas hosts. | Q13 |
+| Videos of nuScenes scenes on the website | 🟡 Yes, if non-commercial (Q2) | Renderings of nuScenes scenes: non-commercial, with credit, under nuScenes' licence. | Q6 |
+| Excerpts of nuScenes, KITScenes and Bench2Drive data | 🟡 Yes, if non-commercial (Q2) | Small and credited, under their datasets' licences. | Q5, Q19 |
 
 ## 3. The licences, grouped
 
+Each group carries the colour of what it means for material under it in this release.
+
 | Group | What it allows | Where it applies |
 |---|---|---|
-| **A. Permissive**: MIT, Apache-2.0, BSD-3-Clause, CC0, CC BY, OpenMDW-1.1 | Any use, commercial included. Keep the licence and copyright notices. | Paddock itself. The code of all eleven models, and of NAVSIM, KITScenes' library, comma2k19, neuroNCAP, AlpaSim, HUGSIM, neurad-studio and CARLA. The weights of METEOR, OpenPilot, Qwen-Drive, UniAD, VisionPilot, Alpamayo 2 Edge, WA-JEPA, Drive-JEPA and Alpamayo 1.5 (the last three also in G). The data of comma2k19, PandaSet, 3DRealCar and CARLA's assets. |
-| **B. Commercial use, with conditions**: NVIDIA Open Model License | Commercial use, if NVIDIA's Trustworthy AI terms are followed and its safety guardrails are kept. Attribution when redistributing. | Cosmos-Reason2-8B, the model Alpamayo 1.5 is built on |
-| **C. Non-commercial**: CC BY-NC 4.0, CC BY-NC-SA 3.0 and 4.0, Motional's Dataset Terms, Waymo's licence | Non-commercial use only, with credit. ShareAlike (SA) licences also require adapted material to carry the same licence. | Data: nuScenes, nuPlan, OpenScene (NAVSIM), KITScenes, KITTI-360, Waymo, OpenLane. Weights: AutoE2E. |
-| **D. Non-commercial, no derivatives**: CC BY-NC-ND 4.0 | Non-commercial use, with credit. Exact copies may be shared; changed versions may not. | Bench2Drive's code and route lists; Bench2DriveZoo, which UniAD's and VAD's environment is built from |
-| **E. Internal use only, results confidential**: NVIDIA AV NuRec Dataset License Agreement | Internal development of autonomous vehicles using NVIDIA technology. No disclosure of benchmark results. Expires 12 months after download. | AlpaSim's scenes |
-| **F. Permission needed for commercial use**: sunnypilot's custom licence | Viewing and modifying. Commercial, for-profit or closed-source use needs written permission. | sunnypilot, which Paddock never used, and removed on 12 November (pull request #181) |
-| **G. Unclear or conflicting** | Needs the publisher's confirmation | Alpamayo 1.5 (permissive licence, but its card says non-commercial). HUGSIM's scenes (MIT tag over non-commercial sources). neuroNCAP's renderer files (no licence stated). Drive-JEPA's and WA-JEPA's weights (licence tag only, no text). VAD's weights (no licence stated). |
+| 🟢 **A. Permissive**: MIT, Apache-2.0, BSD-3-Clause, CC0, CC BY, OpenMDW-1.1 | Any use, commercial included. Keep the licence and copyright notices. | Paddock itself. The code of all eleven models, and of NAVSIM, KITScenes' library, comma2k19, neuroNCAP, AlpaSim, HUGSIM, neurad-studio and CARLA. The weights of METEOR, OpenPilot, Qwen-Drive, UniAD, VisionPilot, Alpamayo 2 Edge, WA-JEPA, Drive-JEPA and Alpamayo 1.5 (the last three also in G). The data of comma2k19, PandaSet, 3DRealCar and CARLA's assets. |
+| 🟢 **B. Commercial use, with conditions**: NVIDIA Open Model License | Commercial use, if NVIDIA's Trustworthy AI terms are followed and its safety guardrails are kept. Attribution when redistributing. | Cosmos-Reason2-8B, the model Alpamayo 1.5 is built on |
+| 🟡 **C. Non-commercial**: CC BY-NC 4.0, CC BY-NC-SA 3.0 and 4.0, Motional's Dataset Terms, Waymo's licence | Non-commercial use only, with credit. ShareAlike (SA) licences also require adapted material to carry the same licence. | Data: nuScenes, nuPlan, OpenScene (NAVSIM), KITScenes, KITTI-360, Waymo, OpenLane. Weights: AutoE2E. |
+| 🟡 **D. Non-commercial, no derivatives**: CC BY-NC-ND 4.0 | Non-commercial use, with credit. Exact copies may be shared; changed versions may not. | Bench2Drive's code and route lists; Bench2DriveZoo, which UniAD's and VAD's environment is built from |
+| 🔴 **E. Internal use only, results confidential**: NVIDIA AV NuRec Dataset License Agreement | Internal development of autonomous vehicles using NVIDIA technology. No disclosure of benchmark results. Expires 12 months after download. | AlpaSim's scenes |
+| 🟢 **F. Permission needed for commercial use**: sunnypilot's custom licence | Viewing and modifying. Commercial, for-profit or closed-source use needs written permission. | sunnypilot, which Paddock never used, and removed on 12 November (pull request #181) |
+| 🟡 **G. Unclear or conflicting** | Needs the publisher's confirmation | Alpamayo 1.5 (permissive licence, but its card says non-commercial). HUGSIM's scenes (MIT tag over non-commercial sources). neuroNCAP's renderer files (no licence stated). Drive-JEPA's and WA-JEPA's weights (licence tag only, no text). VAD's weights (no licence stated). |
 
 ## 4. At a glance
+
+Each row carries the colour of that model's or benchmark's results in the release.
 
 ### Models
 
 | Model (publisher) | Code | Weights | Commercial use of the weights |
 |---|---|---|---|
-| Alpamayo 1.5 (NVIDIA) | [Apache-2.0](https://github.com/NVlabs/alpamayo1.5/blob/7a8f1c781a826f09be53e1e211f26e947ec18019/LICENSE) | [OpenMDW-1.1](https://huggingface.co/nvidia/Alpamayo-1.5-10B) | licence allows it; card says non-commercial |
-| Alpamayo 2 Edge (NVIDIA) | [Apache-2.0](https://github.com/NVlabs/alpamayo2-edge) | [OpenMDW-1.1](https://huggingface.co/nvidia/Alpamayo2-Edge) | licence allows it; the card version Paddock pinned said "to be confirmed" |
-| AutoE2E (Autoware Foundation) | [Apache-2.0](https://github.com/autowarefoundation/auto_e2e/blob/40a75cf8a26b60f6b094125e3924fe0bdb427b02/LICENSE) | [CC BY-NC-SA 4.0](https://huggingface.co/AutowareFoundation/auto_e2e#license) | no |
-| Drive-JEPA (Linhan Wang et al.) | [Apache-2.0](https://github.com/linhanwang/Drive-JEPA/blob/e21f47410b4d26b61f05f9bd23e169c0390cae2a/LICENSE) | [CC0-1.0](https://huggingface.co/datasets/LinhanWang/Drive-JEPA) | tag allows it; trained on non-commercial data |
-| METEOR (TIER IV) | [Apache-2.0](https://github.com/tier4/METEOR/blob/dc193a81e9959de57b751e269127ae9b67e3f300/LICENSE) | [Apache-2.0](https://huggingface.co/AutowareFoundation/meteor) | yes |
-| OpenPilot (comma.ai) | [MIT](https://github.com/commaai/openpilot/blob/555f48c5d28709f039b79f3f6105e51305edd4b5/LICENSE) | [MIT](https://github.com/commaai/openpilot/blob/555f48c5d28709f039b79f3f6105e51305edd4b5/LICENSE), in the code repository | yes; README adds an indemnity |
-| Qwen-Drive 1.0 (Qwen team, Alibaba) | [Apache-2.0](https://github.com/QwenLM/Qwen-Drive-1.0/blob/28091c1532e869bc7aee91fc0aef6b3e6fd0b2e0/LICENSE) | [Apache-2.0](https://huggingface.co/Qwen/Qwen-Drive-1.0-4B) | licence allows it; trained partly on Waymo data |
-| UniAD (OpenDriveLab) | [Apache-2.0](https://github.com/OpenDriveLab/UniAD/blob/532fc330151758c5e345aef74d2a1bf1042e50ab/LICENSE) | [Apache-2.0](https://github.com/OpenDriveLab/UniAD/blob/532fc330151758c5e345aef74d2a1bf1042e50ab/README.md#license), as UniAD's "assets" | licence allows it; trained on nuScenes, non-commercial data |
-| VAD (HUST Vision Lab) | [Apache-2.0](https://github.com/hustvl/VAD/blob/1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8/LICENSE) | not stated; a Google Drive link in [VAD's README](https://github.com/hustvl/VAD/blob/1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8/README.md) | not stated; trained on nuScenes, non-commercial data |
-| VisionPilot (Autoware Foundation) | [Apache-2.0](https://github.com/autowarefoundation/vision_pilot/blob/e93eceaaa70ee4e7b55fd4ecc04c023c163c8098/LICENSE) | [Apache-2.0](https://github.com/autowarefoundation/vision_pilot/blob/e93eceaaa70ee4e7b55fd4ecc04c023c163c8098/LICENSE), in the code repository | licence allows it; trained partly on Waymo-derived data |
-| WA-JEPA (AFARI Research) | [Apache-2.0](https://github.com/AFARI-Research/WA-JEPA/blob/bec29660f5ea46ac73db8e2d0c33c8d1a72c23ad/LICENSE) | [Apache-2.0](https://huggingface.co/AFARI-Research/WA-JEPA) | tag allows it; trained on non-commercial data |
-| Constant velocity (Renesas) | Apache-2.0 (Paddock) | none | not applicable |
+| 🟡 Alpamayo 1.5 (NVIDIA) | [Apache-2.0](https://github.com/NVlabs/alpamayo1.5/blob/7a8f1c781a826f09be53e1e211f26e947ec18019/LICENSE) | [OpenMDW-1.1](https://huggingface.co/nvidia/Alpamayo-1.5-10B) | licence allows it; card says non-commercial |
+| 🟢 Alpamayo 2 Edge (NVIDIA) | [Apache-2.0](https://github.com/NVlabs/alpamayo2-edge) | [OpenMDW-1.1](https://huggingface.co/nvidia/Alpamayo2-Edge) | licence allows it; the card version Paddock pinned said "to be confirmed" |
+| 🟡 AutoE2E (Autoware Foundation) | [Apache-2.0](https://github.com/autowarefoundation/auto_e2e/blob/40a75cf8a26b60f6b094125e3924fe0bdb427b02/LICENSE) | [CC BY-NC-SA 4.0](https://huggingface.co/AutowareFoundation/auto_e2e#license) | no |
+| 🟡 Drive-JEPA (Linhan Wang et al.) | [Apache-2.0](https://github.com/linhanwang/Drive-JEPA/blob/e21f47410b4d26b61f05f9bd23e169c0390cae2a/LICENSE) | [CC0-1.0](https://huggingface.co/datasets/LinhanWang/Drive-JEPA) | tag allows it; trained on non-commercial data |
+| 🟢 METEOR (TIER IV) | [Apache-2.0](https://github.com/tier4/METEOR/blob/dc193a81e9959de57b751e269127ae9b67e3f300/LICENSE) | [Apache-2.0](https://huggingface.co/AutowareFoundation/meteor) | yes |
+| 🟡 OpenPilot (comma.ai) | [MIT](https://github.com/commaai/openpilot/blob/555f48c5d28709f039b79f3f6105e51305edd4b5/LICENSE) | [MIT](https://github.com/commaai/openpilot/blob/555f48c5d28709f039b79f3f6105e51305edd4b5/LICENSE), in the code repository | yes; README adds an indemnity |
+| 🟡 Qwen-Drive 1.0 (Qwen team, Alibaba) | [Apache-2.0](https://github.com/QwenLM/Qwen-Drive-1.0/blob/28091c1532e869bc7aee91fc0aef6b3e6fd0b2e0/LICENSE) | [Apache-2.0](https://huggingface.co/Qwen/Qwen-Drive-1.0-4B) | licence allows it; trained partly on Waymo data |
+| 🟡 UniAD (OpenDriveLab) | [Apache-2.0](https://github.com/OpenDriveLab/UniAD/blob/532fc330151758c5e345aef74d2a1bf1042e50ab/LICENSE) | [Apache-2.0](https://github.com/OpenDriveLab/UniAD/blob/532fc330151758c5e345aef74d2a1bf1042e50ab/README.md#license), as UniAD's "assets" | licence allows it; trained on nuScenes, non-commercial data |
+| 🟡 VAD (HUST Vision Lab) | [Apache-2.0](https://github.com/hustvl/VAD/blob/1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8/LICENSE) | not stated; a Google Drive link in [VAD's README](https://github.com/hustvl/VAD/blob/1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8/README.md) | not stated; trained on nuScenes, non-commercial data |
+| 🟡 VisionPilot (Autoware Foundation) | [Apache-2.0](https://github.com/autowarefoundation/vision_pilot/blob/e93eceaaa70ee4e7b55fd4ecc04c023c163c8098/LICENSE) | [Apache-2.0](https://github.com/autowarefoundation/vision_pilot/blob/e93eceaaa70ee4e7b55fd4ecc04c023c163c8098/LICENSE), in the code repository | licence allows it; trained partly on Waymo-derived data |
+| 🟡 WA-JEPA (AFARI Research) | [Apache-2.0](https://github.com/AFARI-Research/WA-JEPA/blob/bec29660f5ea46ac73db8e2d0c33c8d1a72c23ad/LICENSE) | [Apache-2.0](https://huggingface.co/AFARI-Research/WA-JEPA) | tag allows it; trained on non-commercial data |
+| 🟢 Constant velocity (Renesas) | Apache-2.0 (Paddock) | none | not applicable |
 
 ### Benchmarks
 
 | Benchmark (publisher) | Code | Data or scenes | Commercial use of the data |
 |---|---|---|---|
-| nuScenes (Motional) | Paddock's own | [CC BY-NC-SA 4.0 + Motional terms](https://www.nuscenes.org/terms-of-use) | no; [paid licence](https://www.nuscenes.org/terms-of-use-commercial) |
-| nuPlan (Motional) | Paddock's own | [CC BY-NC-SA 4.0 + Motional terms](https://www.nuscenes.org/terms-of-use) | no; [paid licence](https://www.nuscenes.org/terms-of-use-commercial) |
-| NAVSIM v1 and v2 (autonomousvision) | [Apache-2.0](https://github.com/autonomousvision/navsim) | OpenScene: [CC BY-NC-SA 4.0 + nuPlan terms](https://github.com/OpenDriveLab/OpenScene) | no |
-| KITScenes (KIT) | [Apache-2.0](https://github.com/KIT-MRT/kitscenes/blob/7765cdec5490894266070ab46e23724b58b3da42/LICENSE) | [CC BY-NC 4.0 + KIT terms](https://huggingface.co/datasets/KIT-MRT/KITScenes-Multimodal) | no |
-| comma2k19 (comma.ai) | [MIT](https://github.com/commaai/comma2k19/blob/4c7f1a6e1957745beadc1def0e7225f559b09a2a/LICENSE) | [MIT](https://huggingface.co/datasets/commaai/comma2k19) | yes |
-| Bench2Drive (Thinklab, SJTU) | [CC BY-NC-ND 4.0](https://github.com/Thinklab-SJTU/Bench2Drive/blob/7ec25d1c9f7522d923ce5f3420986cef1cb2d956/LICENSE), with MIT parts | CARLA: [MIT code, CC-BY assets](https://github.com/carla-simulator/carla/blob/0.9.15/README.md#licenses) | no, for the benchmark code |
-| neuroNCAP (Ljungbergh, Tonderski et al.) | [MIT](https://github.com/atonderski/neuro-ncap/blob/ecdcf284e2b7b83c537f3292a06c0adddff55811/LICENSE) | nuScenes, as above; renderer files: none stated | no |
-| AlpaSim (NVIDIA) | [Apache-2.0](https://github.com/NVlabs/alpasim/blob/affc2eab209fa43bdfa2f26c0f8d437922d78a68/LICENSE) | [NVIDIA AV NuRec agreement](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec) | internal development only; results confidential |
-| HUGSIM (X-D Lab, Zhejiang University) | [MIT](https://github.com/hyzhou404/HUGSIM/blob/62c690d39fd90020e68a196bd8bcc1c4d4191f2e/LICENSE) | [tagged MIT](https://huggingface.co/datasets/XDimLab/HUGSIM), built from nuScenes, KITTI-360, Waymo and PandaSet | mostly no |
+| 🟡 nuScenes (Motional) | Paddock's own | [CC BY-NC-SA 4.0 + Motional terms](https://www.nuscenes.org/terms-of-use) | no; [paid licence](https://www.nuscenes.org/terms-of-use-commercial) |
+| 🟡 nuPlan (Motional) | Paddock's own | [CC BY-NC-SA 4.0 + Motional terms](https://www.nuscenes.org/terms-of-use) | no; [paid licence](https://www.nuscenes.org/terms-of-use-commercial) |
+| 🟡 NAVSIM v1 and v2 (autonomousvision) | [Apache-2.0](https://github.com/autonomousvision/navsim) | OpenScene: [CC BY-NC-SA 4.0 + nuPlan terms](https://github.com/OpenDriveLab/OpenScene) | no |
+| 🟡 KITScenes (KIT) | [Apache-2.0](https://github.com/KIT-MRT/kitscenes/blob/7765cdec5490894266070ab46e23724b58b3da42/LICENSE) | [CC BY-NC 4.0 + KIT terms](https://huggingface.co/datasets/KIT-MRT/KITScenes-Multimodal) | no |
+| 🟢 comma2k19 (comma.ai) | [MIT](https://github.com/commaai/comma2k19/blob/4c7f1a6e1957745beadc1def0e7225f559b09a2a/LICENSE) | [MIT](https://huggingface.co/datasets/commaai/comma2k19) | yes |
+| 🟡 Bench2Drive (Thinklab, SJTU) | [CC BY-NC-ND 4.0](https://github.com/Thinklab-SJTU/Bench2Drive/blob/7ec25d1c9f7522d923ce5f3420986cef1cb2d956/LICENSE), with MIT parts | CARLA: [MIT code, CC-BY assets](https://github.com/carla-simulator/carla/blob/0.9.15/README.md#licenses) | no, for the benchmark code |
+| 🟡 neuroNCAP (Ljungbergh, Tonderski et al.) | [MIT](https://github.com/atonderski/neuro-ncap/blob/ecdcf284e2b7b83c537f3292a06c0adddff55811/LICENSE) | nuScenes, as above; renderer files: none stated | no |
+| 🔴 AlpaSim (NVIDIA) | [Apache-2.0](https://github.com/NVlabs/alpasim/blob/affc2eab209fa43bdfa2f26c0f8d437922d78a68/LICENSE) | [NVIDIA AV NuRec agreement](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec) | internal development only; results confidential |
+| 🟡 HUGSIM (X-D Lab, Zhejiang University) | [MIT](https://github.com/hyzhou404/HUGSIM/blob/62c690d39fd90020e68a196bd8bcc1c4d4191f2e/LICENSE) | [tagged MIT](https://huggingface.co/datasets/XDimLab/HUGSIM), built from nuScenes, KITTI-360, Waymo and PandaSet | mostly no |
 
 ## 5. Is credit enough, or is permission needed?
 
@@ -465,13 +481,13 @@ results, and, on one reading, the Bench2Drive patches.
 
 | Licence group (section 3) | Is credit enough? | When permission is needed |
 |---|---|---|
-| A. Permissive | Yes. Keep the licence and copyright notices. | Never |
-| B. NVIDIA Open Model License | Yes, for running the model | Only to redistribute it, which we do not do |
-| C. Non-commercial | Only if the use is non-commercial (Q2) | If Legal judges the use commercial, or wants certainty |
-| D. Non-commercial, no derivatives | For running Bench2Drive and publishing scores: as for C. For the two patches: possibly not (Q7). | To share the patches, unless the file's MIT header covers them |
-| E. NVIDIA NuRec agreement | No | Always, to publish AlpaSim results |
-| F. sunnypilot | No | For any commercial use. Paddock never used it, and removed it on 12 November (pull request #181). |
-| G. Unclear or conflicting | Probably, but not confirmed | A short confirmation from the publisher removes the doubt |
+| 🟢 A. Permissive | Yes. Keep the licence and copyright notices. | Never |
+| 🟢 B. NVIDIA Open Model License | Yes, for running the model | Only to redistribute it, which we do not do |
+| 🟡 C. Non-commercial | Only if the use is non-commercial (Q2) | If Legal judges the use commercial, or wants certainty |
+| 🟡 D. Non-commercial, no derivatives | For running Bench2Drive and publishing scores: as for C. For the two patches: possibly not (Q7). | To share the patches, unless the file's MIT header covers them |
+| 🔴 E. NVIDIA NuRec agreement | No | Always, to publish AlpaSim results |
+| 🟢 F. sunnypilot | No | For any commercial use. Paddock never used it, and removed it on 12 November (pull request #181). |
+| 🟡 G. Unclear or conflicting | Probably, but not confirmed | A short confirmation from the publisher removes the doubt |
 
 Three points behind this table:
 
@@ -496,26 +512,28 @@ Three points behind this table:
 
 ## 6. What the licences allow in the Paddock code release
 
+The colour in the second column is each item's place in the release.
+
 | What the release does | Allowed? | Condition or action |
 |---|---|---|
-| Names each upstream project and links to the exact version; `paddock setup` downloads it on the user's machine | Yes, for all | Nothing is redistributed, and each user accepts the upstream terms. sunnypilot is removed (pull request #181, merged on 12 November). |
-| Paddock's own code, which starts upstream code and calls it while running | Yes | It is Renesas's own work. No upstream code licence is copyleft (none requires code that uses it to take the same licence), so Paddock can stay Apache-2.0. |
-| Patches to neuro-ncap (MIT), Drive-JEPA (Apache-2.0) and HUGSIM (MIT) | Yes | Keep the upstream notices and say what changed; each patch's header already explains its change. |
-| Two patches to Bench2Drive | Unclear (Q7) | They change lines that Bench2Drive wrote; those lines are not in [CARLA's original](https://github.com/carla-simulator/leaderboard/blob/leaderboard-2.0/leaderboard/leaderboard_evaluator.py). But the file is headed "Copyright (c) 2018-2019 Intel Corporation … This work is licensed under the terms of the MIT license." To make it a yes: offer both fixes to Bench2Drive, or get Thinklab's permission. Holding the patches back needs a small code change, because Paddock's Bench2Drive runner expects the timeout option that one of them adds. |
-| Code adapted from AlpaSim and ported from VisionPilot (both Apache-2.0), and two reimplementations: TCP's PID controller (Apache-2.0) and openpilot's camera calibration (MIT) | Yes | Each file names its source, and THIRD_PARTY_NOTICES.md lists them (pull request #182, merged on 12 November). The PID controller's own description called it "vendored" from Bench2DriveZoo, which is CC BY-NC-ND 4.0; the code is a rewrite, and now says so. |
-| nuScenes' validation scene list, and 20 neuroNCAP test scenarios with nuScenes object IDs and positions | Yes | Both copy permissively licensed upstream files. The scene list is exactly the one Motional publishes in its nuScenes devkit (Apache-2.0), and the scenarios are neuro-ncap's own (MIT) with only the time step changed. THIRD_PARTY_NOTICES.md credits both (pull request #182). |
-| AlpaSim scene list (IDs and file paths) | Yes | The same IDs are published in AlpaSim's own Apache-2.0 repository. |
-| Test data for UniAD and VAD, added on 12 November: a verbatim subset of nuScenes' tables for scenes 0103 and 0916 (sample records, calibration, ego poses and CAN-bus messages; no images and no annotations), and files holding both models' inputs and plans on those scenes | Yes, for non-commercial use, with credit, under CC BY-NC-SA 4.0 | THIRD_PARTY_NOTICES.md lists the scene-0103 data, but neither the table excerpt (`uniad/tests/fixtures/nuscenes_scene_tables.json.gz`) nor scene 0916; add both. If publishing nuScenes excerpts is not allowed, replace them with made-up data, as for AlpaSim. |
-| Code repeated verbatim from UniAD and VAD in their tests (`uniad/tests/infos_reference.py`) | Yes, with notice | Apache-2.0. Not yet in THIRD_PARTY_NOTICES.md; add it. |
-| The list of the 223 KITScenes keyframes Paddock scores (`kitscenes/sample_list.csv`, added on 12 November): scene id, keyframe index, split, and a driving command Paddock derives from each recorded drive | Yes, for non-commercial use, with credit | Not yet in THIRD_PARTY_NOTICES.md; add it, with KITScenes' licence. |
-| One patch to UniAD (Apache-2.0), and two to OpenMMLab code that Bench2DriveZoo carries | Yes | Each Bench2DriveZoo patch changes one line of OpenMMLab's own code, which is Apache-2.0; both lines are in mmdet3d 0.17.1 and mmcv 1.4.0 as OpenMMLab published them, so neither is Bench2DriveZoo's own. THIRD_PARTY_NOTICES.md lists both. |
-| Bench2DriveZoo (CC BY-NC-ND 4.0), which `paddock setup` downloads to build UniAD's and VAD's environment | Yes, if running it is non-commercial use | Nothing of it is in the repository. The build copies two of its files, which per UniAD's page are OpenMMLab's own mmdet3d 0.17.1 files (Apache-2.0). |
-| Test files cut from two real AlpaSim runs: scores, and one model's outputs on one scene | No | Replaced with made-up data in pull request #183, including which scene passes, and the model's outputs by a made-up drive. That pull request is not merged yet, so `main` still holds the real files. |
-| Two route names from Bench2Drive's route list: each route's id and town, and its scenario's name and type, 3% of each entry, with no waypoints or weather | Yes, for non-commercial use, with credit and a licence notice | Kept, because Paddock's results use the same names throughout. The test's README and THIRD_PARTY_NOTICES.md now say what the file holds and Bench2Drive's licence (pull requests #182 and #183). |
-| Results: scores, tables and charts | See section 2 | |
-| A website built from the results on `main` (GitHub Pages), added after this review began | See section 2 | It is built only once the repository is public, and shows the results `main` holds, so the AlpaSim decision applies to it too. It would show eight videos: four neuroNCAP clips, renderings of nuScenes scenes, and, since 12 November, four AlpaSim clips, renderings of NVIDIA's scenes, whose captions give each scene's scores. They are hosted on a team member's Hugging Face dataset, `naren-fastcode/paddock-videos`, which was public on 11 November and is not publicly reachable on 16 November. The page also offers every result as a `data.json` download. The repository's own note says whether Renesas may show the clips "is still to be confirmed with Renesas legal" (Q6). |
-| `paddock data fetch`, which downloads the datasets and CARLA, added after this review began | Yes, after two changes | It downloads from each owner's own host, names each dataset's licence, and refuses a dataset that has terms until the user passes `--accept-terms`. But nuScenes' entry uses the addresses nuscenes.org gives only after sign-in (Q9), and HUGSIM's gives its licence as MIT, without its source datasets' terms (Q10). |
-| Names of models, datasets and publishers in documents and charts | Yes, to describe them | Do not imply endorsement. Motional's terms forbid it, and Paddock's README already says that being listed does not mean a project endorses Paddock. |
+| Names each upstream project and links to the exact version; `paddock setup` downloads it on the user's machine | 🟢 Yes, for all | Nothing is redistributed, and each user accepts the upstream terms. sunnypilot is removed (pull request #181, merged on 12 November). |
+| Paddock's own code, which starts upstream code and calls it while running | 🟢 Yes | It is Renesas's own work. No upstream code licence is copyleft (none requires code that uses it to take the same licence), so Paddock can stay Apache-2.0. |
+| Patches to neuro-ncap (MIT), Drive-JEPA (Apache-2.0) and HUGSIM (MIT) | 🟢 Yes | Keep the upstream notices and say what changed; each patch's header already explains its change. |
+| Two patches to Bench2Drive | 🔴 Unclear (Q7) | They change lines that Bench2Drive wrote; those lines are not in [CARLA's original](https://github.com/carla-simulator/leaderboard/blob/leaderboard-2.0/leaderboard/leaderboard_evaluator.py). But the file is headed "Copyright (c) 2018-2019 Intel Corporation … This work is licensed under the terms of the MIT license." To make it a yes: offer both fixes to Bench2Drive, or get Thinklab's permission. Holding the patches back needs a small code change, because Paddock's Bench2Drive runner expects the timeout option that one of them adds. |
+| Code adapted from AlpaSim and ported from VisionPilot (both Apache-2.0), and two reimplementations: TCP's PID controller (Apache-2.0) and openpilot's camera calibration (MIT) | 🟢 Yes | Each file names its source, and THIRD_PARTY_NOTICES.md lists them (pull request #182, merged on 12 November). The PID controller's own description called it "vendored" from Bench2DriveZoo, which is CC BY-NC-ND 4.0; the code is a rewrite, and now says so. |
+| nuScenes' validation scene list, and 20 neuroNCAP test scenarios with nuScenes object IDs and positions | 🟢 Yes | Both copy permissively licensed upstream files. The scene list is exactly the one Motional publishes in its nuScenes devkit (Apache-2.0), and the scenarios are neuro-ncap's own (MIT) with only the time step changed. THIRD_PARTY_NOTICES.md credits both (pull request #182). |
+| AlpaSim scene list (IDs and file paths) | 🟢 Yes | The same IDs are published in AlpaSim's own Apache-2.0 repository. |
+| Test data for UniAD and VAD, added on 12 November: a verbatim subset of nuScenes' tables for scenes 0103 and 0916 (sample records, calibration, ego poses and CAN-bus messages; no images and no annotations), and files holding both models' inputs and plans on those scenes | 🟡 Yes, for non-commercial use, with credit, under CC BY-NC-SA 4.0 | THIRD_PARTY_NOTICES.md lists the scene-0103 data, but neither the table excerpt (`uniad/tests/fixtures/nuscenes_scene_tables.json.gz`) nor scene 0916; add both. If publishing nuScenes excerpts is not allowed, replace them with made-up data, as for AlpaSim. |
+| Code repeated verbatim from UniAD and VAD in their tests (`uniad/tests/infos_reference.py`) | 🟡 Yes, with notice | Apache-2.0. Not yet in THIRD_PARTY_NOTICES.md; add it. |
+| The list of the 223 KITScenes keyframes Paddock scores (`kitscenes/sample_list.csv`, added on 12 November): scene id, keyframe index, split, and a driving command Paddock derives from each recorded drive | 🟡 Yes, for non-commercial use, with credit | Not yet in THIRD_PARTY_NOTICES.md; add it, with KITScenes' licence. |
+| One patch to UniAD (Apache-2.0), and two to OpenMMLab code that Bench2DriveZoo carries | 🟢 Yes | Each Bench2DriveZoo patch changes one line of OpenMMLab's own code, which is Apache-2.0; both lines are in mmdet3d 0.17.1 and mmcv 1.4.0 as OpenMMLab published them, so neither is Bench2DriveZoo's own. THIRD_PARTY_NOTICES.md lists both. |
+| Bench2DriveZoo (CC BY-NC-ND 4.0), which `paddock setup` downloads to build UniAD's and VAD's environment | 🟡 Yes, if running it is non-commercial use | Nothing of it is in the repository. The build copies two of its files, which per UniAD's page are OpenMMLab's own mmdet3d 0.17.1 files (Apache-2.0). |
+| Test files cut from two real AlpaSim runs: scores, and one model's outputs on one scene | 🔴 No | Replaced with made-up data in pull request #183, including which scene passes, and the model's outputs by a made-up drive. That pull request is not merged yet, so `main` still holds the real files. |
+| Two route names from Bench2Drive's route list: each route's id and town, and its scenario's name and type, 3% of each entry, with no waypoints or weather | 🟡 Yes, for non-commercial use, with credit and a licence notice | Kept, because Paddock's results use the same names throughout. The test's README and THIRD_PARTY_NOTICES.md now say what the file holds and Bench2Drive's licence (pull requests #182 and #183). |
+| Results: scores, tables and charts | 🟡 See section 2 | |
+| A website built from the results on `main` (GitHub Pages), added after this review began | 🟡 See section 2 | It is built only once the repository is public, and shows the results `main` holds, so the AlpaSim decision applies to it too. It would show eight videos: four neuroNCAP clips, renderings of nuScenes scenes, and, since 12 November, four AlpaSim clips, renderings of NVIDIA's scenes, whose captions give each scene's scores. They are hosted on a team member's Hugging Face dataset, `naren-fastcode/paddock-videos`, which was public on 11 November and is not publicly reachable on 16 November. The page also offers every result as a `data.json` download. The repository's own note says whether Renesas may show the clips "is still to be confirmed with Renesas legal" (Q6). |
+| `paddock data fetch`, which downloads the datasets and CARLA, added after this review began | 🟡 Yes, after two changes | It downloads from each owner's own host, names each dataset's licence, and refuses a dataset that has terms until the user passes `--accept-terms`. But nuScenes' entry uses the addresses nuscenes.org gives only after sign-in (Q9), and HUGSIM's gives its licence as MIT, without its source datasets' terms (Q10). |
+| Names of models, datasets and publishers in documents and charts | 🟢 Yes, to describe them | Do not imply endorsement. Motional's terms forbid it, and Paddock's README already says that being listed does not mean a project endorses Paddock. |
 
 **Clean-ups.** What is done, what is waiting, and what the recommended answers call for.
 
@@ -525,29 +543,29 @@ Three points behind this table:
   its source; and the model comparison page gives each weights licence as its publisher
   states it (pull request #182).
 - **Waiting to merge:** the made-up AlpaSim test files (pull request #183).
-- **To do, with the recommended answers:**
-  1. Remove everything from AlpaSim: its runs, chart column, page, videos and captions
+- **To do, with the recommended answers**, each marked with its question's colour:
+  1. 🔴 Remove everything from AlpaSim: its runs, chart column, page, videos and captions
      (Q1).
-  2. Mark the results with their data's licences, in the repository and on the website
+  2. 🔴 Mark the results with their data's licences, in the repository and on the website
      (Q4).
-  3. Check the nuScenes videos for faces and licence plates, move them to an account
+  3. 🔴 Add the four missing items to THIRD_PARTY_NOTICES.md (Q5, Q19).
+  4. 🔴 Check the nuScenes videos for faces and licence plates, move them to an account
      Renesas controls, and credit nuScenes beside them (Q6).
-  4. Hold back the two Bench2Drive patches, and let the runner work without them, unless
-     Bench2Drive takes the fixes (Q7).
-  5. Take the nuScenes sign-in addresses out of the download recipe (Q9).
-  6. Show the terms of HUGSIM's sources in its download recipe, with `--accept-terms`
+  5. 🔴 Hold back the two Bench2Drive patches, and let the runner work without them,
+     unless Bench2Drive takes the fixes (Q7).
+  6. 🟡 Take the nuScenes sign-in addresses out of the download recipe (Q9).
+  7. 🟡 Show the terms of HUGSIM's sources in its download recipe, with `--accept-terms`
      (Q10).
-  7. Add Waymo's attribution sentence and a link to kitscenes.com (Q11).
-  8. Show each model's weights licence in `paddock setup`, with `--accept-terms` for
+  8. 🟡 Add Waymo's attribution sentence and a link to kitscenes.com (Q11).
+  9. 🟡 Show each model's weights licence in `paddock setup`, with `--accept-terms` for
      non-commercial weights (Q12).
-  9. Replace the run records' site names with neutral labels in the release (Q13).
-  10. Say what the scores are, and are not, in the README and on the website (Q14).
-  11. Add the four missing items to THIRD_PARTY_NOTICES.md (Q5, Q19).
-  12. Search the name "Paddock" for trademark conflicts (Q21).
-  13. Label KITScenes' scores as preliminary (Q24).
-  14. Link Renesas's privacy and legal pages from the website's footer (Q26).
-  15. Publish as a new repository, without history, in a GitHub organisation Renesas
+  10. 🟡 Replace the run records' site names with neutral labels in the release (Q13).
+  11. 🟡 Say what the scores are, and are not, in the README and on the website (Q14).
+  12. 🟢 Publish as a new repository, without history, in a GitHub organisation Renesas
       controls (Q18).
+  13. 🟢 Search the name "Paddock" for trademark conflicts (Q21).
+  14. 🟢 Label KITScenes' scores as preliminary (Q24).
+  15. 🟢 Link Renesas's privacy and legal pages from the website's footer (Q26).
 
 ### 6.1 Downloads
 
@@ -556,19 +574,19 @@ host, when the user asks for it. Checked on 16 November against `main`.
 
 | What | From | Licence shown to the user | Terms check |
 |---|---|---|---|
-| Upstream code, 20 repositories, each at a pinned commit (`paddock setup`) | GitHub | No | None; each repository's own licence applies |
-| nuScenes (`paddock data fetch`) | Motional's own download host, at the addresses nuscenes.org gives only after sign-in | Yes: "CC BY-NC-SA 4.0, non-commercial use only; nuScenes also asks every user to register at nuscenes.org" | `--accept-terms`. The host does not check registration, so publishing these addresses lets a user skip Motional's sign-in. Motional's own tutorials link directly only to nuScenes' small "mini" sample. |
-| nuPlan, and NAVSIM's maps | Motional's own download bucket, at the addresses NAVSIM's own download scripts publish | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
-| NAVSIM's scenes (OpenScene) | Hugging Face, `OpenDriveLab/OpenScene` | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
-| KITScenes | Hugging Face, gated: the user's own login, which must have accepted KIT's terms | Yes: CC BY-NC 4.0, non-commercial use only | KIT's gate, and `--accept-terms` |
-| neuroNCAP's renderer files | Dropbox, the link in neuro-ncap's own download script | Yes: nuScenes' terms, which the renderers inherit | `--accept-terms` |
-| HUGSIM's scenes | Hugging Face, `XDimLab/HUGSIM` | Yes, as "MIT" | None. The scenes include ones rebuilt from Waymo data, and Waymo's licence lets data be shared only with people registered with Waymo who agreed to its terms. |
-| comma2k19 | Hugging Face, `commaai/comma2k19` | Yes: MIT | None needed |
-| CARLA 0.9.15, for Bench2Drive | CARLA's own release bucket | Yes: MIT code, CC BY assets, Unreal Engine's own licence | None |
-| Weights of Alpamayo 2 Edge, AutoE2E, METEOR and WA-JEPA (`paddock setup --model`) | Hugging Face, the publishers' own repositories | No | None. AutoE2E's weights are non-commercial (CC BY-NC-SA 4.0) and download without a notice. |
-| Weights of openpilot and VisionPilot | Inside their code repositories (git LFS for openpilot) | No | None; MIT and Apache-2.0 |
-| Weights of Alpamayo 1.5, Drive-JEPA, Qwen-Drive, UniAD and VAD | The publisher's own link, which each model's page gives; the user fetches them | On the model pages that link to them | Alpamayo 1.5's model card says non-commercial; VAD's weights state no licence |
-| Python packages | PyPI and PyTorch's package index | No | Paddock's own dependencies are all permissive (section 6.4) |
+| 🟢 Upstream code, 20 repositories, each at a pinned commit (`paddock setup`) | GitHub | No | None; each repository's own licence applies |
+| 🟡 nuScenes (`paddock data fetch`) | Motional's own download host, at the addresses nuscenes.org gives only after sign-in | Yes: "CC BY-NC-SA 4.0, non-commercial use only; nuScenes also asks every user to register at nuscenes.org" | `--accept-terms`. The host does not check registration, so publishing these addresses lets a user skip Motional's sign-in. Motional's own tutorials link directly only to nuScenes' small "mini" sample (Q9). |
+| 🟢 nuPlan, and NAVSIM's maps | Motional's own download bucket, at the addresses NAVSIM's own download scripts publish | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
+| 🟢 NAVSIM's scenes (OpenScene) | Hugging Face, `OpenDriveLab/OpenScene` | Yes: CC BY-NC-SA 4.0, non-commercial use only | `--accept-terms` |
+| 🟢 KITScenes | Hugging Face, gated: the user's own login, which must have accepted KIT's terms | Yes: CC BY-NC 4.0, non-commercial use only | KIT's gate, and `--accept-terms` |
+| 🟢 neuroNCAP's renderer files | Dropbox, the link in neuro-ncap's own download script | Yes: nuScenes' terms, which the renderers inherit | `--accept-terms` |
+| 🟡 HUGSIM's scenes | Hugging Face, `XDimLab/HUGSIM` | Yes, as "MIT" | None. The scenes include ones rebuilt from Waymo data, and Waymo's licence lets data be shared only with people registered with Waymo who agreed to its terms (Q10). |
+| 🟢 comma2k19 | Hugging Face, `commaai/comma2k19` | Yes: MIT | None needed |
+| 🟢 CARLA 0.9.15, for Bench2Drive | CARLA's own release bucket | Yes: MIT code, CC BY assets, Unreal Engine's own licence | None |
+| 🟡 Weights of Alpamayo 2 Edge, AutoE2E, METEOR and WA-JEPA (`paddock setup --model`) | Hugging Face, the publishers' own repositories | No | None. AutoE2E's weights are non-commercial (CC BY-NC-SA 4.0) and download without a notice (Q12). |
+| 🟢 Weights of openpilot and VisionPilot | Inside their code repositories (git LFS for openpilot) | No | None; MIT and Apache-2.0 |
+| 🟢 Weights of Alpamayo 1.5, Drive-JEPA, Qwen-Drive, UniAD and VAD | The publisher's own link, which each model's page gives; the user fetches them | On the model pages that link to them | Alpamayo 1.5's model card says non-commercial; VAD's weights state no licence |
+| 🟢 Python packages | PyPI and PyTorch's package index | No | Paddock's own dependencies are all permissive (section 6.4) |
 
 ### 6.2 Videos and images
 
@@ -583,8 +601,8 @@ personal Hugging Face account, as `naren-fastcode/paddock-videos`:
 
 | Videos | What they show | Licence position | What to know |
 |---|---|---|---|
-| Four neuroNCAP clips | Renderings of nuScenes scenes 0923, 0278, 0966 and 0108, rebuilt by neuroNCAP's renderers, with another car added | nuScenes' terms: CC BY-NC-SA 4.0, non-commercial, with credit. The dataset's card was tagged CC BY-NC-SA 4.0 and credited nuScenes on 11 November. | The website page itself credits no dataset beside them. Whether they show identifiable faces or licence plates has not been checked. |
-| Four AlpaSim clips, added on 12 November | Renderings of NVIDIA's scenes bae463d3, 5f064b02, 8023dce5 and 04749bb9; each caption gives the scene's scores | NVIDIA's agreement forbids distributing derived works of the scenes (§4.6) and treats benchmark results as confidential (§3) | Not publishable without NVIDIA's written permission. Whether they were ever publicly reachable has not been checked: ask the dataset's owner. |
+| 🟡 Four neuroNCAP clips | Renderings of nuScenes scenes 0923, 0278, 0966 and 0108, rebuilt by neuroNCAP's renderers, with another car added | nuScenes' terms: CC BY-NC-SA 4.0, non-commercial, with credit. The dataset's card was tagged CC BY-NC-SA 4.0 and credited nuScenes on 11 November. | The website page itself credits no dataset beside them. Whether they show identifiable faces or licence plates has not been checked. |
+| 🔴 Four AlpaSim clips, added on 12 November | Renderings of NVIDIA's scenes bae463d3, 5f064b02, 8023dce5 and 04749bb9; each caption gives the scene's scores | NVIDIA's agreement forbids distributing derived works of the scenes (§4.6) and treats benchmark results as confidential (§3) | Not publishable without NVIDIA's written permission. Whether they were ever publicly reachable has not been checked: ask the dataset's owner. |
 
 The dataset was public and ungated on 11 November. On 16 November Hugging Face no longer
 serves it to anyone not logged in, so it is private or deleted; `main`'s website list still
@@ -593,57 +611,57 @@ download.
 
 ### 6.3 References and names
 
-- **References.** The README's tables link each model's code, with its licence as GitHub
+- 🟢 **References.** The README's tables link each model's code, with its licence as GitHub
   reports it, and its paper; and each benchmark's own site and paper. All eleven code
   licences in the README match the projects' own LICENSE files.
-- **Citations.** The README asks users to cite each model and benchmark they run, and
+- 🟢 **Citations.** The README asks users to cite each model and benchmark they run, and
   `CITATION.cff` lets them cite Paddock as Renesas's work.
-- **Names, no logos.** Models, datasets and companies are named only to describe them.
+- 🟢 **Names, no logos (Q20).** Models, datasets and companies are named only to describe them.
   There is no third-party logo in the README, the documents or the website. The website
   loads no outside fonts or scripts; the only things it loads from elsewhere are the videos
   and their stills (section 6.2). The README and THIRD_PARTY_NOTICES.md say that being
   listed does not mean a project endorses Paddock; Motional's terms forbid implying its
   endorsement or using its name or logo without consent.
-- **Badges.** The website lets a model's publisher embed a "Paddock" badge showing the
+- 🟢 **Badges.** The website lets a model's publisher embed a "Paddock" badge showing the
   model's score: Paddock's own name, beside Paddock's own measurement.
-- **Attribution lines the datasets ask for.** KITScenes' paper is cited in the README, but
+- 🟡 **Attribution lines the datasets ask for (Q11).** KITScenes' paper is cited in the README, but
   KIT's terms also say: "If the dataset is used in media, a link to our websites
   (kitscenes.com) is included." No page in the repository links to kitscenes.com. Waymo's
   licence asks work made with its data to carry an attribution sentence; none appears,
   and the two HUGSIM runs include scenes rebuilt from Waymo data.
-- **"Paddock ships no weights and no datasets."** The README says this, and the website
+- 🟢 **"Paddock ships no weights and no datasets."** The README says this, and the website
   says Paddock ships none of the models, benchmarks and datasets. It is true of weights and
   of whole datasets; the repository does hold the small dataset excerpts in section 6.
 
 ### 6.4 Release hygiene
 
-- **Who owns the code.** `LICENSE` and the README name Renesas Electronics Corporation as
+- 🔴 **Who owns the code (Q3).** `LICENSE` and the README name Renesas Electronics Corporation as
   the copyright holder. The commits on `main` come from 11 authors, writing from
   `renesas.com`, `fastcode.ai`, Gmail and GitHub's private no-reply addresses.
-- **Names in the run records.** Every run record names the "site" that produced it, and
+- 🟡 **Names in the run records (Q13).** Every run record names the "site" that produced it, and
   these names would be published with the results. Of the 163 records, 55 contain a
   contributor's user name or first name (such as `hpcai-skodate` and
   `fastcode-navvrat-b2d-pooled`), 109 contain the name of FastCode, whose staff
   contributed to Paddock, and 12 a Renesas host name (such as `renesas-sjc`).
-- **Disclaimers.** Apache-2.0 disclaims any warranty for the code. Nothing says that the
+- 🟡 **Disclaimers (Q14).** Apache-2.0 disclaims any warranty for the code. Nothing says that the
   scores are Paddock's own research measurements, not safety assessments, or that they can
   differ from the publishers' own figures. The README's only statement of this kind is
   that being listed does not mean a project endorses Paddock.
-- **Export control** has not been checked. Paddock implements no encryption.
-- **Code written with an AI assistant.** 407 of the 413 commits on `main` that are not
+- 🟢 **Export control (Q25)** has not been checked. Paddock implements no encryption.
+- 🟡 **Code written with an AI assistant (Q16).** 407 of the 413 commits on `main` that are not
   merges carry a "Co-Authored-By: Claude" line: they were written with Anthropic's AI
   coding assistant.
-- **Secrets.** No access token or private key is in the files or the history (searched for
+- 🟢 **Secrets.** No access token or private key is in the files or the history (searched for
   Hugging Face, GitHub, AWS, Slack, OpenAI and Google keys, and private-key blocks).
-- **Paddock's own dependencies** are all under permissive licences: BSD, MIT, and
+- 🟢 **Paddock's own dependencies (Q23)** are all under permissive licences: BSD, MIT, and
   matplotlib's own. None is copyleft, and Paddock ships none of them; users install them.
   Each model's environment installs its own packages, such as PyTorch, which this review
   did not cover.
-- **Git history.** It holds the real AlpaSim test files and results, and internal
+- 🟢 **Git history (Q18).** It holds the real AlpaSim test files and results, and internal
   analysis. The plan is to publish Paddock as a new repository without history.
-- **Contributions.** Apache-2.0 makes contributions Apache-2.0 unless stated otherwise.
+- 🟢 **Contributions (Q22).** Apache-2.0 makes contributions Apache-2.0 unless stated otherwise.
   There is no contributor agreement and no sign-off requirement.
-- **The name "Paddock"** has not been checked for trademark conflicts.
+- 🟢 **The name "Paddock" (Q21)** has not been checked for trademark conflicts.
 
 ## 7. How others report results on these benchmarks
 
@@ -683,9 +701,10 @@ download.
 
 ## 8. Models: details
 
-Each LICENSE link points to the exact version of the code that Paddock uses.
+Each LICENSE link points to the exact version of the code that Paddock uses. Each
+heading carries the colour of the model's row in section 4.
 
-#### Alpamayo 1.5 (NVIDIA)
+#### 🟡 Alpamayo 1.5 (NVIDIA)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -696,7 +715,7 @@ Each LICENSE link points to the exact version of the code that Paddock uses.
 | Trained on | NVIDIA's own driving data, plus public sets built on nuScenes and NAVSIM | Q8 |
 | In the release | Paddock's adapter, including one file adapted from AlpaSim that keeps NVIDIA's notice. Older neuroNCAP runs, imported from before Paddock existed, are stored under the name `alpamayo` and do not record which checkpoint ran; NVIDIA's earlier [Alpamayo-R1-10B](https://huggingface.co/nvidia/Alpamayo-R1-10B) has the same OpenMDW-1.1 tag. | |
 
-#### Alpamayo 2 Edge (NVIDIA)
+#### 🟢 Alpamayo 2 Edge (NVIDIA)
 
 Added to Paddock after this review began.
 
@@ -706,7 +725,7 @@ Added to Paddock after this review began.
 | Weights: [nvidia/Alpamayo2-Edge](https://huggingface.co/nvidia/Alpamayo2-Edge), not gated | [OpenMDW-1.1](https://openmdw.ai/license/1-1/) | The current model card states OpenMDW-1.1 and, unlike Alpamayo 1.5's, does not call the weights non-commercial. The earlier card version Paddock pins said the licence was still to be confirmed. |
 | In the release | Paddock's adapter; results on eight benchmarks: NAVSIM v1 and v2, nuScenes, KITScenes, comma2k19, neuroNCAP, Bench2Drive and AlpaSim | |
 
-#### AutoE2E (Autoware Foundation)
+#### 🟡 AutoE2E (Autoware Foundation)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -715,7 +734,7 @@ Added to Paddock after this review began.
 | Trained on | nuPlan, then fine-tuned on KITScenes, with a camera encoder trained on nuScenes | The reason the card chose CC BY-NC-SA 4.0 |
 | In the release | Paddock's adapter; scores only | |
 
-#### Drive-JEPA (Linhan Wang et al.)
+#### 🟡 Drive-JEPA (Linhan Wang et al.)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -724,7 +743,7 @@ Added to Paddock after this review began.
 | Trained on | NAVSIM and OpenScene, both from nuPlan | Q8 |
 | In the release | Paddock's adapter; three patches (Apache-2.0 code) | The repository also carries a [copy of Motional's terms](https://github.com/linhanwang/Drive-JEPA/blob/e21f47410b4d26b61f05f9bd23e169c0390cae2a/download/LICENSE), which this document quotes. |
 
-#### METEOR (TIER IV)
+#### 🟢 METEOR (TIER IV)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -733,7 +752,7 @@ Added to Paddock after this review began.
 | Trained on | TIER IV's own recordings in Japan, plus re-renderings made with NVIDIA Cosmos Transfer | |
 | In the release | Paddock's adapter | |
 
-#### OpenPilot (comma.ai)
+#### 🟡 OpenPilot (comma.ai)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -742,7 +761,7 @@ Added to Paddock after this review began.
 | Trained on | comma.ai's own fleet data, which is not public | |
 | In the release | Paddock's adapter | |
 
-#### Qwen-Drive 1.0 (Qwen team, Alibaba)
+#### 🟡 Qwen-Drive 1.0 (Qwen team, Alibaba)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -751,7 +770,7 @@ Added to Paddock after this review began.
 | Trained on | nuScenes, OpenScene, Waymo's WOD-E2E, NVIDIA's PhysicalAI-AV, and other public driving sets | Q8. Waymo's licence names models trained on its data. |
 | In the release | Paddock's adapter | |
 
-#### UniAD (OpenDriveLab)
+#### 🟡 UniAD (OpenDriveLab)
 
 Added to Paddock on 12 November. No results yet.
 
@@ -762,7 +781,7 @@ Added to Paddock on 12 November. No results yet.
 | Build dependency: [Bench2DriveZoo](https://github.com/Thinklab-SJTU/Bench2DriveZoo/blob/498c1f799dd90faf840dedb3f0d3234ec2e567db) | [CC BY-NC-ND 4.0](https://github.com/Thinklab-SJTU/Bench2DriveZoo/blob/498c1f799dd90faf840dedb3f0d3234ec2e567db/LICENSE) | `paddock setup` downloads it to build the environment UniAD and VAD share; the build copies two of its files, OpenMMLab's own. |
 | In the release | Paddock's adapter; one patch to UniAD and two to Bench2DriveZoo; test data from two nuScenes scenes (section 6) | |
 
-#### VAD (HUST Vision Lab)
+#### 🟡 VAD (HUST Vision Lab)
 
 Added to Paddock on 12 November. No results yet.
 
@@ -772,7 +791,7 @@ Added to Paddock on 12 November. No results yet.
 | Weights: VAD-Base, from a Google Drive link in [VAD's README](https://github.com/hustvl/VAD/blob/1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8/README.md) | Not stated | Trained on nuScenes `train`, non-commercial data. |
 | In the release | Paddock's adapter, which shares UniAD's environment and test data | |
 
-#### VisionPilot (Autoware Foundation)
+#### 🟡 VisionPilot (Autoware Foundation)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -780,7 +799,7 @@ Added to Paddock on 12 November. No results yet.
 | Trained on | Partly [OpenLane](https://github.com/OpenDriveLab/OpenLane): CC BY-NC-SA 4.0 plus Waymo's non-commercial licence | Q8 |
 | In the release | Paddock's adapter, which ports part of VisionPilot's C++ planner and names its source (pull request #182). | |
 
-#### WA-JEPA (AFARI Research)
+#### 🟡 WA-JEPA (AFARI Research)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -789,7 +808,7 @@ Added to Paddock on 12 November. No results yet.
 | Trained on | nuPlan video, then NAVSIM, according to Paddock's own notes | Q8 |
 | In the release | Paddock's adapter | |
 
-#### Constant velocity (Renesas)
+#### 🟢 Constant velocity (Renesas)
 
 | Part | Licence | Terms that matter |
 |---|---|---|
@@ -797,7 +816,9 @@ Added to Paddock on 12 November. No results yet.
 
 ## 9. Benchmarks and their data: details
 
-#### nuScenes (Motional): recorded drives
+Each heading carries the colour of the benchmark's row in section 4.
+
+#### 🟡 nuScenes (Motional): recorded drives
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
@@ -810,14 +831,14 @@ Added to Paddock on 12 November. No results yet.
 | Code | Paddock's own | Follows a published scoring method. |
 | In the release | Results; the validation scene list as Motional's nuScenes devkit publishes it (Apache-2.0); a verbatim subset of nuScenes' tables for two scenes, with UniAD's and VAD's inputs and plans on them, as test data | Section 6. |
 
-#### nuPlan (Motional): recorded drives
+#### 🟡 nuPlan (Motional): recorded drives
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
 | Data: [nuPlan](https://www.nuscenes.org/nuplan) | Same as nuScenes | One document, titled "nuScenes, nuPlan, nuImages, and nuReality Terms of Use", covers both. |
 | In the release | 5 result runs | Kept but not ranked, because they used part of the data. |
 
-#### NAVSIM v1 and v2 (autonomousvision): recorded drives; the model's plan is scored in a short simulation
+#### 🟡 NAVSIM v1 and v2 (autonomousvision): recorded drives; the model's plan is scored in a short simulation
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
@@ -825,7 +846,7 @@ Added to Paddock on 12 November. No results yet.
 | Data: [OpenScene](https://github.com/OpenDriveLab/OpenScene) (OpenDriveLab), a smaller re-release of nuPlan | CC BY-NC-SA 4.0 + nuPlan's terms | Users "may not use the work for commercial purposes". [Copy on Hugging Face](https://huggingface.co/datasets/OpenDriveLab/OpenScene). |
 | In the release | Results | |
 
-#### KITScenes (Karlsruhe Institute of Technology): recorded drives
+#### 🟡 KITScenes (Karlsruhe Institute of Technology): recorded drives
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
@@ -835,7 +856,7 @@ Added to Paddock on 12 November. No results yet.
 | Term added on 13 November 2026 | KIT's terms | Aerial feature tiles: users "must not reconstruct, recover or approximate the source imagery from them", nor publish such reconstructions. Paddock does not use the aerial tiles. |
 | In the release | Results; the list of the 223 keyframes Paddock scores | Section 6. |
 
-#### comma2k19 (comma.ai): recorded drives
+#### 🟢 comma2k19 (comma.ai): recorded drives
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
@@ -843,7 +864,7 @@ Added to Paddock on 12 November. No results yet.
 | Data: [commaai/comma2k19](https://huggingface.co/datasets/commaai/comma2k19) | MIT (tag) | Also distributed through Academic Torrents, as the toolkit's README says. |
 | In the release | Results | |
 
-#### Bench2Drive (Thinklab, Shanghai Jiao Tong University): CARLA simulator
+#### 🟡 Bench2Drive (Thinklab, Shanghai Jiao Tong University): CARLA simulator
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
@@ -852,7 +873,7 @@ Added to Paddock on 12 November. No results yet.
 | Simulator: CARLA 0.9.15, which each user installs | [MIT code, CC-BY assets](https://github.com/carla-simulator/carla/blob/0.9.15/README.md#licenses) | "CARLA specific code is distributed under MIT License. CARLA specific assets are distributed under CC-BY License." CARLA is built on Unreal Engine 4, which "follows its own license terms" ([Unreal Engine FAQ](https://www.unrealengine.com/en-US/faq)). |
 | In the release | Results; two patches; the names of two routes; outputs of a few of Paddock's own runs, used as test data | Section 6. Bench2Drive's training dataset (Apache-2.0, on Hugging Face) is not used. |
 
-#### neuroNCAP (William Ljungbergh, Adam Tonderski et al.): nuScenes scenes re-rendered so that a model can drive in them
+#### 🟡 neuroNCAP (William Ljungbergh, Adam Tonderski et al.): nuScenes scenes re-rendered so that a model can drive in them
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
@@ -862,7 +883,7 @@ Added to Paddock on 12 November. No results yet.
 | Data | nuScenes, as above | |
 | In the release | Results; three patches; 20 test scenarios, neuro-ncap's own (MIT) with the time step changed, holding nuScenes object IDs and positions; four website videos of its scenes | Section 6. |
 
-#### AlpaSim (NVIDIA): reconstructed real drives
+#### 🔴 AlpaSim (NVIDIA): reconstructed real drives
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
@@ -875,7 +896,7 @@ Added to Paddock on 12 November. No results yet.
 | §11, law | Agreement | United States and Delaware law; the courts of Santa Clara County, California. |
 | In the release | 15 result runs over nine models, Alpamayo 2 Edge's added on 16 November; an AlpaSim column in the README's results chart; an AlpaSim page; test files cut from two real runs, until pull request #183 merges; four website videos of its scenes, whose captions give per-scene scores; the scene list, which comes from AlpaSim's own repository | Section 6 |
 
-#### HUGSIM (X-D Lab, Zhejiang University): reconstructed real drives
+#### 🟡 HUGSIM (X-D Lab, Zhejiang University): reconstructed real drives
 
 | Part | Licence or source | Terms that matter |
 |---|---|---|
