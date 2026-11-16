@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-127 runs across 10 benchmarks.
+128 runs across 10 benchmarks.
 68 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -40,6 +40,7 @@
 | openpilot | full220-836dda734659a86c-2803bd | 216 | 43.422 | 55.145 | 0.813 | 0.227 | 1.000 | 0.000 | 317.833 |
 | alpamayo15 | full220-836dda734659a86c-f81033 | 216 | 37.663 | 56.494 | 0.740 | 0.407 | 1.000 | 0.000 | 1692.810 |
 | autoe2e | full220-836dda734659a86c-63902e | 216 | 14.363 | 27.804 | 0.548 | 0.796 | 1.000 | 0.000 | 2590.377 |
+| alpamayo2edge | full220-836dda734659a86c-56db50 | 216 | 13.740 | 38.839 | 0.481 | 0.657 | 1.000 | 0.000 | 1373.664 |
 | meteor | full220-836dda734659a86c-dda00e | 216 | 1.922 | 5.397 | 0.925 | 0.120 | 1.000 | 0.000 | 250.255 |
 
 ### n = 50, scene set 40c29d24
