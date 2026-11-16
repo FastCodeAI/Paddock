@@ -8,7 +8,7 @@
 | Dataset | `hugsim` |
 | Primary metric | `hd_score` |
 | Adapter | [`adapters/benchmarks/hugsim/`](../../src/paddock/adapters/benchmarks/hugsim/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -189,6 +189,7 @@ sorted by HD-Score.
 |---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
 | [Drive-JEPA](../models/drivejepa.md) (released NAVSIM v2 checkpoint, momentum on) | 2 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-b89341`](../../results/hugsim/drivejepa/fullplan-f7d8f9d4b9736ddd-b89341/run.json) | 37.1 | 62.1 | 47.2 | 70.3 | 96.0 | 65.0 | 87.3 |
 | [Qwen-Drive](../models/qwendrive.md) | 2 Hz, every step observed | 4 s | [`fullplan-f7d8f9d4b9736ddd-1ddf85`](../../results/hugsim/qwendrive/fullplan-f7d8f9d4b9736ddd-1ddf85/run.json) | 34.8 | 52.3 | 46.7 | 61.7 | 92.7 | 55.2 | 92.8 |
+| [Alpamayo 2 Edge](../models/alpamayo2edge.md) † | 4 Hz | 4 s | [`20261114T172855-b502b3`](../../results/hugsim/alpamayo2edge/20261114T172855-b502b3/run.json) | 31.2 | 53.1 | 45.3 | 63.5 | 88.7 | 57.4 | 92.1 |
 | [UniAD](../models/uniad.md) (1.0 base, nuScenes checkpoint, zero-shot) | 2 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-9d698c`](../../results/hugsim/uniad/fullplan-f7d8f9d4b9736ddd-9d698c/run.json) | 26.1 | 35.0 | 45.7 | 54.3 | 91.0 | 37.9 | 47.5 |
 | [Constant velocity](../models/constant_velocity.md) (floor) | 4 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-a8f5b7`](../../results/hugsim/constant_velocity/fullplan-f7d8f9d4b9736ddd-a8f5b7/run.json) | 24.2 | 65.6 | 28.6 | 72.9 | 93.0 | 68.6 | 100.0 |
 | [Alpamayo 1.5](../models/alpamayo15.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-7ea973`](../../results/hugsim/alpamayo15/fullplan-f7d8f9d4b9736ddd-7ea973/run.json) | 23.8 | 54.6 | 35.7 | 70.8 | 89.5 | 65.2 | 63.5 |
@@ -204,6 +205,7 @@ HD-Score by source dataset and by difficulty:
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Drive-JEPA | 23.8 | 41.6 | 38.3 | 46.2 | 66.4 | 50.2 | 19.8 | 12.3 |
 | Qwen-Drive | 19.3 | 48.8 | 35.9 | 38.6 | 70.6 | 40.3 | 21.6 | 11.7 |
+| Alpamayo 2 Edge | 10.2 | 36.7 | 47.0 | 32.3 | 47.1 | 37.4 | 24.9 | 16.1 |
 | UniAD | 2.9 | 43.2 | 31.0 | 31.3 | 53.2 | 25.2 | 20.1 | 11.9 |
 | Constant velocity | 7.8 | 34.6 | 30.5 | 26.2 | 49.2 | 30.4 | 14.1 | 5.5 |
 | Alpamayo 1.5 | 22.4 | 19.3 | 26.3 | 26.5 | 41.8 | 27.6 | 14.8 | 12.9 |
@@ -219,6 +221,7 @@ How episodes ended, % of 420:
 |---|---:|---:|---:|---:|---:|
 | Drive-JEPA | 30.7 | 38.6 | 7.1 | 11.4 | 12.1 |
 | Qwen-Drive | 27.1 | 51.2 | 19.3 | 2.4 | 0.0 |
+| Alpamayo 2 Edge | 25.2 | 42.1 | 24.8 | 7.9 | 0.0 |
 | UniAD | 25.5 | 46.2 | 23.6 | 1.4 | 3.3 |
 | Constant velocity | 6.2 | 54.8 | 25.2 | 7.6 | 6.2 |
 | Alpamayo 1.5 | 16.7 | 44.0 | 18.6 | 20.7 | 0.0 |
@@ -230,6 +233,21 @@ How episodes ended, % of 420:
 
 What to read with them:
 
+- **† Alpamayo 2 Edge was driven later, by `paddock run`, not ingested.** 14-15 Nov 2026,
+  one node on a shared RTX PRO 6000, through the harness and `launcher.py` on this branch
+  rather than the campaign runner, so its record's run id is a plain `paddock run` id. Same
+  420 scenarios (`sequences_sha256: f7d8f9d4b9736ddd`), the same 16 left out, command only,
+  PR #57 controller, patch 0003, 400-step cap. Edge declares 10 Hz, so it was asked every
+  step (15,643 plans, no bridge error); its 0.1 s plan was sent as 8 waypoints 0.5 s apart.
+  The run was cut off after 284 scenarios and finished with `--resume`, which reused them
+  (`dataset.n_reused`); 7.0 h of episodes in all.
+- **Edge's run rendered every camera, though its record lists five.** The site's HUGSIM
+  interpreter has `hugsim_env` installed editable from an unpatched checkout, and the
+  harness puts the checkout's root, not its `sim/`, on the path, so `hugsim_env` (and the
+  `HUGSIM_RENDER_CAMS` switch patch 0002 adds to it) loaded from there; `sim.utils`, which
+  patches 0001 and 0003 change, loaded from the patched checkout. `config.render_cams` is
+  what the harness asked for. Scoring never reads images, and Edge's node keeps only the
+  five cameras it declares, so the scores are unaffected; the run was only slower.
 - **Each model at its own rate.** HUGSIM steps at 4 Hz, so a model that declares 4 Hz or more
   (Alpamayo 1.5 and AutoE2E 10 Hz, METEOR 5 Hz), or no rate (VisionPilot, openpilot, the floor),
   is asked every step. Drive-JEPA, Qwen-Drive, UniAD and VAD plan at 2 Hz, every second step; Qwen-Drive's

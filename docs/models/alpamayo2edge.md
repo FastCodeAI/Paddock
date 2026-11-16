@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -301,10 +301,10 @@ nuPlan data is claimed.
   800-pixel front view, which the vendor's processor then reads at 576×320.
 - **CARLA is not what Edge was trained on.** Its training drives are real camera
   video; Bench2Drive's frames are rendered.
-- **Closed loop on Bench2Drive and neuroNCAP only.** Both drive Edge's own points at
-  0.5, 1.0, … 3.0 s: neuroNCAP's engine from the wire's `trajectory` field
-  (`Trajectory.to_wire`), Bench2Drive's client from the whole plan. Edge has not been
-  run on HUGSIM, so `benchmarks` does not list it.
+- **Closed loop on Bench2Drive, neuroNCAP and HUGSIM.** Bench2Drive and neuroNCAP drive
+  Edge's own points at 0.5, 1.0, … 3.0 s: neuroNCAP's engine from the wire's `trajectory`
+  field (`Trajectory.to_wire`), Bench2Drive's client from the whole plan. HUGSIM's bridge
+  reads the whole plan too and sends its first 4 s as 8 waypoints 0.5 s apart.
 
 ## Results
 
@@ -422,6 +422,29 @@ the site's two H200s, 5.6 hours. No plan was drawn again. That commit is on the 
 `alpamayo2edge/nuscenes-neuroncap`; its Edge adapter and comma2k19 code are this
 branch's, except that its harness imported the same 0.5 s stride rule from
 `policy/protocol.py`, which there also changes what a closed-loop simulator is sent.
+
+### HUGSIM
+
+All 420 scenarios ([hugsim.md](../benchmarks/hugsim.md#results)), command only, asked
+every 0.25 s step (Edge declares 10 Hz, HUGSIM steps at 4 Hz), the first 4 s of each plan
+sent. Scores ×100.
+
+| Benchmark | HD-Score | PDMS | Route completion | NC | DAC | TTC | Comfort | Run |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| HUGSIM | **31.2** | 53.1 | 45.3 | 63.5 | 88.7 | 57.4 | 92.1 | `hugsim/alpamayo2edge/20261114T172855-b502b3` |
+
+Third of eleven, below Drive-JEPA (37.1) and Qwen-Drive (34.8), above UniAD (26.1), the
+constant-velocity floor (24.2) and Alpamayo 1.5 (23.8). By source dataset: PandaSet 47.0,
+nuScenes 36.7, Waymo 32.3, KITTI-360 10.2. By difficulty: easy 47.1, medium 37.4, hard
+24.9, extreme 16.1. 25.2 % of episodes completed, 42.1 % hit a vehicle, 24.8 % hit
+scenery, 7.9 % left the route, none ran to the step cap.
+
+Driven 14-15 Nov 2026 by `paddock run` on one node of the site's shared RTX PRO 6000:
+15,643 plans, no bridge error. It was cut off after 284 scenarios and finished with
+`--resume`. Every camera was rendered, though the record lists Edge's five; why, and why
+the scores do not depend on it, is in [hugsim.md](../benchmarks/hugsim.md#results). Building
+the inputs, not the model, set the pace on PandaSet: 9-14 s per plan to resize the frames
+on the shared CPU, against about 1 s in the model.
 
 ### neuroNCAP
 
