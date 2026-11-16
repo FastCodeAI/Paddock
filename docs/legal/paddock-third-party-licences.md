@@ -942,9 +942,10 @@ Added to Paddock on 12 November. No results yet.
 - **Other public pages** (OpenScene, NAVSIM, CARLA, KITTI-360, Waymo, 3DRealCar,
   OpenLane, the NVIDIA Open Model License, Creative Commons' FAQ and wiki, and the
   sources in section 7) were read on 10 November 2026.
-- **Links**: every link in this document opened on 10 November 2026 except two. The
-  AlpaSim PDF opens only after accepting the agreement, and the Unreal Engine site
-  refuses automated access; that link is the one CARLA's own README gives.
+- **Links**: all 81 links in this document were opened again on 16 November 2026, and
+  every one opened except two, as on 10 November. The AlpaSim PDF opens only after
+  accepting the agreement, and the Unreal Engine site refuses automated access; that link
+  is the one CARLA's own README gives.
 - **The clean-ups** were made on 10 November 2026 in pull requests #181 to #183. While making
   them, the nuScenes scene list, the 20 neuroNCAP scenarios, the AlpaSim scene list and the
   Bench2Drive route file were each compared with their upstream source; section 6 gives
