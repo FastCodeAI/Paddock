@@ -371,7 +371,7 @@ measurements.
 
 ### METEOR × bench2drive — a real-camera planner on CARLA's cameras, at its own rate
 
-METEOR's Bench2Drive cell, 1.05 over the 50 routes, is the released graph
+METEOR's Bench2Drive cell, 1.89 over all 220 routes (1.05 over the earlier 50), is the released graph
 zero-shot: it trained on none of CARLA's towns or renders. It shares the routes,
 the camera rig, the tracker and the early-stop rules with AutoE2E's cell, and is
 asked at its declared 5 Hz where AutoE2E is asked at 10. Against the 20 Hz cells

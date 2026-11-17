@@ -497,6 +497,14 @@ serialize = true
 #                                     # pool (see "The 220-route protocol" in bench2drive.md)
 # notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
 #
+# Records in results/ whose upstream_scores.json rows supply the routes that no
+# run under `runs` scored: a record pooled at another site, completed by routes
+# driven here. A raw route takes precedence. Each route is measured as from its
+# results.json, except duration_s (wall clock), which the rows do not hold and
+# metrics.json counts as missing. A record the rows do not fully describe is
+# refused ("Routes from a record made at another site" in bench2drive.md).
+# tracked = ["bench2drive/drivejepa/full220-<route hash>-<config hash>"]
+#
 # Environment overrides recorded in the run's config. The ingest reads what the
 # source runs recorded; this is layered on top, for what they did not. For the
 # constant-velocity baseline it is the only machine-readable statement of which

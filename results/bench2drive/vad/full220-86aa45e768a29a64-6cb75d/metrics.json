@@ -1,0 +1,2977 @@
+{
+  "run_id": "full220-86aa45e768a29a64-6cb75d",
+  "primary_metric": "driving_score",
+  "n": 220,
+  "metrics": {
+    "driving_score": {
+      "n": 220,
+      "n_missing": 0,
+      "mean": 15.581654,
+      "median": 15.066,
+      "p90": 35.03231,
+      "max": 66.69,
+      "std": 13.048429
+    },
+    "route_completion": {
+      "n": 220,
+      "n_missing": 0,
+      "mean": 31.453682,
+      "median": 33.005,
+      "p90": 61.309,
+      "max": 100.0,
+      "std": 25.630075
+    },
+    "infraction_penalty": {
+      "n": 220,
+      "n_missing": 0,
+      "mean": 0.671817,
+      "median": 0.65,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.28868
+    },
+    "collision_rate": {
+      "n": 220,
+      "n_missing": 0,
+      "mean": 0.527273,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.499256
+    },
+    "n_runs": {
+      "n": 220,
+      "n_missing": 0,
+      "mean": 1.0,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.0
+    },
+    "n_crashed": {
+      "n": 220,
+      "n_missing": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 0.0,
+      "std": 0.0
+    },
+    "duration_s": {
+      "n": 220,
+      "n_missing": 0,
+      "mean": 549.497273,
+      "median": 353.35,
+      "p90": 996.71,
+      "max": 12528.5,
+      "std": 915.705265
+    }
+  },
+  "by_split": {
+    "Accident": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 8.59228,
+        "median": 0.0,
+        "p90": 23.20122,
+        "max": 30.0833,
+        "std": 11.846637
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 15.672,
+        "median": 0.0,
+        "p90": 42.154,
+        "max": 54.05,
+        "std": 21.37438
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.81726,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.223971
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.2,
+        "median": 0.0,
+        "p90": 0.6,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 443.44,
+        "median": 188.9,
+        "p90": 1038.68,
+        "max": 1500.6,
+        "std": 537.617517
+      }
+    },
+    "AccidentTwoWays": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 15.9465,
+        "median": 15.63,
+        "p90": 22.1367,
+        "max": 22.3145,
+        "std": 5.930438
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 19.828,
+        "median": 21.12,
+        "p90": 29.346,
+        "max": 34.33,
+        "std": 9.16259
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.86,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.171464
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 743.22,
+        "median": 801.3,
+        "p90": 1060.66,
+        "max": 1225.1,
+        "std": 315.89603
+      }
+    },
+    "BlockedIntersection": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 14.40912,
+        "median": 12.31,
+        "p90": 19.44384,
+        "max": 22.7864,
+        "std": 4.386704
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 27.932,
+        "median": 28.89,
+        "p90": 43.628,
+        "max": 50.08,
+        "std": 13.813174
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.63626,
+        "median": 0.455,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.301228
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 813.1,
+        "median": 730.8,
+        "p90": 1118.18,
+        "max": 1235.1,
+        "std": 249.740457
+      }
+    },
+    "ConstructionObstacle": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 8.84928,
+        "median": 10.2567,
+        "p90": 14.96506,
+        "max": 17.7459,
+        "std": 5.912304
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 26.99,
+        "median": 18.86,
+        "p90": 56.38,
+        "max": 60.62,
+        "std": 24.165622
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.61402,
+        "median": 0.5723,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.337687
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 626.82,
+        "median": 639.2,
+        "p90": 1007.9,
+        "max": 1212.1,
+        "std": 354.823271
+      }
+    },
+    "ConstructionObstacleTwoWays": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 20.7245,
+        "median": 16.7635,
+        "p90": 34.1617,
+        "max": 41.6005,
+        "std": 11.322933
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 37.856,
+        "median": 25.79,
+        "p90": 74.156,
+        "max": 100.0,
+        "std": 32.128002
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6732,
+        "median": 0.65,
+        "p90": 0.86,
+        "max": 1.0,
+        "std": 0.18685
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 640.54,
+        "median": 714.7,
+        "p90": 922.86,
+        "max": 975.1,
+        "std": 312.756344
+      }
+    },
+    "ControlLoss": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 23.62324,
+        "median": 22.63,
+        "p90": 37.13772,
+        "max": 39.5562,
+        "std": 13.506288
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 35.712,
+        "median": 22.63,
+        "p90": 73.404,
+        "max": 100.0,
+        "std": 33.94395
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.87912,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.24176
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.2,
+        "median": 0.0,
+        "p90": 0.6,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 127.44,
+        "median": 120.6,
+        "p90": 178.26,
+        "max": 185.9,
+        "std": 46.462656
+      }
+    },
+    "CrossingBicycleFlow": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 19.10496,
+        "median": 0.0,
+        "p90": 49.44828,
+        "max": 56.1918,
+        "std": 23.998357
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 24.982,
+        "median": 0.0,
+        "p90": 63.708,
+        "max": 68.72,
+        "std": 30.852076
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.90354,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.123863
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 253.1,
+        "median": 255.3,
+        "p90": 455.78,
+        "max": 588.1,
+        "std": 185.303038
+      }
+    },
+    "DynamicObjectCrossing": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 18.65656,
+        "median": 18.733,
+        "p90": 23.72052,
+        "max": 25.454,
+        "std": 4.411974
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 40.328,
+        "median": 34.12,
+        "p90": 61.69,
+        "max": 76.71,
+        "std": 18.985086
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.52206,
+        "median": 0.65,
+        "p90": 0.65,
+        "max": 0.65,
+        "std": 0.160488
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 291.76,
+        "median": 274.6,
+        "p90": 446.04,
+        "max": 482.8,
+        "std": 149.191724
+      }
+    },
+    "EnterActorFlow": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 17.37122,
+        "median": 17.0637,
+        "p90": 19.21406,
+        "max": 19.9059,
+        "std": 1.658324
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 69.884,
+        "median": 69.19,
+        "p90": 82.784,
+        "max": 90.66,
+        "std": 12.355906
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.26072,
+        "median": 0.2436,
+        "p90": 0.33882,
+        "max": 0.3827,
+        "std": 0.070866
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 538.14,
+        "median": 528.6,
+        "p90": 743.68,
+        "max": 751.0,
+        "std": 207.095926
+      }
+    },
+    "HardBreakRoute": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 14.27724,
+        "median": 12.1116,
+        "p90": 22.93398,
+        "max": 30.0833,
+        "std": 8.262185
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 32.054,
+        "median": 21.86,
+        "p90": 49.294,
+        "max": 54.05,
+        "std": 13.645352
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.44418,
+        "median": 0.516,
+        "p90": 0.58264,
+        "max": 0.6,
+        "std": 0.141593
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 145.14,
+        "median": 196.0,
+        "p90": 234.58,
+        "max": 258.3,
+        "std": 92.742107
+      }
+    },
+    "HazardAtSideLane": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 3.87084,
+        "median": 0.0,
+        "p90": 10.27968,
+        "max": 12.69,
+        "std": 5.109416
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 4.902,
+        "median": 0.0,
+        "p90": 12.342,
+        "max": 12.69,
+        "std": 6.01
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.91276,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.17448
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.2,
+        "median": 0.0,
+        "p90": 0.6,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 486.54,
+        "median": 250.2,
+        "p90": 940.4,
+        "max": 1261.8,
+        "std": 397.013146
+      }
+    },
+    "HazardAtSideLaneTwoWays": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 3.50356,
+        "median": 5.7019,
+        "p90": 5.92436,
+        "max": 5.99,
+        "std": 2.862105
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 11.57,
+        "median": 5.99,
+        "p90": 26.746,
+        "max": 30.01,
+        "std": 12.2031
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.69102,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.379013
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 565.34,
+        "median": 591.0,
+        "p90": 865.1,
+        "max": 1014.3,
+        "std": 269.531019
+      }
+    },
+    "HighwayCutIn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 13.2324,
+        "median": 12.19,
+        "p90": 23.73372,
+        "max": 25.9646,
+        "std": 9.175892
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 28.474,
+        "median": 12.19,
+        "p90": 63.504,
+        "max": 72.4,
+        "std": 27.966418
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.75984,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.303455
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 263.24,
+        "median": 231.3,
+        "p90": 391.0,
+        "max": 476.8,
+        "std": 115.337099
+      }
+    },
+    "HighwayExit": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 13.0234,
+        "median": 14.9544,
+        "p90": 16.26682,
+        "max": 16.7289,
+        "std": 3.488707
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 33.96,
+        "median": 41.54,
+        "p90": 53.586,
+        "max": 60.77,
+        "std": 19.150833
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.51982,
+        "median": 0.3638,
+        "p90": 0.84,
+        "max": 1.0,
+        "std": 0.263316
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 3384.46,
+        "median": 800.2,
+        "p90": 8514.74,
+        "max": 12528.5,
+        "std": 4629.439381
+      }
+    },
+    "InterurbanActorFlow": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 9.5794,
+        "median": 10.8504,
+        "p90": 19.00324,
+        "max": 20.923,
+        "std": 8.445698
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 32.93,
+        "median": 43.01,
+        "p90": 60.836,
+        "max": 60.9,
+        "std": 27.662586
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.58598,
+        "median": 0.4865,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.352657
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 296.84,
+        "median": 302.6,
+        "p90": 416.82,
+        "max": 482.9,
+        "std": 112.128776
+      }
+    },
+    "InterurbanAdvancedActorFlow": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 3.22,
+        "median": 0.0,
+        "p90": 9.66,
+        "max": 16.1,
+        "std": 6.44
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 3.22,
+        "median": 0.0,
+        "p90": 9.66,
+        "max": 16.1,
+        "std": 6.44
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 480.12,
+        "median": 258.3,
+        "p90": 979.2,
+        "max": 1242.4,
+        "std": 412.191525
+      }
+    },
+    "InvadingTurn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 15.43606,
+        "median": 10.02,
+        "p90": 30.20128,
+        "max": 35.0258,
+        "std": 12.22542
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 30.904,
+        "median": 10.02,
+        "p90": 74.132,
+        "max": 100.0,
+        "std": 36.489484
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.80006,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.262576
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.2,
+        "median": 0.0,
+        "p90": 0.6,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 702.02,
+        "median": 928.8,
+        "p90": 1003.34,
+        "max": 1012.1,
+        "std": 370.529396
+      }
+    },
+    "MergerIntoSlowTraffic": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 10.27746,
+        "median": 11.0,
+        "p90": 12.75152,
+        "max": 12.78,
+        "std": 2.880553
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 18.128,
+        "median": 12.78,
+        "p90": 31.148,
+        "max": 31.86,
+        "std": 10.819232
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.74714,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.311612
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 785.02,
+        "median": 695.5,
+        "p90": 973.76,
+        "max": 1071.4,
+        "std": 155.214631
+      }
+    },
+    "MergerIntoSlowTrafficV2": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 15.04742,
+        "median": 0.0,
+        "p90": 38.12408,
+        "max": 40.1462,
+        "std": 18.498456
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 27.35,
+        "median": 0.0,
+        "p90": 70.08,
+        "max": 76.9,
+        "std": 33.927924
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.82168,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.219338
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 438.5,
+        "median": 349.9,
+        "p90": 763.16,
+        "max": 912.8,
+        "std": 268.70575
+      }
+    },
+    "NonSignalizedJunctionLeftTurn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 14.60378,
+        "median": 13.1933,
+        "p90": 31.19904,
+        "max": 36.344,
+        "std": 13.999879
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 29.33,
+        "median": 45.81,
+        "p90": 50.72,
+        "max": 51.92,
+        "std": 24.025671
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6936,
+        "median": 0.7,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.282113
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 667.5,
+        "median": 576.8,
+        "p90": 1285.32,
+        "max": 1643.0,
+        "std": 543.519486
+      }
+    },
+    "NonSignalizedJunctionLeftTurnEnterFlow": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 24.03654,
+        "median": 27.6276,
+        "p90": 40.00508,
+        "max": 42.584,
+        "std": 15.395823
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 41.136,
+        "median": 53.13,
+        "p90": 53.782,
+        "max": 54.15,
+        "std": 20.822722
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.65872,
+        "median": 0.6673,
+        "p90": 0.92,
+        "max": 1.0,
+        "std": 0.236622
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 87.04,
+        "median": 61.3,
+        "p90": 149.76,
+        "max": 159.8,
+        "std": 50.862387
+      }
+    },
+    "NonSignalizedJunctionRightTurn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 16.24098,
+        "median": 19.8228,
+        "p90": 22.77904,
+        "max": 24.2736,
+        "std": 8.481609
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 41.558,
+        "median": 49.66,
+        "p90": 63.596,
+        "max": 72.28,
+        "std": 23.90473
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.53696,
+        "median": 0.48,
+        "p90": 0.82476,
+        "max": 1.0,
+        "std": 0.256182
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 587.36,
+        "median": 701.3,
+        "p90": 880.08,
+        "max": 995.0,
+        "std": 282.809848
+      }
+    },
+    "OppositeVehicleRunningRedLight": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 26.37906,
+        "median": 33.26,
+        "p90": 38.02022,
+        "max": 39.6045,
+        "std": 14.233076
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 37.284,
+        "median": 35.98,
+        "p90": 59.058,
+        "max": 60.93,
+        "std": 21.572353
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.78674,
+        "median": 0.65,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.174228
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 403.9,
+        "median": 278.4,
+        "p90": 710.64,
+        "max": 772.4,
+        "std": 247.958319
+      }
+    },
+    "OppositeVehicleTakingPriority": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 14.7789,
+        "median": 15.1776,
+        "p90": 31.22414,
+        "max": 41.4469,
+        "std": 14.903168
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 25.838,
+        "median": 15.89,
+        "p90": 56.612,
+        "max": 59.22,
+        "std": 25.300924
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.79758,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.280048
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.2,
+        "median": 0.0,
+        "p90": 0.6,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 291.02,
+        "median": 335.6,
+        "p90": 411.04,
+        "max": 447.2,
+        "std": 135.324327
+      }
+    },
+    "ParkedObstacle": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 12.26472,
+        "median": 12.4895,
+        "p90": 21.1068,
+        "max": 21.834,
+        "std": 8.12419
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 31.382,
+        "median": 36.39,
+        "p90": 44.24,
+        "max": 46.88,
+        "std": 16.329023
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.53182,
+        "median": 0.6,
+        "p90": 0.84,
+        "max": 1.0,
+        "std": 0.291273
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1064.62,
+        "median": 866.4,
+        "p90": 1884.28,
+        "max": 2305.2,
+        "std": 700.723436
+      }
+    },
+    "ParkedObstacleTwoWays": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 17.37402,
+        "median": 10.855,
+        "p90": 33.02712,
+        "max": 36.6292,
+        "std": 12.510532
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 38.13,
+        "median": 21.85,
+        "p90": 78.416,
+        "max": 100.0,
+        "std": 33.595337
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.57546,
+        "median": 0.6,
+        "p90": 0.86,
+        "max": 1.0,
+        "std": 0.256525
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 534.08,
+        "median": 639.4,
+        "p90": 927.96,
+        "max": 955.6,
+        "std": 376.455147
+      }
+    },
+    "ParkingCrossingPedestrian": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 15.74796,
+        "median": 15.6897,
+        "p90": 19.37,
+        "max": 21.502,
+        "std": 3.738927
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 28.694,
+        "median": 24.88,
+        "p90": 37.37,
+        "max": 40.23,
+        "std": 6.993504
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.55966,
+        "median": 0.65,
+        "p90": 0.65,
+        "max": 0.65,
+        "std": 0.112732
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 240.74,
+        "median": 258.8,
+        "p90": 285.46,
+        "max": 299.5,
+        "std": 55.882183
+      }
+    },
+    "ParkingCutIn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 16.6692,
+        "median": 15.282,
+        "p90": 23.12376,
+        "max": 27.89,
+        "std": 5.910797
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 33.814,
+        "median": 30.64,
+        "p90": 41.854,
+        "max": 42.45,
+        "std": 6.564902
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.5169,
+        "median": 0.39,
+        "p90": 0.7778,
+        "max": 1.0,
+        "std": 0.243085
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 264.22,
+        "median": 225.1,
+        "p90": 371.9,
+        "max": 419.3,
+        "std": 87.892785
+      }
+    },
+    "ParkingExit": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.552,
+        "median": 0.0,
+        "p90": 1.476,
+        "max": 1.86,
+        "std": 0.741091
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.92,
+        "median": 0.0,
+        "p90": 2.46,
+        "max": 3.1,
+        "std": 1.235152
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.84,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.195959
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 678.46,
+        "median": 640.2,
+        "p90": 854.34,
+        "max": 970.9,
+        "std": 158.657072
+      }
+    },
+    "PedestrianCrossing": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 25.82428,
+        "median": 25.0432,
+        "p90": 31.23888,
+        "max": 35.119,
+        "std": 5.117563
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 58.452,
+        "median": 52.98,
+        "p90": 72.446,
+        "max": 84.05,
+        "std": 12.9347
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.46988,
+        "median": 0.455,
+        "p90": 0.62328,
+        "max": 0.7,
+        "std": 0.149556
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 185.74,
+        "median": 226.2,
+        "p90": 290.46,
+        "max": 304.5,
+        "std": 104.74366
+      }
+    },
+    "SequentialLaneChange": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 13.40442,
+        "median": 9.8731,
+        "p90": 30.32876,
+        "max": 37.3458,
+        "std": 14.042516
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 31.042,
+        "median": 33.29,
+        "p90": 63.402,
+        "max": 73.17,
+        "std": 28.357033
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.64264,
+        "median": 0.5104,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.299515
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1063.28,
+        "median": 892.7,
+        "p90": 1429.7,
+        "max": 1445.1,
+        "std": 302.923815
+      }
+    },
+    "SignalizedJunctionLeftTurn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 10.73622,
+        "median": 0.0,
+        "p90": 29.13464,
+        "max": 38.311,
+        "std": 15.017594
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 21.34,
+        "median": 0.0,
+        "p90": 53.626,
+        "max": 54.73,
+        "std": 26.150624
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.79916,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.277205
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.2,
+        "median": 0.0,
+        "p90": 0.6,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 204.24,
+        "median": 235.2,
+        "p90": 339.9,
+        "max": 388.9,
+        "std": 124.507809
+      }
+    },
+    "SignalizedJunctionLeftTurnEnterFlow": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 23.08756,
+        "median": 22.1004,
+        "p90": 36.3366,
+        "max": 37.933,
+        "std": 13.227676
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 42.11,
+        "median": 52.62,
+        "p90": 55.618,
+        "max": 56.57,
+        "std": 21.280666
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.635,
+        "median": 0.6,
+        "p90": 0.88,
+        "max": 1.0,
+        "std": 0.208471
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1092.36,
+        "median": 900.2,
+        "p90": 2199.72,
+        "max": 2532.6,
+        "std": 921.055761
+      }
+    },
+    "SignalizedJunctionRightTurn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 14.88912,
+        "median": 15.4667,
+        "p90": 26.55812,
+        "max": 33.8,
+        "std": 11.040928
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 45.836,
+        "median": 52.0,
+        "p90": 63.596,
+        "max": 66.44,
+        "std": 23.565297
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.46958,
+        "median": 0.3053,
+        "p90": 0.86,
+        "max": 1.0,
+        "std": 0.313979
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 685.82,
+        "median": 488.5,
+        "p90": 1209.96,
+        "max": 1589.8,
+        "std": 464.44981
+      }
+    },
+    "StaticCutIn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 8.98488,
+        "median": 11.1204,
+        "p90": 17.0136,
+        "max": 17.46,
+        "std": 7.642001
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 17.446,
+        "median": 27.24,
+        "p90": 30.174,
+        "max": 30.89,
+        "std": 14.291292
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.712,
+        "median": 0.6,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.25095
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 272.16,
+        "median": 264.3,
+        "p90": 370.28,
+        "max": 390.0,
+        "std": 83.163059
+      }
+    },
+    "T_Junction": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 27.9301,
+        "median": 28.302,
+        "p90": 35.3598,
+        "max": 36.47,
+        "std": 6.553941
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 46.512,
+        "median": 47.17,
+        "p90": 61.166,
+        "max": 67.21,
+        "std": 12.913716
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.61026,
+        "median": 0.6,
+        "p90": 0.68,
+        "max": 0.7,
+        "std": 0.065902
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 605.02,
+        "median": 725.6,
+        "p90": 890.44,
+        "max": 924.6,
+        "std": 319.355679
+      }
+    },
+    "VanillaNonSignalizedTurn": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 17.93238,
+        "median": 22.829,
+        "p90": 35.39716,
+        "max": 43.32,
+        "std": 16.387744
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 26.574,
+        "median": 41.68,
+        "p90": 46.05,
+        "max": 47.87,
+        "std": 21.792174
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8082,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.236519
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 219.34,
+        "median": 237.2,
+        "p90": 356.7,
+        "max": 420.3,
+        "std": 130.49145
+      }
+    },
+    "VanillaNonSignalizedTurnEncounterStopsign": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 8.40556,
+        "median": 0.0,
+        "p90": 22.84472,
+        "max": 30.168,
+        "std": 11.810977
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 15.778,
+        "median": 0.0,
+        "p90": 39.792,
+        "max": 41.18,
+        "std": 19.355155
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.8176,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.275897
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.2,
+        "median": 0.0,
+        "p90": 0.6,
+        "max": 1.0,
+        "std": 0.4
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 192.38,
+        "median": 215.1,
+        "p90": 310.42,
+        "max": 357.9,
+        "std": 111.281542
+      }
+    },
+    "VanillaSignalizedTurnEncounterGreenLight": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 26.73992,
+        "median": 27.8712,
+        "p90": 34.652,
+        "max": 35.8,
+        "std": 7.179358
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 38.328,
+        "median": 35.8,
+        "p90": 44.346,
+        "max": 44.77,
+        "std": 4.923188
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.7183,
+        "median": 0.6225,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.241133
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 404.56,
+        "median": 357.9,
+        "p90": 619.24,
+        "max": 767.4,
+        "std": 197.355503
+      }
+    },
+    "VanillaSignalizedTurnEncounterRedLight": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 16.15552,
+        "median": 17.2536,
+        "p90": 24.56674,
+        "max": 27.6571,
+        "std": 9.042091
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 32.188,
+        "median": 37.92,
+        "p90": 43.642,
+        "max": 45.15,
+        "std": 16.370319
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6003,
+        "median": 0.455,
+        "p90": 0.86736,
+        "max": 1.0,
+        "std": 0.217956
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 602.46,
+        "median": 518.9,
+        "p90": 1134.54,
+        "max": 1544.3,
+        "std": 490.926624
+      }
+    },
+    "VehicleOpensDoorTwoWays": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 13.34952,
+        "median": 13.728,
+        "p90": 28.01856,
+        "max": 34.0536,
+        "std": 12.780973
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 30.546,
+        "median": 21.12,
+        "p90": 72.644,
+        "max": 100.0,
+        "std": 36.823786
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.7181,
+        "median": 0.65,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.253023
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.4,
+        "median": 0.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 586.42,
+        "median": 335.9,
+        "p90": 1133.28,
+        "max": 1242.2,
+        "std": 440.897491
+      }
+    },
+    "VehicleTurningRoute": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 20.87686,
+        "median": 19.7223,
+        "p90": 26.6464,
+        "max": 30.21,
+        "std": 5.019497
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 53.002,
+        "median": 50.57,
+        "p90": 59.772,
+        "max": 65.1,
+        "std": 6.234579
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.39784,
+        "median": 0.36,
+        "p90": 0.516,
+        "max": 0.6,
+        "std": 0.104614
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 536.74,
+        "median": 356.9,
+        "p90": 923.74,
+        "max": 1184.5,
+        "std": 334.637228
+      }
+    },
+    "VehicleTurningRoutePedestrian": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 19.5665,
+        "median": 10.79,
+        "p90": 39.25392,
+        "max": 53.98,
+        "std": 17.533161
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 43.936,
+        "median": 52.95,
+        "p90": 54.16,
+        "max": 54.28,
+        "std": 16.743998
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.5313,
+        "median": 0.36,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.390425
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 349.82,
+        "median": 411.5,
+        "p90": 537.42,
+        "max": 558.5,
+        "std": 189.170203
+      }
+    },
+    "YieldToEmergencyVehicle": {
+      "n": 5,
+      "driving_score": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 30.31734,
+        "median": 29.142,
+        "p90": 53.44236,
+        "max": 66.69,
+        "std": 21.541741
+      },
+      "route_completion": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 50.11,
+        "median": 64.72,
+        "p90": 69.018,
+        "max": 70.57,
+        "std": 26.154708
+      },
+      "infraction_penalty": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6837,
+        "median": 0.6,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.270767
+      },
+      "collision_rate": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.6,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.489898
+      },
+      "n_runs": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 1.0,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.0
+      },
+      "n_crashed": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 0.0,
+        "median": 0.0,
+        "p90": 0.0,
+        "max": 0.0,
+        "std": 0.0
+      },
+      "duration_s": {
+        "n": 5,
+        "n_missing": 0,
+        "mean": 333.82,
+        "median": 372.8,
+        "p90": 380.18,
+        "max": 383.9,
+        "std": 65.594128
+      }
+    }
+  },
+  "by_group": {}
+}
