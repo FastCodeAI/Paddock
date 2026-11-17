@@ -63,8 +63,8 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 - Bench2Drive over all 220 routes, one column of its own, made the same way for
   every model ("The 220-route protocol" in docs/benchmarks/bench2drive.md):
-  openpilot's, METEOR's, AutoE2E's and Alpamayo 1.5's cells are in; the other
-  models after (issue #158).
+  openpilot's, METEOR's, AutoE2E's, Alpamayo 1.5's and Alpamayo 2 Edge's cells are
+  in; the other models after (issue #158).
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.

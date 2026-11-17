@@ -890,6 +890,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 | METEOR | 216/220 | 1.92 | 5.40 | 0.925 | 12.04 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
 | AutoE2E | 216/220 | 14.36 | 27.80 | 0.548 | 79.63 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
 | Alpamayo 1.5 | 216/220 | 37.66 | 56.49 | 0.740 | 40.74 | 2.78 | 161.32 | 51.83 | `full220-836dda734659a86c-f81033` |
+| Alpamayo 2 Edge | 216/220 | 13.74 | 38.84 | 0.481 | 65.74 | 0.00 | 140.89 | 63.56 | `full220-836dda734659a86c-56db50` |
 
 **Bench2Drive's five abilities, in % of the routes that count towards each:**
 
@@ -899,6 +900,7 @@ as 0, so each is 216/220 of the figure here (OpenPilot: DS 42.63, success 10.45%
 | METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
 | AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
 | Alpamayo 1.5 | 1.32 | 4.44 | 3.33 | 10.00 | 52.13 | 14.24 |
+| Alpamayo 2 Edge | 0.00 | 0.00 | 0.00 | 0.00 | 55.32 | 11.06 |
 
 A route counts towards an ability by its scenario, the same for every model:
 Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and
@@ -944,6 +946,17 @@ its first attempt. It completes 53 of its 216 routes, more than any other model
 here, and is second to openpilot on driving score: 88 routes have a collision, and
 the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
 best ability is Traffic signs, 49 of 94 routes.
+
+**Alpamayo 2 Edge** is asked at its declared 10 Hz, the last plan followed in between,
+with five of paddock's cameras, a telephoto crop of the front one, and the route as
+navigation text; the controller follows its plan's own points every 0.5 s. CARLA
+crashed once, on route 23670's first attempt, 66 s in, and the route scored on its
+next. It completes 16 of its 216 routes, and none is a success: each of the 16 has an
+infraction, and 142 of the 216 routes have a collision. Its median route completion
+is 35%, and 19 routes end under 1%. The 30 s rule ended 166 routes and the
+over-time rule 14. Its one ability credit is Traffic signs, for 52 of 94 routes that
+got past their first junction with no red light or stop sign run, the most of any
+model here (Alpamayo 1.5: 49).
 
 ### The 50 routes are not a sample of the 220
 

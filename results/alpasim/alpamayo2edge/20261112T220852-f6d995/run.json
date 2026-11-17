@@ -1,0 +1,201 @@
+{
+  "run_id": "20261112T220852-f6d995",
+  "site": "renesas-sjccomp250",
+  "benchmark": "alpasim",
+  "model": "alpamayo2edge",
+  "mode": "closed_loop",
+  "started_utc": "2026-11-12T22:08:52+00:00",
+  "duration_s": 11883.1,
+  "repo_sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+  "dataset": {
+    "name": "",
+    "n_samples": 30,
+    "sequences_sha256": "f110e944b9145544",
+    "n_expected": 30,
+    "n_failed": 0,
+    "n_reused": 0
+  },
+  "config": {
+    "scene": null,
+    "runs": 1,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "scene_set": "public_2601_30scenes",
+    "startup_timeout_s": 900,
+    "scorer_repo_sha": "affc2ea",
+    "renderer": "nurec",
+    "topology": "1gpu",
+    "driver_profile": "alpamayo2edge",
+    "driver_config": "paddock_bridge_alpamayo2edge",
+    "bridge_args": [
+      "--camera-name",
+      "camera_cross_left_120fov=CAM_FRONT_LEFT",
+      "--camera-name",
+      "camera_front_wide_120fov=CAM_FRONT",
+      "--camera-name",
+      "camera_cross_right_120fov=CAM_FRONT_RIGHT",
+      "--camera-name",
+      "camera_rear_left_70fov=CAM_BACK_LEFT",
+      "--camera-name",
+      "camera_rear_right_70fov=CAM_BACK_RIGHT",
+      "--camera-name",
+      "camera_front_tele_30fov=CAM_FRONT_TELE",
+      "--named-cameras-only",
+      "--replan-every-us",
+      "100000",
+      "--frame-interval-us",
+      "50000",
+      "--force-gt-us",
+      "3000000",
+      "--observe-between-replans",
+      "--canbus-ego-frame",
+      "--send-route",
+      "--send-route-time",
+      "--waypoint-dt",
+      "0.1",
+      "--send-plan-dt"
+    ],
+    "scenes_csv": "public_2601_30scenes_26p01.csv",
+    "replan_log": true,
+    "declared_env": {
+      "ALPAMAYO2_EDGE_ABSENT_CAMERAS": "refuse",
+      "ALPAMAYO2_EDGE_CHECKPOINT": "{weights}/Alpamayo2-Edge",
+      "ALPAMAYO2_EDGE_FRAMES": "nearest",
+      "ALPAMAYO2_EDGE_HISTORY": "hermite",
+      "ALPAMAYO2_EDGE_SAMPLES": "1",
+      "ALPAMAYO2_EDGE_SEED": "43",
+      "HF_HUB_OFFLINE": "1"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo2-edge",
+      "sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+      "pinned_sha": "02f55a7",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "c372441574a54b811f6192ca67045a986f4cc8e4",
+      "dirty": false
+    },
+    "policy": {
+      "settings": {
+        "frames": "nearest",
+        "history": "hermite",
+        "samples": 1,
+        "seed": 43,
+        "nav_distance_m": null,
+        "save_reasoning": false,
+        "absent_cameras": "refuse",
+        "threads": 4
+      },
+      "checkpoint": "Alpamayo2-Edge",
+      "slots": [
+        "0: CAM_FRONT_LEFT",
+        "1: CAM_FRONT",
+        "2: CAM_FRONT_RIGHT",
+        "3: CAM_BACK_LEFT",
+        "5: CAM_BACK_RIGHT",
+        "6: CAM_FRONT_TELE"
+      ],
+      "slot_geometry": {
+        "0": {
+          "bearing_deg": 67.1,
+          "hfov_deg": "as rendered"
+        },
+        "1": {
+          "bearing_deg": 0.1,
+          "hfov_deg": "as rendered"
+        },
+        "2": {
+          "bearing_deg": -66.9,
+          "hfov_deg": "as rendered"
+        },
+        "3": {
+          "bearing_deg": 152.2,
+          "hfov_deg": "as rendered"
+        },
+        "5": {
+          "bearing_deg": -151.7,
+          "hfov_deg": "as rendered"
+        },
+        "6": {
+          "bearing_deg": -0.8,
+          "hfov_deg": "as rendered"
+        }
+      },
+      "plans": 5048,
+      "nominal_rationales": 2216,
+      "drawn_again": 0,
+      "mean_ms": {
+        "inputs": 10.6,
+        "model": 435.4,
+        "rest": 0.1
+      },
+      "warp_cache": {
+        "entries": 0,
+        "held": 126,
+        "hits": 78368,
+        "misses": 32688
+      },
+      "last": {
+        "nav_text": "Continue straight",
+        "nav_from": "route",
+        "black_slots": [],
+        "frame_times_s": {
+          "0": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "1": [
+            -2.0,
+            -1.0,
+            -0.5,
+            -0.1,
+            0.0
+          ],
+          "2": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "3": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "5": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "6": [
+            -2.0,
+            -1.0,
+            -0.5,
+            -0.1,
+            0.0
+          ]
+        },
+        "history_extrapolated_s": 0.0,
+        "reasoning": "Proceed forward and follow the lead vehicle as it moves ahead in our lane.",
+        "plan_reach_m": 12.49,
+        "seed": 43
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}
