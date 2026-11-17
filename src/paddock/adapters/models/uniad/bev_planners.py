@@ -37,6 +37,7 @@ import os
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -670,6 +671,57 @@ def extend_horizon(waypoints, dt: float, horizon_s: float) -> np.ndarray:
 # --------------------------------------------------------------------------
 
 
+class BlankViewFeatures:
+    """The image backbone, with a black view's features computed once instead of on every step.
+
+    comma2k19 has one forward camera, so five of the six views are the same black frame (`with_blank_views`)
+    on every step. In eval the backbone maps each view on its own -- BatchNorm uses its running statistics
+    and GridMask is off outside training -- so a view whose input tensor equals the black view already run
+    gets that run's features, and only the real views go through the backbone. The model's output is what
+    running all six would give, up to the floating-point order of a batch of one view against six.
+
+    `blank` is set by the policy before each step to the slots it sent black (`_prepare_frame`); a slot is
+    reused only when its input is element for element the cached black input (`ops.equal`), so anything
+    else -- a view that is not black after all, a new image size -- runs the backbone as before. `ops`
+    gives the tensor library's `equal`, `cat` (along the first axis) and `clone`.
+    """
+
+    def __init__(self, backbone: Callable[[Any], Any], ops: Any) -> None:
+        self.backbone, self.ops = backbone, ops
+        self.blank: list[int] = []
+        self._input: Any = None
+        self._features: Any = None
+        self.reused = 0
+
+    def __call__(self, x: Any) -> Any:
+        blank = [i for i in self.blank if 0 <= i < len(x)]
+        if not blank:
+            return self.backbone(x)
+        first = x[blank[0]]
+        cached = self._input is not None and tuple(self._input.shape) == tuple(first.shape)
+        if not cached or not self.ops.equal(self._input, first):
+            features = self.backbone(x[blank[0] : blank[0] + 1])
+            if not isinstance(features, (tuple, list)):
+                return self.backbone(x)
+            self._input, self._features = self.ops.clone(first), type(features)(features)
+        if not all(self.ops.equal(x[i], self._input) for i in blank):
+            return self.backbone(x)
+        real = [i for i in range(len(x)) if i not in blank]
+        computed = self.backbone(x[real]) if real else None
+        out = []
+        for level, black in enumerate(self._features):
+            parts, k = [], 0
+            for i in range(len(x)):
+                if i in blank:
+                    parts.append(black)
+                else:
+                    parts.append(computed[level][k : k + 1])
+                    k += 1
+            out.append(self.ops.cat(parts))
+        self.reused += len(blank)
+        return type(self._features)(out)
+
+
 class BevPlannerPolicy(Policy):
     """What the two adapters share: settings, the history grid, the temporal reset, the frame of the plan.
 
@@ -689,6 +741,11 @@ class BevPlannerPolicy(Policy):
     #: The environment variable that continues the plan past its own 3 s (`extend_horizon`); unset, the plan
     #: is the model's. NAVSIM scores 4 s and refuses a shorter plan; nothing else needs it.
     horizon_env = ""
+    #: Run the image backbone once for the black views a one-camera source leaves (`BlankViewFeatures`),
+    #: not on every step. Off unless a model turns it on where it pays: on 8 comma2k19-shaped steps UniAD's
+    #: ResNet-101 took 1.35x less time a step with it (plans within 3.6e-4 m), while VAD's ResNet-50 is too
+    #: small a share of its step to matter (1.02x) and the batch of one moved its plans by up to 2.2e-3 m.
+    reuse_blank_views = False
 
     def __init__(self) -> None:
         self.config = os.environ.get(self.config_env)
@@ -705,6 +762,9 @@ class BevPlannerPolicy(Policy):
         self.threads = 1
         self._prepare_pool: ThreadPoolExecutor | None = None
         self._views_pool: ThreadPoolExecutor | None = None
+        #: The backbone wrapper that reuses a black view's features (`BlankViewFeatures`), set by `_build`
+        #: where `reuse_blank_views` is on.
+        self.view_features: BlankViewFeatures | None = None
         self._begin_episode()
 
     # -- lifecycle ----------------------------------------------------------
@@ -851,6 +911,13 @@ class BevPlannerPolicy(Policy):
                     pending.result()
         return out
 
+    def _install_view_features(self, model: Any, ops: Any) -> None:
+        """Wrap `model`'s image backbone in `BlankViewFeatures`, where `reuse_blank_views` is on."""
+        if not self.reuse_blank_views:
+            return
+        self.view_features = BlankViewFeatures(model.img_backbone.forward, ops)
+        model.img_backbone.forward = self.view_features
+
     def _prepare_frame(self, obs: Observation) -> tuple[np.ndarray, str, dict[str, Any], Any]:
         """All a step needs before the model: (lidar2ego, where it came from, results, prepared input)."""
         lidar2ego, lidar_source = model_lidar2ego(obs.lidar2ego, self.nominal_lidar2ego)
@@ -869,11 +936,21 @@ class BevPlannerPolicy(Policy):
         self.last["blank_views"] = absent
         results = self._results(obs, lidar2ego)
         self._prepared += 1
-        return lidar2ego, lidar_source, results, self._prepare(results)
+        batch = self._prepare(results)
+        # Added after the pipeline has run, so it never reaches the model's inputs; `_run_prepared` hands
+        # it to the backbone wrapper.
+        results["blank_slots"] = [self.cameras.index(camera) for camera in absent]
+        return lidar2ego, lidar_source, results, batch
 
     def _run_prepared(self, obs: Observation, prepared) -> tuple[np.ndarray, np.ndarray]:
         lidar2ego, lidar_source, results, batch = prepared
+        reused = None
+        if self.view_features is not None:
+            self.view_features.blank = list(results.get("blank_slots", []))
+            reused = self.view_features.reused
         plan = np.asarray(self._run(batch, results), dtype=np.float64).reshape(-1, 2)
+        if reused is not None:
+            self.last["views_from_cache"] = self.view_features.reused - reused
         self._last_step_us = int(obs.timestamp_us)
         self._steps += 1
         #: The last step's plan as the model gave it, and the lidar frame it is in (full precision).
@@ -960,7 +1037,9 @@ class BevPlannerPolicy(Policy):
         model's training mount did; ``quaternion_source`` (nuScenes checkpoints) is "canbus" where the
         source's own quaternion was used; ``gravity_added`` says the source's acceleration had no gravity
         term; ``source_size`` is each camera as it arrived, before the resize to `LOAD_SIZE`; ``blank_views``
-        the slots the source has no camera for, fed black (`_absent`);
+        the slots the source has no camera for, fed black (`_absent`); ``views_from_cache`` (a model with
+        `reuse_blank_views` on) how many of the last step's views the backbone was not run on
+        (`BlankViewFeatures`);
         ``command_record`` (nuScenes checkpoints) is the last step's command and what decided it
         (`command_record`), also sent with the plan as ``extras["route_command"]`` when a route decided it.
         """
@@ -1072,6 +1151,8 @@ class Mmdet3dPlannerPolicy(BevPlannerPolicy):
             model.CLASSES = checkpoint["meta"]["CLASSES"]
         model.cuda()
         self.model = model.eval()
+        ops = SimpleNamespace(equal=torch.equal, cat=torch.cat, clone=lambda t: t.clone())
+        self._install_view_features(model, ops)
         self.pipeline = Compose(without_loaders(cfg.data.test.pipeline, self.drop_steps, self.collect_keys))
         self._torch, self._collate, self._to_tensor = torch, collate, to_tensor
         self._box_type, self._box_mode = get_box_type("LiDAR")

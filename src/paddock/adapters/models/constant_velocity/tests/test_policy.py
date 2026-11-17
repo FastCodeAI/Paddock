@@ -82,3 +82,24 @@ def test_a_short_canbus_is_read_as_no_speed_rather_than_crashing() -> None:
 def test_it_does_not_self_prime() -> None:
     """A manufactured history would change nothing and only obscure that."""
     assert POLICY().self_prime is False
+
+
+def test_a_fixed_speed_ignores_the_measured_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Bench2Drive route starts at rest; the speed bands drive at a set speed from tick one."""
+    monkeypatch.setenv("PADDOCK_CV_SPEED_M_S", "3")
+    plan = POLICY().infer(_obs(0.0))
+    np.testing.assert_allclose(plan.waypoints[:, 0], [1.5, 3.0, 4.5, 6.0, 7.5, 9.0])
+    assert not plan.waypoints[:, 1].any()
+
+
+def test_without_the_variable_it_holds_the_measured_speed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PADDOCK_CV_SPEED_M_S", raising=False)
+    assert not POLICY().infer(_obs(0.0)).waypoints.any()
+
+
+@pytest.mark.parametrize("bad", ["0", "-3", "nan", "inf", "fast"])
+def test_an_unusable_fixed_speed_refuses_to_start(monkeypatch: pytest.MonkeyPatch, bad: str) -> None:
+    """A typo must not quietly become the measured-speed floor, which scores 0 on every route."""
+    monkeypatch.setenv("PADDOCK_CV_SPEED_M_S", bad)
+    with pytest.raises(ValueError):
+        POLICY()

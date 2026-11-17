@@ -806,3 +806,115 @@ def test_a_camera_lost_from_a_described_rig_is_still_refused(monkeypatch) -> Non
     obs.camera2image["CAM_BACK"] = np.eye(3)
     with pytest.raises(ValueError, match="reads all six surround cameras"):
         policy._prepare_frame(obs)
+
+
+# -- the black views' backbone features, computed once (BlankViewFeatures) -----------------------------
+
+
+def _views_backbone(calls: list[int]):
+    """A stand-in backbone that maps each view on its own, as ResNet does in eval: two feature levels."""
+
+    def backbone(x):
+        calls.append(len(x))
+        flat = x.reshape(len(x), -1)
+        return (flat.sum(axis=1, keepdims=True) * 2.0, flat.max(axis=1, keepdims=True) - 1.0)
+
+    return backbone
+
+
+def _numpy_ops():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(equal=np.array_equal, cat=np.concatenate, clone=np.copy)
+
+
+def test_black_views_are_answered_from_one_run_and_the_output_is_the_full_runs() -> None:
+    from paddock.adapters.models.uniad.bev_planners import BlankViewFeatures
+
+    rng = np.random.default_rng(0)
+    black = np.full((3, 4, 5), -1.5)
+    calls: list[int] = []
+    wrapped = BlankViewFeatures(_views_backbone(calls), _numpy_ops())
+    reference = _views_backbone([])
+    for _ in range(3):
+        x = np.stack([rng.normal(size=(3, 4, 5))] + [black] * 5)
+        wrapped.blank = [1, 2, 3, 4, 5]
+        out = wrapped(x)
+        expected = reference(x)
+        assert isinstance(out, tuple) and len(out) == 2
+        for got, want in zip(out, expected):  # noqa: B905 - adapters run on Python 3.9
+            np.testing.assert_array_equal(got, want)
+    # the first step runs one black view and the real one; later steps the real view alone
+    assert calls == [1, 1, 1, 1] and wrapped.reused == 15
+
+
+def test_a_slot_marked_black_whose_input_differs_runs_the_backbone_on_every_view() -> None:
+    from paddock.adapters.models.uniad.bev_planners import BlankViewFeatures
+
+    black = np.zeros((3, 4, 5))
+    calls: list[int] = []
+    wrapped = BlankViewFeatures(_views_backbone(calls), _numpy_ops())
+    wrapped.blank = [1, 2]
+    wrapped(np.stack([np.ones((3, 4, 5)), black, black]))
+    not_black = np.stack([np.ones((3, 4, 5)), black, black + 0.25])
+    calls.clear()
+    out = wrapped(not_black)
+    for got, want in zip(out, _views_backbone([])(not_black)):  # noqa: B905
+        np.testing.assert_array_equal(got, want)
+    assert calls == [3]
+
+
+def test_with_no_black_slot_the_backbone_runs_as_it_always_did() -> None:
+    from paddock.adapters.models.uniad.bev_planners import BlankViewFeatures
+
+    calls: list[int] = []
+    wrapped = BlankViewFeatures(_views_backbone(calls), _numpy_ops())
+    x = np.random.default_rng(1).normal(size=(6, 3, 4, 5))
+    for got, want in zip(wrapped(x), _views_backbone([])(x)):  # noqa: B905
+        np.testing.assert_array_equal(got, want)
+    assert calls == [6] and wrapped.reused == 0
+
+
+@pytest.mark.parametrize(("model", "installed"), [("uniad", True), ("vad", False)])
+def test_only_uniad_runs_its_backbone_once_for_the_black_views(model: str, installed: bool) -> None:
+    """UniAD's backbone is most of a step (1.35x with the wrapper); VAD's is not (1.02x), and the batch of
+    one moves VAD's plans by up to 2.2 mm, so VAD's backbone is left as it is."""
+    import importlib
+    from types import SimpleNamespace
+
+    policy = importlib.import_module(f"paddock.adapters.models.{model}.policy").POLICY()
+    original = _views_backbone([])
+    model_stub = SimpleNamespace(img_backbone=SimpleNamespace(forward=original))
+    policy._install_view_features(model_stub, _numpy_ops())
+    assert (policy.view_features is not None) is installed
+    assert (model_stub.img_backbone.forward is not original) is installed
+
+
+def test_the_black_slots_reach_the_backbone_wrapper_in_camera_order(monkeypatch) -> None:
+    """A one-camera source's five black slots are named by their index in the model's camera order,
+    the order the views are batched in, and handed to the wrapper before the step runs."""
+    from types import SimpleNamespace
+
+    from paddock.adapters.models.uniad.policy import POLICY
+
+    policy = POLICY()
+    monkeypatch.setattr(policy, "_results", lambda obs, lidar2ego: {})
+    monkeypatch.setattr(policy, "_prepare", lambda results: None)
+    prepared = policy._prepare_frame(_front_only())
+    slots = prepared[2]["blank_slots"]
+    assert slots == [1, 2, 3, 4, 5]
+    assert [bp.NUSC_CAMERAS[i] for i in slots] == policy.diagnostics()["blank_views"]
+
+    seen = {}
+    policy.view_features = SimpleNamespace(blank=[], reused=0)
+
+    def step(batch, results):
+        seen["blank"] = list(policy.view_features.blank)
+        policy.view_features.reused += len(policy.view_features.blank)
+        return np.zeros((6, 2))
+
+    monkeypatch.setattr(policy, "_run", step)
+    policy._run_prepared(_front_only(), prepared)
+    assert seen["blank"] == [1, 2, 3, 4, 5]
+    # what the wrapper answered from its cache that step, in the diagnostics a run can keep
+    assert policy.diagnostics()["views_from_cache"] == 5
