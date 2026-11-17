@@ -58,6 +58,7 @@ def main() -> None:
     p.add_argument("--output", required=True, help="this episode's directory")
     p.add_argument("--server", required=True, help="the paddock model node")
     p.add_argument("--infer_every", type=int, default=1, help="call the model every N steps (0.25 s each)")
+    p.add_argument("--observe", action="store_true", help="the bridge hands the node a frame between plans")
     args = p.parse_args()
 
     code = os.path.abspath(args.hugsim)
@@ -117,6 +118,7 @@ def main() -> None:
         camera_path,
         "--infer_every",
         str(args.infer_every),
+        *(["--observe"] if args.observe else []),
     ]
     log = open(os.path.join(output, "output.txt"), "w")  # noqa: SIM115 - the bridge writes it for the whole run
     process = subprocess.Popen(bridge, stdout=log, stderr=log)

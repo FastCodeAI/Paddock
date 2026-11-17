@@ -98,4 +98,4 @@ capabilities:
 # VISIONPILOT_ORT_THREADS to share the cores between them; both are speed-only,
 # so the run stays ranked.
 # navhard (NAVSIM v2.2, two stages) scores the same 4 s plan as navsim (PLAN_HORIZON_S).
-benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, navhard, bench2drive, nuscenes, comma2k19, nuplan]
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, navhard, bench2drive, nuscenes, comma2k19, nuplan, hugsim]

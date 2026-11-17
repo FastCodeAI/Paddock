@@ -27,8 +27,9 @@ Paddock side: one POST /infer per model call with the Observation wire body (``p
 * ``command`` -- ``info['command']``: HUGSIM 0 right, 1 left, 2 straight, which are paddock's ``Command``
   values (checked on route geometry). No ``route_xy``: command only.
 
-The model's trajectory (paddock ego frame, rear axle, dt 0.5) is held in the world and re-sampled each step at
-t_now + 0.5 k (k = 1..N) for the front-camera point, so a model called every ``--infer_every`` steps
+The model's trajectory (paddock ego frame, rear axle, at the reply's own dt) is held in the world and
+re-sampled each step at t_now + 0.5 k (k = 1..N) for the front-camera point, so a model called every
+``--infer_every`` steps
 (Drive-JEPA: 2, its native 2 Hz) is tracked between calls, as the Bench2Drive client does with a held plan.
 """
 
@@ -53,9 +54,24 @@ PLAN_DT = 0.5
 #: Seconds per simulator step (upstream ``HUGSimEnv``; the kinematic model integrates at 0.25 s).
 STEP_DT = 0.25
 MIN_STEP_M = 0.3  # a waypoint step shorter than this carries no usable heading
-N_MAX = (
-    8  # waypoints sent to HUGSIM: the model's own horizon (paddock returns 6 = 3 s), never padded, cut at 4 s
-)
+#: Waypoints sent to HUGSIM at most: 0.5 s apart, so 4 s, NAVSIM's planning horizon (UniAD and VAD plan
+#: 3 s). Below that, the model's own horizon, never padded. HUGSIM scores every step's sent plan (collision,
+#: drivable area, TTC, comfort over its length), so a plan cut short is judged over less time than the model
+#: planned: the reply's `plan` (the whole plan) is read, not its `trajectory`, which the wire cuts at six
+#: waypoints for neuroNCAP.
+N_MAX = 8
+
+
+def plan_of(reply: dict) -> tuple[np.ndarray, float]:
+    """The model's whole plan from an /infer reply, and its spacing.
+
+    ``plan`` when the node sends it (every node since ``Trajectory.to_wire`` carried it), else
+    ``trajectory``, which holds at most six waypoints.
+    """
+    plan = reply.get("plan") or {}
+    if plan.get("waypoints"):
+        return np.asarray(plan["waypoints"], dtype=np.float64)[:, :2], float(plan.get("dt") or PLAN_DT)
+    return np.asarray(reply["trajectory"], dtype=np.float64), float(reply.get("dt") or PLAN_DT)
 
 
 def euler_xyz_deg(rot_deg) -> np.ndarray:
@@ -93,6 +109,24 @@ def infer_every(planning_hz: float | None) -> int:
     if not planning_hz or planning_hz <= 0:
         return 1
     return max(1, round(1.0 / (STEP_DT * planning_hz)))
+
+
+def observes(native_input_hz: float | None, every: int) -> bool:
+    """Whether the model is handed a frame on the steps between its plans (POST /observe).
+
+    A model asked slower than the rate its history is built on (``native_input_hz``) is, so its history
+    holds every frame HUGSIM renders (one each 0.25 s, the densest there is), not only the planning rate's.
+    Qwen-Drive plans at 2 Hz and reads poses on a 0.1 s grid; asked every second step with nothing between,
+    its history came at 2 Hz. A model asked every step has no step between.
+    """
+    return every > 1 and bool(native_input_hz) and float(native_input_hz) > 1.0 / (STEP_DT * every) + 1e-9
+
+
+def step_action(step: int, have_plan: bool, every: int, observe: bool) -> str | None:
+    """What the bridge asks the node at this step: "infer" (a plan), "observe" (a frame, no plan) or None."""
+    if not have_plan or step % every == 0:
+        return "infer"
+    return "observe" if observe else None
 
 
 class Rig:
@@ -195,7 +229,8 @@ class HeldPlan:
         yaw = np.asarray(yaw)
         x0, y0, yaw0 = pose_xyyaw(T_world_veh)
         pts = (T_world_veh @ np.c_[xy, np.ones(len(xy))].T).T[:, :2]
-        self.n = min(len(xy), N_MAX)  # how many waypoints the model itself gave: what HUGSIM is sent
+        # How many 0.5 s waypoints the model's own horizon holds: what HUGSIM is sent, at most N_MAX.
+        self.n = max(1, min(N_MAX, int(math.floor(len(xy) * dt / PLAN_DT + 1e-9))))
         self.t = t0 + dt * np.arange(0, len(xy) + 1)
         self.xy = np.vstack([[x0, y0], pts])
         self.yaw = np.unwrap(np.r_[yaw0, yaw0 + yaw])
@@ -246,6 +281,9 @@ def main() -> None:
         "--camera_yaml", required=True, help="the HUGSIM camera config this scenario renders with"
     )
     ap.add_argument("--infer_every", type=int, default=1, help="call the model every N steps (0.25 s each)")
+    ap.add_argument(
+        "--observe", action="store_true", help="hand the node a frame (POST /observe) on steps between plans"
+    )
     ap.add_argument("--timeout", type=float, default=300.0)
     ap.add_argument(
         "--dump_steps",
@@ -293,7 +331,8 @@ def main() -> None:
         }
         plan = None
         try:
-            if held is None or step % args.infer_every == 0:
+            action = step_action(step, held is not None, args.infer_every, args.observe)
+            if action is not None:
                 e2w = np.eye(4)
                 e2w[:2, :2], e2w[:2, 3], e2w[2, 3] = T_veh[:2, :2], T_veh[:2, 2], ground_z
                 canbus = [0.0] * 18
@@ -334,21 +373,28 @@ def main() -> None:
                         cams=np.array(CAMS),
                     )
                 t0 = time.time()
-                r = http.post(f"{args.server}/infer", json=body, timeout=args.timeout)
-                r.raise_for_status()
-                out = r.json()
-                traj = np.asarray(out["trajectory"], dtype=np.float64)
-                if not np.isfinite(traj).all() or len(traj) < 2:
-                    raise ValueError(f"bad trajectory from the model: {traj.tolist()}")
-                held = HeldPlan(t, T_veh, traj, float(out.get("dt", PLAN_DT)))
-                rec.update(
-                    called=True,
-                    infer_ms=round(1000 * (time.time() - t0)),
-                    n_wp=len(traj),
-                    model_last=[round(float(v), 2) for v in traj[-1, :2]],
-                    model_traj=np.round(traj, 3).tolist(),
-                    extras=out.get("extras"),
-                )
+                if action == "observe":
+                    # A frame of history, no plan: the plan in force stays the one held.
+                    http.post(f"{args.server}/observe", json=body, timeout=args.timeout).raise_for_status()
+                    rec.update(observed=True, observe_ms=round(1000 * (time.time() - t0)))
+                else:
+                    r = http.post(f"{args.server}/infer", json=body, timeout=args.timeout)
+                    r.raise_for_status()
+                    out = r.json()
+                    traj, dt = plan_of(out)
+                    if not np.isfinite(traj).all() or len(traj) < 2:
+                        raise ValueError(f"bad trajectory from the model: {traj.tolist()}")
+                    held = HeldPlan(t, T_veh, traj, dt)
+                    rec.update(
+                        called=True,
+                        infer_ms=round(1000 * (time.time() - t0)),
+                        n_wp=len(traj),
+                        dt=dt,
+                        n_sent=held.n,
+                        model_last=[round(float(v), 2) for v in traj[-1, :2]],
+                        model_traj=np.round(traj, 3).tolist(),
+                        extras=out.get("extras"),
+                    )
             plan = to_hugsim(held, t, T_veh, rig)
             rec["plan"] = np.round(
                 plan, 3
@@ -358,7 +404,9 @@ def main() -> None:
         except Exception:
             rec["error"] = traceback.format_exc()[-800:]
             print(rec["error"], file=sys.stderr, flush=True)
-            plan = None  # tells HUGSIM the AD side failed: the episode ends here, scored as it stands
+            plan = (
+                None  # tells HUGSIM the AD side failed: upstream then fails the episode, which is not scored
+            )
         log.write(json.dumps(rec) + "\n")
         log.flush()
         with open(plan_pipe, "wb") as f:

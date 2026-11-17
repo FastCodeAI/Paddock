@@ -1,0 +1,49 @@
+{
+ "record": "pooled-e8997da7f5e56aad-0b7a71",
+ "model": "openpilot",
+ "bench2drive": "7ec25d1",
+ "routes_file": "bench2drive220.xml",
+ "routes_set_aside": [],
+ "routes_in_file": 220,
+ "pooled": {
+  "routes": 5,
+  "success": 2,
+  "success_rate": 0.4,
+  "driving_score": 54.5788,
+  "abilities": {
+   "Overtaking": {
+    "routes": 1,
+    "score": 0.0
+   },
+   "Merging": {
+    "routes": 2,
+    "score": 0.0
+   },
+   "Emergency_Brake": {
+    "routes": 1,
+    "score": 1.0
+   },
+   "Give_Way": {
+    "routes": 1,
+    "score": 1.0
+   },
+   "Traffic_Signs": {
+    "routes": 2,
+    "score": 0.5
+   }
+  },
+  "multi_ability_mean": 0.5,
+  "efficiency": 216.8453720760234,
+  "efficiency_routes": 4,
+  "comfort": 0.12000000000000002,
+  "comfort_routes": 5
+ },
+ "how": "Bench2Drive's own scorers at the checkout named, over the record's routes: success as merge_route_json.py counts it, abilities as tools/ability_benchmark.py does (its pooled numbers checked against the per-route credits), efficiency and comfort as tools/efficiency_smoothness_benchmark.py does. Pooled values are over these routes, not divided by 220.",
+ "routes": [
+  {"abilities": {"Merging": 0.0, "Traffic_Signs": 1.0}, "comfort": 0.2, "comfort_error": null, "driving_score": 30.78, "duration_game_s": 16.4, "efficiency": 345.245, "ended_early": null, "infraction_penalty": 0.6, "infractions": {"collisions_layout": 0, "collisions_pedestrian": 0, "collisions_vehicle": 1, "min_speed_infractions": 9, "outside_route_lanes": 0, "red_light": 0, "route_dev": 1, "route_timeout": 0, "scenario_timeouts": 0, "stop_infraction": 0, "vehicle_blocked": 0, "yield_emergency_vehicle_infractions": 0}, "route_completion": 51.3, "route_id": "2050", "scenario": "SignalizedJunctionRightTurn", "status": "Failed - Agent deviated from the route", "success": false, "town": "Town12", "traffic_sign_test": {"junction_completion": 0.347222, "passed": true}},
+  {"abilities": {"Give_Way": 1.0}, "comfort": 0.2, "comfort_error": null, "driving_score": 100.0, "duration_game_s": 19.7, "efficiency": 105.86421052631579, "ended_early": null, "infraction_penalty": 1.0, "infractions": {"collisions_layout": 0, "collisions_pedestrian": 0, "collisions_vehicle": 0, "min_speed_infractions": 19, "outside_route_lanes": 0, "red_light": 0, "route_dev": 0, "route_timeout": 0, "scenario_timeouts": 0, "stop_infraction": 0, "vehicle_blocked": 0, "yield_emergency_vehicle_infractions": 0}, "route_completion": 100, "route_id": "3575", "scenario": "InvadingTurn", "status": "Completed", "success": true, "town": "Town13", "traffic_sign_test": null},
+  {"abilities": {"Merging": 0.0, "Traffic_Signs": 0.0}, "comfort": 0.0, "comfort_error": null, "driving_score": 37.464, "duration_game_s": 9.15, "efficiency": 286.0877777777777, "ended_early": null, "infraction_penalty": 0.7, "infractions": {"collisions_layout": 0, "collisions_pedestrian": 0, "collisions_vehicle": 0, "min_speed_infractions": 9, "outside_route_lanes": 0, "red_light": 1, "route_dev": 1, "route_timeout": 0, "scenario_timeouts": 0, "stop_infraction": 0, "vehicle_blocked": 0, "yield_emergency_vehicle_infractions": 0}, "route_completion": 53.52, "route_id": "4183", "scenario": "SignalizedJunctionLeftTurn", "status": "Failed - Agent deviated from the route", "success": false, "town": "Town12", "traffic_sign_test": {"junction_completion": 0.53125, "passed": false}},
+  {"abilities": {"Emergency_Brake": 1.0}, "comfort": 0.0, "comfort_error": null, "driving_score": 100.0, "duration_game_s": 18.55, "efficiency": 130.1845, "ended_early": null, "infraction_penalty": 1.0, "infractions": {"collisions_layout": 0, "collisions_pedestrian": 0, "collisions_vehicle": 0, "min_speed_infractions": 20, "outside_route_lanes": 0, "red_light": 0, "route_dev": 0, "route_timeout": 0, "scenario_timeouts": 0, "stop_infraction": 0, "vehicle_blocked": 0, "yield_emergency_vehicle_infractions": 0}, "route_completion": 100, "route_id": "24224", "scenario": "DynamicObjectCrossing", "status": "Completed", "success": true, "town": "Town02", "traffic_sign_test": null},
+  {"abilities": {"Overtaking": 0.0}, "comfort": 0.2, "comfort_error": null, "driving_score": 4.65, "duration_game_s": 33.6, "efficiency": null, "ended_early": "stuck", "infraction_penalty": 1.0, "infractions": {"collisions_layout": 0, "collisions_pedestrian": 0, "collisions_vehicle": 0, "min_speed_infractions": 0, "outside_route_lanes": 0, "red_light": 0, "route_dev": 0, "route_timeout": 0, "scenario_timeouts": 0, "stop_infraction": 0, "vehicle_blocked": 0, "yield_emergency_vehicle_infractions": 0}, "route_completion": 4.65, "route_id": "25857", "scenario": "AccidentTwoWays", "status": "Failed - TickRuntime", "success": false, "town": "Town05", "traffic_sign_test": null}
+ ]
+}

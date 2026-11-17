@@ -1,0 +1,103 @@
+Subject: [PATCH 3/3] ActorFlow: remove a stray flow car before the large map puts it to sleep
+
+Crash fix. Routes 11715 and 11755 (Town12 EnterActorFlow) killed CARLA 0.9.15 with Signal 11 for
+every model: 11715 at game time ~54.7-56.7 s, 11755 at ~97 s. The evaluator then waited 600 s on
+every actor destroy, so each attempt also used up the route's 90-minute cap. Under gdb, with
+CarlaUE4-Linux-Shipping.debug, the faulting stack is:
+
+    ASensor::EndPlay                                  Sensor.cpp:120 (stream token of a dead stream)
+    AActor::Destroy
+    FCarlaActor::PutActorToSleep / FActorRegistry::PutActorToSleep (recursing into the child)
+    UCarlaEpisode::PutActorToSleep(ActorId=3713)
+    ALargeMapManager::ConvertActiveToDormantActors    LargeMapManager.cpp:817
+
+How it happens:
+
+- The evaluator sets actor_active_distance = 650 m. A large map (Town12/13) puts any actor that far
+  from the hero to sleep, together with what is attached to it.
+- ActorFlow attaches a sensor.other.collision to every flow car (to drop constant velocity on a
+  collision). Putting such a car to sleep segfaults.
+- On 11715 the cars spawned at the lane-1 source (road 720 lane 1) are never steered to their sink
+  (road 1018 lane -1). Actor 3713 drives straight down road 720 at the flow speed (x = -1665.5,
+  y 4908 -> 4714 m in 15 s), never meets the sink check, and is 650 m from the hero ~50 s later.
+- Destroying only the sensor first is not enough: it still crashed at the same game time, and on
+  11755 too. The parent keeps the child.
+- Only ActorFlow attaches sensors to scenario actors, and dormancy exists only on large maps. That is
+  why other EnterActorFlow routes (2201 Town12, 3749 Town13, 27506 Town05) are unaffected.
+
+Fix: each update, a flow car carrying a collision sensor that is actor_active_distance - 50 m
+(600 m) from the hero is removed exactly as the sink removes one: sensor stopped and destroyed, then
+the car. Each removal is printed ("ActorFlow: removed flow car <id>, 600 m from the hero ..."), so a
+run shows whether this path changed anything.
+
+Effect on the hero: none it can perceive. The car is 600 m away, past every sensor's range. On a large
+map, 50 m later it would have gone dormant (and taken CARLA down); on a small map, where nothing goes
+dormant, it would have driven on out of range all the same. The check runs on every map, so every
+route with a flow is driven under the same code. Cars without a sensor (spawned after constant
+velocity was turned off) are left alone; they sleep safely.
+
+A/B test on 11715 with a scripted ego that creeps 10 m past the trigger and holds:
+
+- unpatched: Signal 11 at 56.7 s
+- sensor-only release: Signal 11 at 56.7 s
+- this patch: no crash, a stray car removed every ~4 s.
+
+The server-side bug is CARLA's and cannot be reached from here. A setting (a larger
+actor_active_distance) would change every large-map route, so this has to be a patch.
+Upstreamable to scenario_runner.
+
+--- a/scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py
++++ b/scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py
+@@ -2892,6 +2892,13 @@
+         self._actor_list = []
+         self._collision_sensor_list = []
+ 
++        # A large map (Town12/13) puts an actor this far from the hero to sleep, destroying what is attached
++        # to it, and CARLA 0.9.15 segfaults putting a flow car with a collision sensor to sleep (ASensor::EndPlay,
++        # from ALargeMapManager::ConvertActiveToDormantActors), also after the sensor alone was destroyed. A flow
++        # car that misses its sink drives on with its sensor; it is removed before it gets there, as the sink
++        # would have removed it (_remove_far_cars).
++        self._far_dist = self._world.get_settings().actor_active_distance - 50
++
+         self._terminated = False
+ 
+     def initialise(self):
+@@ -2964,8 +2971,38 @@
+         if distance > self._spawn_dist:
+             self._spawn_actor(self._source_transform)
+ 
++        self._remove_far_cars()
+         return py_trees.common.Status.RUNNING
+ 
++    def _remove_far_cars(self):
++        """Removes a flow car with a collision sensor about to go dormant (see __init__), sensor first, like the sink."""
++        hero = CarlaDataProvider.get_hero_actor()
++        hero_location = CarlaDataProvider.get_location(hero) if hero else None
++        if hero_location is None:
++            return
++        for sensor in list(self._collision_sensor_list):
++            if sensor is None:
++                continue
++            car = sensor.parent  # the flow car it is attached to (_spawn_actor)
++            location = CarlaDataProvider.get_location(car) if car is not None else None
++            if location is None or location.distance(hero_location) < self._far_dist:
++                continue
++            listed = [a for a in self._actor_list if a.id == car.id]
++            try:
++                sensor.stop()
++                sensor.destroy()
++            except RuntimeError:
++                pass  # Actor was already destroyed
++            self._collision_sensor_list.remove(sensor)
++            try:
++                (listed[0] if listed else car).destroy()
++            except RuntimeError:
++                pass  # Actor was already destroyed
++            if listed:
++                self._actor_list.remove(listed[0])
++            print(f"ActorFlow: removed flow car {car.id}, {location.distance(hero_location):.0f} m from the hero "
++                  f"with its collision sensor, before the large map puts it to sleep", flush=True)
++
+     def stop_constant_velocity(self):
+         """Stops the constant velocity behavior"""
+         self._is_constant_velocity_active = False

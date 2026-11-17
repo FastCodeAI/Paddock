@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.11 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 3 s ahead |
-| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navhard](../benchmarks/navhard.md), [bench2drive](../benchmarks/bench2drive.md), [nuplan](../benchmarks/nuplan.md), [comma2k19](../benchmarks/comma2k19.md) |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navhard](../benchmarks/navhard.md), [bench2drive](../benchmarks/bench2drive.md), [nuplan](../benchmarks/nuplan.md), [comma2k19](../benchmarks/comma2k19.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -281,8 +281,7 @@ shared `kitscenes_e2e_final` list, the six-camera ring, native 3 s plan,
 | **1.879** (median 1.419) | 0.695 | 2.040 | 4.034 | 1.563 | 0.688 |
 
 Constant velocity scores 1.381 on the same list; Alpamayo 1.002, VisionPilot
-1.475, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.188 (its
-momentum-aware run, with a 0.5 s warm-up). A
+1.475, OpenPilot 1.248 (its configured run; 1.599 stock), Drive-JEPA 2.364. A
 second run reproduced all 223 predictions exactly.
 
 **Front camera only, kept as an ablation:**
@@ -318,7 +317,7 @@ anchors in 150 scenes, all six cameras, 2 Hz keyframes, native 3 s plan,
 |---|---|---|---|---|---|---|
 | 0.616 | 1.683 | 3.356 | **1.885** (median 1.581) | 0.977 | 1.570 | 6.15 % |
 
-Drive-JEPA (momentum-aware) scores 1.995 / 1.128 / 1.24 % on the same anchors and constant
+Drive-JEPA scores 2.344 / 1.328 / 1.63 % on the same anchors and constant
 velocity 1.288 / 0.641 / 1.66 %. With its cameras filled in, METEOR's
 displacement error is below Drive-JEPA's; its collision rate is above both. Where
 each comes from, measured on the per-sample records:
@@ -364,7 +363,7 @@ truth in the car's frame; `valid: true`; 56 min on one H200 with eight nodes):
 The earlier run, `20261030T001935-0b8d0b`, was scored against a ground truth in
 the camera's frame and gave 30.075. Its plans are the same as this run's to
 within 0.01 mm, so the change is the scoring alone. Constant velocity scores
-1.135 on the same samples, and every other model scores 18.740 or less. METEOR
+1.135 on the same samples, and every other model scores 18.754 or less. METEOR
 is better than constant velocity on 3.5 % of the samples, all of them below
 15 m/s. Measured on the per-sample records:
 
@@ -414,7 +413,7 @@ scenarios, zero failures, 69 min) and `results/navsim_v1/meteor/20260915T005223-
 | v1 | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | — | — |
 
 Above the constant-velocity floor (0.239 v2, 0.207 v1) and below every learned
-model (VisionPilot 0.431 / 0.488, Drive-JEPA 0.870 / 0.894). That is a different
+model (VisionPilot 0.431 / 0.488, Drive-JEPA 0.843 / 0.892). That is a different
 standing from nuScenes, where its L2 sits with Drive-JEPA's, and the difference
 is worth reading carefully, because **a quarter of what NAVSIM scored here is
 not the model's output.**
@@ -574,10 +573,12 @@ Bench2Drive clip outside this repository found METEOR's 2D detection carries ove
 to these cameras and the depth behind its BEV lift does not. And it gets no
 driving command. Nothing here measures which of these holds it still.
 
-Over all 220 routes, `results/bench2drive/meteor/full220-836dda734659a86c-dda00e`
-(7 Nov 2026, the 220-route protocol: the same rate, cameras and early stop, up to
-three attempts a route, the four routes set aside for every model left out): DS
-**1.92** over 216 routes, RC 5.40%, infraction penalty 0.92, a collision on 26 routes.
+Over all 220 routes, `results/bench2drive/meteor/full220-86aa45e768a29a64-2144df`
+(the 220-route protocol: the same rate, cameras and early stop, up to three attempts a
+route): DS **1.89**, RC 5.30%. It pools the 216 routes driven at `a100-gpu-vm-002` on
+7 Nov 2026 (`full220-836dda734659a86c-dda00e`, superseded by it) with routes 3800, 11715,
+23695 and 24071, driven here on 12 Nov under patch 0003 (DS 0 on each). Over the 216: DS
+**1.92**, RC 5.40%, infraction penalty 0.92, a collision on 26 routes.
 189 routes end under 1% route completion, and one, 26394, is completed, with 12 collisions with
 static objects. The tables, and Bench2Drive's own scores for the record, are in
 [Bench2Drive — 220 routes](../benchmarks/bench2drive.md#bench2drive--220-routes).
