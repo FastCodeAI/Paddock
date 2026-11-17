@@ -52,24 +52,29 @@ each answer, under the same number. Write the answers in the last column; the Pa
 team then commits them to the git branch `legal/release-licence-review`, which keeps a
 record of the decisions.
 
+**17 November.** The Answer column holds Legal's preliminary views from the meeting that
+day; questions it does not answer were not discussed. The meeting summary and the
+resulting list of actions are in `2026-11-17-legal-meeting-summary.md` and
+`2026-11-17-release-actions.md`, beside this file.
+
 ### 🔴 Tier 1. Critical: decide in the meeting
 
 | # | Question | We recommend | Answer |
 |---|---|---|---|
-| 🔴 Q1 | May Paddock publish anything from AlpaSim: its scores, page, chart column, videos or captions? | **No**, unless NVIDIA agrees in writing | |
-| 🔴 Q2 | Is Renesas publishing this free evaluation a non-commercial use, as most of the datasets require? | **Yes**, confirmed in writing by Motional | |
+| 🔴 Q1 | May Paddock publish anything from AlpaSim: its scores, page, chart column, videos or captions? | **No**, unless NVIDIA agrees in writing | **No.** Legal: Renesas's use is outside NVIDIA's licence. |
+| 🔴 Q2 | Is Renesas publishing this free evaluation a non-commercial use, as most of the datasets require? | **Yes**, confirmed in writing by Motional | **Open.** Legal: probably commercial use; external advice due within about two weeks; the business decides on the risk. |
 | 🔴 Q3 | Does Renesas own all of Paddock's code, including work by people outside Renesas? | **Yes**, once the contracts confirm it | |
 | 🔴 Q4 | Must results from Motional's data carry Motional's licence (CC BY-NC-SA 4.0), not Paddock's Apache-2.0? | **Yes** | |
 | 🔴 Q5 | May the repository keep small, credited excerpts of nuScenes, KITScenes and Bench2Drive data? | **Yes**, if Q2 is yes | |
-| 🔴 Q6 | May the website show four videos rendered from nuScenes scenes? | **Yes**, once checked for faces and licence plates, moved to a Renesas account and credited | |
-| 🔴 Q7 | May Paddock publish two patches to Bench2Drive's code, whose licence forbids sharing changed versions? | **No**, until Bench2Drive accepts the fixes or allows it | |
+| 🔴 Q6 | May the website show four videos rendered from nuScenes scenes? | **Yes**, once checked for faces and licence plates, moved to a Renesas account and credited | **No.** Legal: the same as publishing the dataset. |
+| 🔴 Q7 | May Paddock publish two patches to Bench2Drive's code, whose licence forbids sharing changed versions? | **No**, until Bench2Drive accepts the fixes or allows it | **Yes, if** each patch holds only Paddock's own lines (Legal). Ours hold 6 of Bench2Drive's, so they need rewriting. |
 
 ### 🟡 Tier 2. Non-critical: accept the recommendations unless someone objects
 
 | # | Question | We recommend | Answer |
 |---|---|---|---|
-| 🟡 Q8 | May Paddock publish scores of models whose weights or training data are non-commercial? | **Yes**, under Q2 | |
-| 🟡 Q9 | May the repository publish nuScenes download addresses that nuscenes.org gives only after sign-in? | **No**: users sign in and download themselves | |
+| 🟡 Q8 | May Paddock publish scores of models whose weights or training data are non-commercial? | **Yes**, under Q2 | **Yes** for models that others trained (Legal). |
+| 🟡 Q9 | May the repository publish nuScenes download addresses that nuscenes.org gives only after sign-in? | **No**: users sign in and download themselves | **No** (Legal): users accept the owner's terms themselves. |
 | 🟡 Q10 | Should Paddock treat HUGSIM's scenes as non-commercial and Waymo-restricted, though they are tagged MIT? | **Yes** | |
 | 🟡 Q11 | Should the results carry the credit lines that Waymo and KIT ask for? | **Yes** | |
 | 🟡 Q12 | Should `paddock setup` show each model's weights licence, and ask users to accept non-commercial ones? | **Yes** | |
@@ -442,7 +447,7 @@ Each row carries the colour of that model's or benchmark's results in the releas
 
 ### Models
 
-| Model (publisher) | Code | Weights | Commercial use of the weights |
+| Model (publisher) | Code | Weights | Does the weights' licence allow commercial use? |
 |---|---|---|---|
 | 🟡 Alpamayo 1.5 (NVIDIA) | [Apache-2.0](https://github.com/NVlabs/alpamayo1.5/blob/7a8f1c781a826f09be53e1e211f26e947ec18019/LICENSE) | [OpenMDW-1.1](https://huggingface.co/nvidia/Alpamayo-1.5-10B) | licence allows it; card says non-commercial |
 | 🟢 Alpamayo 2 Edge (NVIDIA) | [Apache-2.0](https://github.com/NVlabs/alpamayo2-edge) | [OpenMDW-1.1](https://huggingface.co/nvidia/Alpamayo2-Edge) | licence allows it; the card version Paddock pinned said "to be confirmed" |
@@ -459,7 +464,7 @@ Each row carries the colour of that model's or benchmark's results in the releas
 
 ### Benchmarks
 
-| Benchmark (publisher) | Code | Data or scenes | Commercial use of the data |
+| Benchmark (publisher) | Code | Data or scenes | Does the data's licence allow commercial use? |
 |---|---|---|---|
 | 🟡 nuScenes (Motional) | Paddock's own | [CC BY-NC-SA 4.0 + Motional terms](https://www.nuscenes.org/terms-of-use) | no; [paid licence](https://www.nuscenes.org/terms-of-use-commercial) |
 | 🟡 nuPlan (Motional) | Paddock's own | [CC BY-NC-SA 4.0 + Motional terms](https://www.nuscenes.org/terms-of-use) | no; [paid licence](https://www.nuscenes.org/terms-of-use-commercial) |
@@ -942,6 +947,10 @@ Each heading carries the colour of the benchmark's row in section 4.
   sign-in (Q9); the run records name contributors, FastCode and Renesas hosts (Q13);
   KITScenes' link and Waymo's sentence are missing (Q11); nothing says what the scores
   are (Q14); and weights download without their licence (Q12).
+- **17 November:** Legal's preliminary views are in Part A's Answer column. The "At a
+  glance" columns that said "Commercial use" now ask whether the licence allows it,
+  after that column was read in the meeting as a claim that Renesas's use is not
+  commercial.
 
 ## 12. How this was checked
 
