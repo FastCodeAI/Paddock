@@ -46,6 +46,8 @@ ANCHORS_ENV = "UNIAD_MOTION_ANCHORS"
 class UniADPolicy(bp.Mmdet3dPlannerPolicy):
     cameras = bp.NUSC_CAMERAS
     config_env = "UNIAD_CONFIG"
+    #: On: its ResNet-101 is most of a step, so a one-camera source's five black views run it once (1.35x).
+    reuse_blank_views = True
     checkpoint_env = "UNIAD_CHECKPOINT"
     horizon_env = "UNIAD_HORIZON_S"
     #: The steps of ``test_pipeline`` that read nuScenes from disk: the images and the annotations.
