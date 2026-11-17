@@ -10,9 +10,7 @@ runtime:
   pythonpath: ["{repo}/src"]
   cwd: "{repo}"
   env:
-    # The checkpoint on the nuPlan-run site sits under hf_gbanda/. A site that keeps it
-    # elsewhere must override this in paddock.toml, and that makes the run valid: false.
-    QWENDRIVE_CHECKPOINT: "{weights}/hf_gbanda/Qwen-Drive-1.0-4B"
+    QWENDRIVE_CHECKPOINT: "{weights}/Qwen-Drive-1.0-4B"
     # planner-sft plans in direct mode; planner-rl was reward-optimised only
     # under reasoning rollouts and the vendor says to run it in reasoning mode.
     # The adapter refuses the rl/direct pairing rather than record its number.
