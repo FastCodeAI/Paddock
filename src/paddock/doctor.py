@@ -317,13 +317,8 @@ def run(model_filter: str | None = None) -> Report:
         except ConfigError as exc:
             report.add("models", name, Status.FAIL, "", str(exc))
             continue
-        # stat(), not exists(): on Python 3.14 exists() returns False for a permission
-        # error, so an unreachable interpreter was reported as merely missing.
         try:
-            interpreter.stat()
-            present = True
-        except (FileNotFoundError, NotADirectoryError):
-            present = False
+            present = interpreter.exists()
         except PermissionError:
             # A folder on the way this account may not enter, often a venv built on a
             # Python inside someone's home folder. It crashed doctor whole, run as a
