@@ -161,6 +161,7 @@ nuscenes = { run = "nuscenes/alpamayo2edge/20261111T231928-e4e2d6", note = "2 Hz
 neuroncap = { run = "neuroncap/alpamayo2edge/20261111T231934-33adca" }
 # One recorded camera in 2 of its 6 slots, the other 4 black (ALPAMAYO2_EDGE_ABSENT_CAMERAS).
 comma2k19 = { run = "comma2k19/alpamayo2edge/20261112T012152-9b1e09" }
+bench2drive = { run = "bench2drive/alpamayo2edge/full220-86aa45e768a29a64-ffe60a", note = "10 Hz" }
 # Through the bridge on its own six cameras, the real telephoto among them, 30 scenes.
 alpasim = { run = "alpasim/alpamayo2edge/20261112T220852-f6d995" }
 
