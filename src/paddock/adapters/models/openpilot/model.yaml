@@ -150,8 +150,18 @@ score_notes:
   PADDOCK_OPENPILOT_HEIGHT_SCALE: "camera height taken as {value}x openpilot's to fit this dataset's rig"
   PADDOCK_OPENPILOT_PITCH_DEG: "view tilted {value} degrees to fit this dataset's rig"
   PADDOCK_OPENPILOT_FOV_DEG: "frame cut to a {value} degree field of view to fit this dataset's rig"
+  # The site's CUDA build of the same driving_supercombo.onnx (compiled by upstream compile_modeld.py,
+  # DEV=CUDA, WARP_DEV=CPU), which policy.py loads in place of the CPU graph. On one 60-observation
+  # nuScenes sequence its waypoints were within 0.0078 m of the CPU model's; not a full equivalence check.
+  PADDOCK_OPENPILOT_CUDA_MODEL: "driving model run as a site-compiled CUDA build of the same graph, not on the CPU"
+  DEV: "tinygrad device {value} for the driving model"
+  WARP_DEV: "tinygrad device {value} for the image warp"
 # Of those, what a site may set and stay ranked. Not the three camera numbers: nothing
-# in the record tells a value measured on the rig from one fitted to the test set.
-ranked_with_note: [PADDOCK_OPENPILOT_DESIRE]
+# in the record tells a value measured on the rig from one fitted to the test set. The CUDA
+# build is the same graph on another device, and its record says so in the note. DEV and
+# WARP_DEV are listed because a site sets them beside PADDOCK_OPENPILOT_CUDA_MODEL (the CUDA
+# path fixes the warp and queue devices in policy.py); the 0.0078 m check covers that build
+# with WARP_DEV=CPU only, not another device for the CPU graph.
+ranked_with_note: [PADDOCK_OPENPILOT_DESIRE, PADDOCK_OPENPILOT_CUDA_MODEL, DEV, WARP_DEV]
 
 benchmarks: [kitscenes, neuroncap, bench2drive, navsim, navhard, nuscenes, comma2k19, nuplan, hugsim]

@@ -143,6 +143,7 @@ navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz"
 bench2drive = { run = "bench2drive/openpilot/full220-86aa45e768a29a64-102db6", marks = "P" }  # routes can end early; it ranks
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
+navhard = { run = "navhard/openpilot/20261113T112649-2fe1d7", note = "2 Hz" }  # below its 10 Hz minimum; each frame shown 10x; CUDA build, ranked with its note
 hugsim = { run = "hugsim/openpilot/fullplan-f7d8f9d4b9736ddd-cac3b5", note = "4 Hz" }  # below its 10 Hz min_input_hz: HUGSIM steps at 4 Hz (hugsim.md)
 
 [cells.alpamayo15]

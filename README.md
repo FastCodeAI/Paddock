@@ -120,8 +120,7 @@ Before comparing numbers:
   `navtest`, stage one only; its public leaderboard uses `navhard`, two stages,
   which is the "NAVSIM v2 hard" column ([its page](docs/benchmarks/navhard.md)).
   navhard is served at 2 Hz for every model, so OpenPilot, which wants 10 Hz
-  (`min_input_hz`), is scored at 2 Hz there with each frame held (see its page);
-  its cell is to follow.
+  (`min_input_hz`), is scored at 2 Hz there with each frame held (see its page).
 - **Bench2Drive is all 220 routes,** every route scored, each model at its own
   rate and up to three tries per route. Two ways of ending a route are in it:
   OpenPilot, Alpamayo 1.5, Alpamayo 2 Edge, AutoE2E and METEOR ran under the protocol that ends a
