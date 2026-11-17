@@ -44,8 +44,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "resumed: 16 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "valid": false,
+  "superseded_by": "20261110T204020-036fb3",
+  "notes": "resumed: 16 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261110T204020-036fb3: Drive-JEPA's rows are its momentum-aware model now: 20261110T204020-036fb3 is the same 200-run default protocol with momentum-aware selection on, as model.yaml has declared it since 26 Oct 2026. Momentum never acted in this run: it was made on 12-13 Oct 2026, when the selection stage was off by default, and its record carries no momentum setting.",
   "ingested_from": ""
 }

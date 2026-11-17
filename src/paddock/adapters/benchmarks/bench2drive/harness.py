@@ -97,6 +97,19 @@ def every_tick(hz: float) -> bool:
     return hz <= 0 or hz >= SIM_HZ
 
 
+def observe_hz(native_input_hz: float | None, asked_hz: float) -> float:
+    """How often the client hands the node a frame between plans (POST /observe), Hz; 0 never.
+
+    A model asked for a plan slower than the rate its history is built on (``native_input_hz``) is
+    handed a frame at that rate in between, so its history holds real frames, not the planning
+    rate's. Qwen-Drive plans at 2 Hz and reads sixteen ego poses on a 0.1 s grid: asked at 2 Hz
+    with nothing in between, its pose history came 5x sparser than it was trained on. A model asked
+    every tick (``asked_hz`` 0), or at its own input rate, never observes.
+    """
+    native = float(native_input_hz or 0.0)
+    return native if asked_hz > 0 and native > asked_hz and not _same_rate(native, asked_hz) else 0.0
+
+
 def _same_rate(a: float, b: float) -> bool:
     """Two rates that ask the node on the same ticks."""
     return (every_tick(a) and every_tick(b)) or a == b
@@ -125,6 +138,11 @@ QUALITY_FLAG = "-quality-level"
 #: connection retry (`--connect-timeout` is the fix).
 CONNECT_TIMEOUT_FLAG = "--connect-timeout"
 KILL_ALL_LINE = "xargs -r kill -9"
+#: The scenario_runner file patch 0003 changes, and what it adds. Unpatched, a flow car that misses
+#: its sink keeps its collision sensor until a large map puts it to sleep 650 m from the hero, and
+#: CARLA 0.9.15 segfaults (route 11715 for every model).
+ATOMIC_BEHAVIORS = Path("scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py")
+FAR_CAR_GUARD = "def _remove_far_cars("
 
 #: Seconds each connection attempt to a just-launched CARLA may take before the
 #: evaluator asks again (patch 0002). It bounds one attempt, not the boot: the
@@ -202,30 +220,15 @@ CRASH_STATUSES = frozenset(
 #: docs/benchmarks/bench2drive.md, "Routes set aside". ``--scene <id>`` still drives one, to
 #: see whether it still fails; a run that does is not a score (``invalid_reasons``).
 SET_ASIDE: dict[str, str] = {
-    # Five attempts at one site (7-8 Oct 2026, openpilot) and nine at another under three
-    # stacks: CARLA's CommonUnixCrashHandler logs Signal=11 at 53.65-54.0 s of game time each
-    # time. The client's traceback lands in route_scenario.spawn_parked_vehicles only because
-    # that is its first call to the server after the crash.
-    "11715": "CARLA crashes (signal 11) about 54 s into the route on every attempt, whichever model drives",
-    # Three Town13 routes on which CARLA crashed on every attempt Alpamayo 1.5 made at its declared
-    # 10 Hz (three each, 9 Nov 2026), each time at about the same point of game time. openpilot
-    # completed each sooner (24.6-39.4 s), and METEOR and AutoE2E were stopped by the 30 s rule by
-    # 34.4 s. It is not game time alone: at 20 Hz in September, with no early stop, Alpamayo 1.5
-    # drove 3800 to the 200 s tick cap without a crash. 3800 also crashed at ~1300-1411 frames
-    # (65-71 s) for Alpamayo 1.5 and Qwen-Drive at their rates in October, and 23695 on seven of
-    # seven openpilot attempts at another site.
-    "3800": (
-        "CARLA crashes (signal 11) 63-69 s into the route on every attempt by Alpamayo 1.5 "
-        "at its declared 10 Hz"
-    ),
-    "23695": (
-        "CARLA crashes (signal 11) about 40 s into the route on every attempt by Alpamayo 1.5 "
-        "at its declared 10 Hz"
-    ),
-    "24071": (
-        "CARLA crashes (signal 11) 37-40 s into the route on every attempt by Alpamayo 1.5 "
-        "at its declared 10 Hz"
-    ),
+    # 11715 (Town12 EnterActorFlow) was the first, from #159: CARLA's Signal=11 about 54 s in, on
+    # every attempt. Under gdb that was a flow car with a collision sensor put to sleep 650 m from
+    # the hero (ALargeMapManager::ConvertActiveToDormantActors -> ASensor::EndPlay). Patch 0003
+    # removes such a car first, as its sink would; with it 11715 scored for the three models of the
+    # 220-route sweep (Drive-JEPA, Qwen-Drive, VisionPilot; 8 Nov 2026).
+    # Three Town13 routes then crashed CARLA the same way at another site (3800, 23695, 24071: every
+    # attempt by Alpamayo 1.5 at its declared 10 Hz, 9 Nov 2026), and the four 216-route records made
+    # there set all four aside. Under patch 0003 the four routes scored for Alpamayo 1.5, AutoE2E,
+    # METEOR and openpilot here (12 Nov 2026), and for UniAD and VAD in their 220-route sweep.
 }
 
 #: Everything ``agent.py`` imports, checked in the client interpreter by
@@ -333,6 +336,21 @@ def patch_problems(evaluator_source: str, evaluator: Path) -> list[str]:
     return problems
 
 
+def scenario_patch_problems(behaviors_source: str, behaviors: Path) -> list[str]:
+    """Why ``behaviors_source`` is not scenario_runner's atomic_behaviors.py with patch 0003 applied.
+
+    Without it CARLA crashes on route 11715, which is no longer set aside, and on any flow route
+    where a car that missed its sink gets 650 m from the hero (patches/README.md).
+    """
+    if FAR_CAR_GUARD in behaviors_source:
+        return []
+    return [
+        f"{behaviors} has no far-car guard in ActorFlow, so CARLA crashes when a large map puts a flow "
+        f"car with a collision sensor to sleep (route 11715 every time); apply "
+        f"patches/Bench2Drive/0003-actorflow-remove-far-flow-cars-before-dormancy.patch (patches/README.md)"
+    ]
+
+
 def crash_reason(status: str) -> str | None:
     """The failure message if ``status`` marks a route that did not run, else None."""
     for reason in CRASH_STATUSES:
@@ -375,9 +393,18 @@ def parse_results(results_json: Path) -> dict[str, float]:
     Pure, so the golden test asserts it reproduces the score CARLA recorded.
     """
     checkpoint = json.loads(Path(results_json).read_text()).get("_checkpoint", {})
+    return parse_checkpoint(checkpoint, str(results_json))
+
+
+def parse_checkpoint(checkpoint: dict[str, Any], where: str) -> dict[str, float]:
+    """:func:`parse_results` on a ``_checkpoint`` already read; ``where`` names it in a refusal.
+
+    The ingest measures a route taken from a tracked record's ``upstream_scores.json`` row
+    through this too, so the two are one derivation, not two kept in step.
+    """
     all_records = checkpoint.get("records") or []
     if not all_records:
-        raise NotScored(f"{results_json}: no records in _checkpoint (the route did not score)")
+        raise NotScored(f"{where}: no records in _checkpoint (the route did not score)")
 
     records, crashed = [], []
     for record in all_records:
@@ -388,8 +415,7 @@ def parse_results(results_json: Path) -> dict[str, float]:
             records.append(record)
     if not records:
         raise NotScored(
-            f"{results_json}: {'; '.join(crashed)} -- "
-            f"the route did not run, so its scores are not a measurement"
+            f"{where}: {'; '.join(crashed)} -- the route did not run, so its scores are not a measurement"
         )
 
     def count(infractions: dict, key: str) -> int:
@@ -436,6 +462,11 @@ def ended_early(route_dir: Path) -> dict[str, float]:
         record = json.loads((Path(route_dir) / early_stop.RECORD).read_text())
     except (OSError, ValueError):
         return {}
+    return stop_shares(record)
+
+
+def stop_shares(record: Any) -> dict[str, float]:
+    """:func:`ended_early` on an ``early_stop.json`` already read; empty for anything but a record."""
     if not isinstance(record, dict):
         return {}
     reps = [r for r in (record.get("repetitions") or [record]) if isinstance(r, dict)] or [record]
@@ -860,6 +891,7 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 (Path("leaderboard/leaderboard/leaderboard_evaluator.py"), "the evaluator"),
                 (Path("leaderboard/leaderboard/autoagents/autonomous_agent.py"), "the AutonomousAgent base"),
                 (Path("scenario_runner/srunner/scenariomanager/carla_data_provider.py"), "scenario_runner"),
+                (ATOMIC_BEHAVIORS, "scenario_runner's atomic behaviours"),
             ):
                 if not (repo / relative).exists():
                     problems.append(f"Bench2Drive checkout is missing {why}: {repo / relative}")
@@ -877,6 +909,9 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
                 )
             if evaluator is not None and evaluator.exists():
                 problems.extend(patch_problems(evaluator.read_text(errors="replace"), evaluator))
+            behaviors = repo / ATOMIC_BEHAVIORS
+            if behaviors.exists():
+                problems.extend(scenario_patch_problems(behaviors.read_text(errors="replace"), behaviors))
 
         routes = self.routes_file
         if routes is not None:
@@ -1035,14 +1070,22 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
         for every tick), so the record says the rate was an operator's: the run
         does not rank (``invalid_reasons``), and neither does a pool of such runs.
         A host that restates the model's own rate changes nothing.
+
+        A model asked slower than its ``native_input_hz`` is handed frames between plans at that
+        rate, recorded as ``observe_hz`` (:func:`observe_hz`).
         """
         declared = float(getattr(model, "planning_hz", 0.0) or 0.0)
         hz = infer_hz(declared)
+        # Frames between plans (``observe_hz``), recorded and hashed like the rate: Qwen-Drive with
+        # and without them reads different histories. Absent when none are handed, so every other
+        # model keeps its run id.
+        observed = observe_hz(getattr(model, "native_input_hz", 0.0), hz)
+        extra = {"observe_hz": observed} if observed else {}
         if _same_rate(hz, declared):
             self._host_rate = None
-            return {} if every_tick(declared) else {"infer_hz": declared}
+            return extra if every_tick(declared) else {"infer_hz": declared, **extra}
         self._host_rate = (hz, declared)
-        return {"infer_hz": 0.0 if every_tick(hz) else hz, "planning_hz": declared}
+        return {"infer_hz": 0.0 if every_tick(hz) else hz, "planning_hz": declared, **extra}
 
     def run_config(self) -> dict[str, Any]:
         """Site settings that change *what is measured*, for ``run.json``.
@@ -1304,6 +1347,8 @@ class Bench2DriveBenchmark(ClosedLoopBenchmark):
             extra["PADDOCK_INFER_TIMEOUT_S"] = os.environ["PADDOCK_INFER_TIMEOUT_S"]
         if hz := infer_hz(episode.config.get("planning_hz")):
             extra["PADDOCK_INFER_HZ"] = f"{hz:g}"
+            if observed := observe_hz(episode.config.get("native_input_hz"), hz):
+                extra["PADDOCK_OBSERVE_HZ"] = f"{observed:g}"
         # Segment mode (sim2real diagnostics: capture a recording, or replay it to T0 and then
         # swap the frames); see bench2drive/segment.py. Host-set like the timeout above; a run
         # with it is on the record and never ranks (`run_config`, `invalid_reasons`).

@@ -29,6 +29,7 @@ from paddock.adapters.benchmarks.bench2drive.campaign import (
     whose,
     with_ports,
 )
+from paddock.adapters.benchmarks.bench2drive.harness import SET_ASIDE
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -141,8 +142,9 @@ def test_keep_stops_when_its_workers_keep_exiting_without_driving(tmp_path, monk
 
 
 def test_a_set_aside_route_is_dealt_only_when_only_names_it(tmp_path, monkeypatch) -> None:
-    """11715 is set aside for every model: never dealt in a sweep, but --only can drive it on
-    purpose, to see whether it still fails."""
+    """A route set aside for every model is never dealt in a sweep, but --only can drive it on
+    purpose, to see whether it still fails. 11715 stands in: it was on the list until patch 0003."""
+    monkeypatch.setitem(SET_ASIDE, "11715", "a stand-in reason: fails in the simulator every time")
     routes = [("1711", "Town12", "ParkingCutIn"), ("11715", "Town12", "EnterActorFlow")]
     campaign, cfg = _deal_site(tmp_path, monkeypatch, routes)
 

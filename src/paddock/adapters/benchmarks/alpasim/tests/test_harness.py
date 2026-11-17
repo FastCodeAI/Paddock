@@ -1147,7 +1147,7 @@ def test_qwendrive_is_driven_on_its_own_driver_config_and_bridge_flags(
     tmp_path: Path, fake_repo: Path, monkeypatch
 ) -> None:
     """The node's model name selects the qwendrive profile: its driver config, its three
-    camera names and nothing else, the 1.5 s rhythm with every step observed, its canbus,
+    camera names and nothing else, the 0.5 s rhythm with every step observed, its canbus,
     route and scene-id switches, 0.1 s waypoints, and a per-replan log beside the samples."""
     from paddock.adapters.benchmarks.alpasim import harness
 
@@ -1196,7 +1196,8 @@ def test_qwendrive_is_driven_on_its_own_driver_config_and_bridge_flags(
         "--canbus-acceleration",
     ):
         assert flag not in args
-    assert int(args[args.index("--replan-every-us") + 1]) == 1_500_000
+    # 0.5 s: native 2 Hz (planning_hz 2.0), user's request 09 Nov; the native driver asked every 1.5 s.
+    assert int(args[args.index("--replan-every-us") + 1]) == 500_000
     assert float(args[args.index("--waypoint-dt") + 1]) == 0.1
     assert args[args.index("--replan-log") + 1].endswith(".replans.jsonl")
     # The three node names are the three cameras the model declares, in its slot order.

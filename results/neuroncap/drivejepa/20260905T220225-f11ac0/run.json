@@ -28,8 +28,10 @@
   "hardware": {
     "gpu_free_gb_at_start": null
   },
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261110T204020-036fb3",
+  "notes": "Superseded by 20261110T204020-036fb3: Drive-JEPA's rows are its momentum-aware model now: 20261110T204020-036fb3 is the same 200-run protocol, camera-correct and with momentum-aware selection on. This run was camera-blind (before the camera-frame fix of 13 Oct 2026) and predates the selection stage, so momentum never acted in it.",
   "ingested_from": ""
 }

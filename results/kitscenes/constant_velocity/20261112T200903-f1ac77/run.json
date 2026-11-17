@@ -1,0 +1,43 @@
+{
+  "run_id": "20261112T200903-f1ac77",
+  "site": "cvfill-fastcode-shakaal",
+  "benchmark": "kitscenes",
+  "model": "constant_velocity",
+  "mode": "open_loop",
+  "started_utc": "2026-11-12T20:09:03+00:00",
+  "duration_s": 7.4,
+  "repo_sha": null,
+  "dataset": {
+    "name": "kitscenes",
+    "n_samples": 223,
+    "sequences_sha256": "80665529bea7f500",
+    "n_expected": 223
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT"
+    ],
+    "ground_offset_m": 2.2,
+    "cameras_supplied": [
+      "CAM_FRONT"
+    ]
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "",
+      "sha": null
+    },
+    "paddock": {
+      "sha": "1d5274c083a4db38e78f48b0645098ad77ff79a0",
+      "dirty": false
+    },
+    "policy": {}
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

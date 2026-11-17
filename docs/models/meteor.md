@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.11 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 3 s ahead |
-| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [bench2drive](../benchmarks/bench2drive.md), [nuplan](../benchmarks/nuplan.md), [comma2k19](../benchmarks/comma2k19.md) |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navhard](../benchmarks/navhard.md), [bench2drive](../benchmarks/bench2drive.md), [nuplan](../benchmarks/nuplan.md), [comma2k19](../benchmarks/comma2k19.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -573,10 +573,12 @@ Bench2Drive clip outside this repository found METEOR's 2D detection carries ove
 to these cameras and the depth behind its BEV lift does not. And it gets no
 driving command. Nothing here measures which of these holds it still.
 
-Over all 220 routes, `results/bench2drive/meteor/full220-836dda734659a86c-dda00e`
-(7 Nov 2026, the 220-route protocol: the same rate, cameras and early stop, up to
-three attempts a route, the four routes set aside for every model left out): DS
-**1.92** over 216 routes, RC 5.40%, infraction penalty 0.92, a collision on 26 routes.
+Over all 220 routes, `results/bench2drive/meteor/full220-86aa45e768a29a64-2144df`
+(the 220-route protocol: the same rate, cameras and early stop, up to three attempts a
+route): DS **1.89**, RC 5.30%. It pools the 216 routes driven at `a100-gpu-vm-002` on
+7 Nov 2026 (`full220-836dda734659a86c-dda00e`, superseded by it) with routes 3800, 11715,
+23695 and 24071, driven here on 12 Nov under patch 0003 (DS 0 on each). Over the 216: DS
+**1.92**, RC 5.40%, infraction penalty 0.92, a collision on 26 routes.
 189 routes end under 1% route completion, and one, 26394, is completed, with 12 collisions with
 static objects. The tables, and Bench2Drive's own scores for the record, are in
 [Bench2Drive — 220 routes](../benchmarks/bench2drive.md#bench2drive--220-routes).

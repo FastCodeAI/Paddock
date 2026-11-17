@@ -1,0 +1,76 @@
+{
+  "run_id": "20261110T204020-036fb3",
+  "site": "ncapnative-fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "drivejepa",
+  "mode": "closed_loop",
+  "started_utc": "2026-11-11T09:21:17+00:00",
+  "duration_s": 2887.4,
+  "repo_sha": null,
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 200,
+    "sequences_sha256": "ef927e969576db84",
+    "n_expected": 200,
+    "n_failed": 0,
+    "n_reused": 190
+  },
+  "config": {
+    "scene": "0099,0101,0103,0106,0108,0110,0278,0331,0346,0783,0796,0921,0923,0966",
+    "runs": 10,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK"
+    ],
+    "declared_env": {
+      "DRIVEJEPA_CHECKPOINT": "{data.navsim.exp}/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt",
+      "DRIVEJEPA_IMAGE_GEOMETRY": "openscene",
+      "DRIVEJEPA_MOMENTUM": "on",
+      "DRIVE_JEPA_MSDA": "auto",
+      "NAVSIM_DEVKIT_ROOT": "{repo}/navsim_v2",
+      "NAVSIM_EXP_ROOT": "{data.navsim.exp}",
+      "NUPLAN_MAPS_ROOT": "{data.navsim}/maps",
+      "NUPLAN_MAP_VERSION": "nuplan-maps-v1.0",
+      "OPENSCENE_DATA_ROOT": "{data.navsim}",
+      "PYTHONNOUSERSITE": "1"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "Drive-JEPA",
+      "sha": null,
+      "pinned_sha": "e21f474"
+    },
+    "paddock": {
+      "sha": "18283e0f7fa465f7c9d87d3f273948e8ea2a99cd",
+      "dirty": false
+    },
+    "policy": {
+      "image_geometry": "openscene",
+      "camera_frame": "ego",
+      "momentum": "on",
+      "momentum_counts": {
+        "replans": 894,
+        "fed": 844,
+        "no_previous": 10,
+        "out_of_window": 40,
+        "picks_changed": 232
+      },
+      "frames_recorded": 92,
+      "history_span_s": 1.5,
+      "history_target_s": 1.5,
+      "blank_views": [],
+      "accel_source": "canbus"
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "resumed: 19 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}

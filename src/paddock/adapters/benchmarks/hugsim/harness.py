@@ -25,6 +25,12 @@ What the harness fixes about the protocol, and records in ``run.json``:
   PR #57, open and unmerged, which corrects it. Every run here uses it.
 * **Only the model's cameras are rendered** (``patches/HUGSIM/0002``); the others are sent black. Scoring
   never reads the images, so the scores are unchanged.
+* **The whole plan.** Each reply's whole plan is sent, up to ``bridge.N_MAX`` waypoints 0.5 s apart, not
+  the six the wire's trajectory keeps. HUGSIM scores it and its iLQR tracks it, so it changes the driving
+  as well as the score; a 3 s planner is scored over a shorter window than a 4 s one.
+* **Frames between plans** (``--observe``) for a model whose input rate is above its planning rate.
+* **The IDM guard** (``patches/HUGSIM/0003``): the lead-vehicle lookup no longer crashes on an empty
+  lookahead.
 
 HUGSIM, its interpreter and its data live outside the package; ``[benchmarks.hugsim]`` and
 ``[datasets.hugsim]`` in ``paddock.toml`` say where (see ``docs/benchmarks/hugsim.md``).
@@ -43,7 +49,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from paddock.adapters.benchmarks.hugsim.bridge import STEP_DT, infer_every
+from paddock.adapters.benchmarks.hugsim.bridge import N_MAX, PLAN_DT, STEP_DT, infer_every, observes
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.config import REPO_ROOT
 from paddock.runtime import gpu
@@ -103,6 +109,7 @@ PATCH_MARKERS = (
         "0001-traj2control-heading-pr57.patch",
     ),
     ("sim/hugsim_env/envs/hug_sim.py", "HUGSIM_RENDER_CAMS", "0002-render-only-requested-cameras.patch"),
+    ("sim/utils/agent_controller.py", "if lookahead_lengths.numel():", "0003-idm-one-point-lookahead.patch"),
 )
 
 #: What the bridge and the launcher import, checked in HUGSIM's interpreter by `preflight` so a missing
@@ -415,12 +422,16 @@ class HugsimBenchmark(ClosedLoopBenchmark):
     # ---- what is measured ----------------------------------------------
 
     def run_config(self) -> dict[str, Any]:
-        """The protocol, for ``run.json``: the scenarios left out, the controller, the cap, and no route."""
+        """The protocol, for ``run.json``: the scenarios left out, the controller, the cap, no route, how
+        much of each plan is sent, and the IDM guard. The plan sent is hashed so a ``--resume`` across the
+        change from the wire's six waypoints to the whole plan is refused rather than merged."""
         return {
             "excluded": sorted(EXCLUDED),
             "controller": "traj2control with upstream PR #57 (patches/HUGSIM/0001)",
             "step_cap": STEP_CAP,
             "route": "command only",
+            "plan_sent": f"the reply's whole plan, up to {N_MAX} waypoints {PLAN_DT:g} s apart",
+            "idm_guard": "patches/HUGSIM/0003",
         }
 
     def model_run_config(self, model) -> dict[str, Any]:
@@ -430,11 +441,16 @@ class HugsimBenchmark(ClosedLoopBenchmark):
         so two rates never share a run id.
         """
         n = infer_every(getattr(model, "planning_hz", None))
-        return {
+        config = {
             "infer_every": n,
             "infer_hz": round(1.0 / (STEP_DT * n), 3),
             "render_cams": sorted(model.cameras),
         }
+        # Frames between plans (bridge.observes), recorded and hashed: a history of every step and one of the
+        # planning rate's are two inputs. Absent when none are handed, so every other model keeps its run id.
+        if observes(getattr(model, "native_input_hz", None), n):
+            config["observe"] = True
+        return config
 
     # ---- episodes ------------------------------------------------------
 
@@ -536,6 +552,8 @@ class HugsimBenchmark(ClosedLoopBenchmark):
             "--infer_every",
             str(infer_every(episode.config.get("planning_hz"))),
         ]
+        if observes(episode.config.get("native_input_hz"), infer_every(episode.config.get("planning_hz"))):
+            command.append("--observe")
 
         gpu.wait_for(
             float(self.setting("min_free_gb") or DEFAULT_MIN_FREE_GB),
