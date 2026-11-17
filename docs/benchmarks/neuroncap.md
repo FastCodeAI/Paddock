@@ -782,7 +782,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | VAD ⊡ | 2.83 ±2.23 | 1.15 ±1.75 | 3.23 ±2.22 | **2.51** | 57.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | UniAD ⊡ | 3.23 ±2.29 | 0.77 ±1.52 | 1.62 ±2.34 | **2.21** | 59.0% |
-| VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
+| VisionPilot | 2.39 ±1.63 | 1.11 ±1.39 | 0.05 ±0.13 | **1.49** | 86.0% |
 | Baseline (Constant Velocity) § | 0.95 ±1.11 | 0.33 ±0.42 | 0.17 ±0.71 | **0.60** | 97.0% |
 
 ⊙ Momentum-aware, run `20261110T204020-036fb3` (valid): the default protocol at the

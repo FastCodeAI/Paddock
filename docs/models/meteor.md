@@ -413,7 +413,7 @@ scenarios, zero failures, 69 min) and `results/navsim_v1/meteor/20260915T005223-
 | v1 | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | — | — |
 
 Above the constant-velocity floor (0.239 v2, 0.207 v1) and below every learned
-model (VisionPilot 0.431 / 0.488, Drive-JEPA 0.843 / 0.892). That is a different
+model (VisionPilot 0.454 / 0.472, Drive-JEPA 0.843 / 0.892). That is a different
 standing from nuScenes, where its L2 sits with Drive-JEPA's, and the difference
 is worth reading carefully, because **a quarter of what NAVSIM scored here is
 not the model's output.**

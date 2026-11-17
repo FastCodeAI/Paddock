@@ -17,8 +17,10 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 ## Known issues
 
-- **VisionPilot's figures predate the `CURV_SCALE` fix.** Every VisionPilot cell
-  but comma2k19's and KITScenes', re-run in November 2026, is due to be re-run.
+- **VisionPilot cells marked S predate the `CURV_SCALE` fix.** nuScenes, NAVSIM v2
+  and v1 and neuroNCAP were re-run in November 2026, as comma2k19 and KITScenes
+  were; AlpaSim's driver never had the bug. The 50-route Bench2Drive cell is
+  replaced by its 220-route run (#167).
 - **comma2k19's `pdm_style_score` proxy ranks a parked car first.** It pairs
   waypoints by index; pairing by arc length fixes it and moves a published
   column. The benchmark's primary metric, ADE, is unaffected.

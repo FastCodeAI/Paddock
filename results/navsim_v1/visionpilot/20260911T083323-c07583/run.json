@@ -31,8 +31,10 @@
     }
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "Plan dump has 12,589 lines for 12,146 scenarios: 342 scenarios were planned twice, which looks like the devkit's worker pool re-running a log; the CSV and n are clean, the model is deterministic, and a replay keys plans by token, so the duplicates resolve to one plan each. Noted after the run (2026-09-15, review of PR #32); not investigated.",
+  "valid": false,
+  "superseded_by": "20261111T194001-cc5073",
+  "notes": "Plan dump has 12,589 lines for 12,146 scenarios: 342 scenarios were planned twice, which looks like the devkit's worker pool re-running a log; the CSV and n are clean, the model is deterministic, and a replay keys plans by token, so the duplicates resolve to one plan each. Noted after the run (2026-09-15, review of PR #32); not investigated. Superseded by 20261111T194001-cc5073: Re-run on 11 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 (the September 2026 fix) on the declared CPU provider; this run used 1.0.",
   "ingested_from": ""
 }

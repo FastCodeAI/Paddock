@@ -228,4 +228,12 @@ frame.)*
   longitudinal cap. It surfaced there rather than on the closed-loop benchmarks
   because those are urban and slow enough that the cap rarely binds, but
   **every VisionPilot result recorded before this change used 1.0** and will not
-  be reproduced by a re-run.
+  be reproduced by a re-run. Re-run since at the pinned `e93eceaa` with 0.21:
+  KITScenes and comma2k19 (5-6 Nov 2026), nuScenes, NAVSIM v2 and v1, and
+  neuroNCAP (11-12 Nov 2026), Bench2Drive's 220 routes (6-8 Nov 2026), and navhard.
+  neuroNCAP ran on onnxruntime's CUDA provider (ranked with its note, `score_notes`), driven
+  at main 9ba4b7e from 11 Nov 20:42 to 12 Nov 10:45 UTC with a pause; its record was written
+  by a `--resume` that reused all 200 runs, so its `started_utc` and `duration_s` are that
+  resume's.
+  AlpaSim's cell needs none: it was driven by AlpaSim's own VisionPilot driver,
+  a separate port that applies `AD_CURVATURE_SCALE = 0.21` itself.
