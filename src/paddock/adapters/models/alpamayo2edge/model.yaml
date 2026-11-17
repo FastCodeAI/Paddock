@@ -1,0 +1,92 @@
+name: alpamayo2edge
+description: NVIDIA Alpamayo 2 Edge (2B) - reasoning VLA on Cosmos3-Edge, six cameras, flow-matching trajectory expert
+repo: alpamayo2-edge
+
+runtime:
+  kind: uv
+  python: "3.12"
+  venv: "{repo}/.venv"
+  # src/ layout: the package is installed editable by `uv sync`, and listed here too
+  # so a venv built without the project install still imports it.
+  pythonpath: ["{repo}/src"]
+  cwd: "{repo}"
+  # Read by policy.py (_env_or / os.environ.get). Without this, `FOO=1 paddock run ...`
+  # sets the variable in paddock's process and never reaches the model's.
+  env_passthrough:
+    - ALPAMAYO2_EDGE_SEED
+    - ALPAMAYO2_EDGE_SAVE_REASONING
+    - ALPAMAYO2_EDGE_FLOW_STEPS
+    - ALPAMAYO2_EDGE_REASONING
+    - ALPAMAYO2_EDGE_DROP_EXPERT_LAYERS
+  env:
+    # Self-contained: tokenizer, processor and the Cosmos3-Edge backbone are all in this
+    # one directory (nvidia/Alpamayo2-Edge, revision f8951d095de3589b3face1dec3f4394c8ecedb38).
+    ALPAMAYO2_EDGE_CHECKPOINT: "{weights}/Alpamayo2-Edge"
+    PADDOCK_WEIGHTS: "{weights}"
+    # The upstream CLI's seed. Declared so a site that restates it is not read as
+    # overriding it; a different value is a different draw, and makes a run unranked.
+    ALPAMAYO2_EDGE_SEED: "43"
+    # Speed ablations, both off by default: flow-matching steps (upstream's 10), and
+    # reasoning "model" (the model writes its own) or "nominal" / "none" (forced; see
+    # policy.FORCED_REASONING_IDS). Any other value changes the plan, so a run that sets
+    # one is recorded valid: false and its run.json notes name the setting. No
+    # score_notes: these runs are tests, never ranked or kept as stored results.
+    ALPAMAYO2_EDGE_FLOW_STEPS: "10"
+    ALPAMAYO2_EDGE_REASONING: "model"
+    # Size ablation, off by default: expert layers deleted at load, comma-separated, e.g.
+    # "1,2,3,4,5,12,15,19" (each kept layer still reads its own cache layer). Like the two
+    # above, any other value changes the plan, so the run is recorded valid: false.
+    ALPAMAYO2_EDGE_DROP_EXPERT_LAYERS: ""
+    # Read where the checkpoint loads; the checkpoint is never fetched, so a missing
+    # directory fails at load rather than reaching for the network.
+    HF_HUB_OFFLINE: "1"
+  # Only adds the reasoning text to each sample's extras; the plan is unchanged.
+  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING]
+
+capabilities:
+  # The five source cameras the six slots are filled from: CAM_FRONT twice (the 120 deg
+  # front and the 30 deg telephoto crop). Not CAM_BACK: the straight-back rear telephoto
+  # (upstream camera id 4) is not an Edge input, and rendering it would be wasted.
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK_RIGHT]
+  # Measured: 6.2 GB peak for one 22-frame sample in bf16 on an H200; headroom for
+  # the CUDA context and allocator.
+  vram_gb: 10
+  # 27 s to load on an idle card; a contended shared disk is much slower.
+  startup_timeout_s: 1200
+  waypoint_dt: 0.5
+  # No floor. Poses are interpolated by time and every image is labelled with its
+  # recorded time, so a 2 Hz source is shown as 2 Hz rather than mis-scaled.
+  min_input_hz: 0.0
+  # What it was built for: frames 0.1 s apart at the shortest gap, and poses at 0.1 s.
+  native_input_hz: 10.0
+  planning_hz: 10.0
+  # The oldest frame asked for is 2.0 s back (front and telephoto); poses go back 1.9 s.
+  history_s: 2.0
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "Cosmos3-Edge (Nemotron) VLM + flow-matching trajectory expert"
+  # "approximately 2.651 billion parameters" (model card, nvidia/Alpamayo2-Edge).
+  params_m: 2651
+  size_gb: 5.3
+  precision: bf16
+  # Every slot is handed over as 1920x1080, the PhysicalAI-AV frame; upstream then
+  # resizes the front and telephoto to 576x320 and the other four to 416x224.
+  input_size: [1920, 1080]
+  camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK_RIGHT, CAM_FRONT_TELE]
+  # Five frames for the front and telephoto (-2, -1, -0.5, -0.1, 0 s), three for the
+  # other four (-1, -0.1, 0 s): 22 images.
+  history_frames: 5
+  camera_hz: 10.0
+  ego_history_steps: 20
+  ego_history_hz: 10.0
+  output_kind: waypoints
+  horizon_s: 6.4
+  plan_points_hz: 10.0
+  # Seeded per call (ALPAMAYO2_EDGE_SEED), as the upstream CLI does: the same input
+  # gives the same plan.
+  stochastic: false
+  # Not recorded: the model card's training-data section reads "TBD" at the pinned
+  # revision, so nothing is claimed either way, including "none of ours".
+  # trained_on: []
+
+benchmarks: [kitscenes, nuscenes, navsim, neuroncap, bench2drive, comma2k19]

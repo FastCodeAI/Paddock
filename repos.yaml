@@ -36,6 +36,11 @@ repos:
     sha: beb2977
     description: NVIDIA Alpamayo 2 Super (34B); not yet evaluated
 
+  alpamayo2-edge:
+    url: https://github.com/NVlabs/alpamayo2-edge.git
+    sha: 02f55a7
+    description: NVIDIA Alpamayo 2 Edge (2B), six cameras and 20 ego poses; Cosmos3-Edge checkpoint
+
   alpasim:
     url: https://github.com/NVlabs/alpasim.git
     sha: affc2ea
