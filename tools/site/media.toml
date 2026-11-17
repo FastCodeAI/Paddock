@@ -16,7 +16,7 @@
 # poster = "neuroncap/hero.jpg"
 # alt = "Every model driving the same neuroNCAP scene, side by side"
 
-base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/228de179e6c544a17380bf33e009a3ca4b976a32/"
+base = "https://huggingface.co/datasets/naren-fastcode/paddock-videos/resolve/be6054e5dd549d831e4e9ba40123a63d3b61d7c7/"
 
 # One line under a benchmark's videos, for what a viewer would otherwise misread. In
 # neuroNCAP scene 0108, OpenPilot and METEOR end 36 m and 51 m from the recorded path and
@@ -80,3 +80,32 @@ title = "Scene 04749bb9"
 caption = "Where the models split next most: 4 of 8 score above 0.9 and 2 score below 0.1. One drive per model."
 src = "alpasim/scene-04749bb9.mp4"
 poster = "alpasim/scene-04749bb9.jpg"
+
+# Bench2Drive: python -m tools.site.videos bench2drive (render.py); the routes were driven again with recording on.
+[[video]]
+benchmark = "bench2drive"
+title = "Overtaking: ConstructionObstacle, route 24367 (Town06)"
+caption = "The hardest overtaking route: the models average 12.4 driving score. Each tile is that model's drive of the route recorded for this video, on the code and settings of its ranked run; Bench2Drive does not repeat a drive exactly, so the bar gives this drive's score and the ranked one."
+src = "bench2drive/route-24367.mp4"
+poster = "bench2drive/route-24367.jpg"
+
+[[video]]
+benchmark = "bench2drive"
+title = "Merging: ParkingExit, route 3520 (Town13)"
+caption = "The hardest merging route: the models average 0.4 driving score. Each tile is that model's drive of the route recorded for this video, on the code and settings of its ranked run; Bench2Drive does not repeat a drive exactly, so the bar gives this drive's score and the ranked one."
+src = "bench2drive/route-3520.mp4"
+poster = "bench2drive/route-3520.jpg"
+
+[[video]]
+benchmark = "bench2drive"
+title = "Emergency braking: HardBreakRoute, route 26456 (Town03)"
+caption = "The hardest emergency braking route: the models average 6.4 driving score. Each tile is that model's drive of the route recorded for this video, on the code and settings of its ranked run; Bench2Drive does not repeat a drive exactly, so the bar gives this drive's score and the ranked one."
+src = "bench2drive/route-26456.mp4"
+poster = "bench2drive/route-26456.jpg"
+
+[[video]]
+benchmark = "bench2drive"
+title = "Disagreement: StaticCutIn, route 26405 (Town15)"
+caption = "Where the models disagree most: their scores run from 0.0 to 100.0. Each tile is that model's drive of the route recorded for this video, on the code and settings of its ranked run; Bench2Drive does not repeat a drive exactly, so the bar gives this drive's score and the ranked one."
+src = "bench2drive/route-26405.mp4"
+poster = "bench2drive/route-26405.jpg"

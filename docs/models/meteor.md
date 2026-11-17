@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.11 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 3 s ahead |
-| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [bench2drive](../benchmarks/bench2drive.md), [nuplan](../benchmarks/nuplan.md), [comma2k19](../benchmarks/comma2k19.md), [hugsim](../benchmarks/hugsim.md) |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [neuroncap](../benchmarks/neuroncap.md), [navsim](../benchmarks/navsim.md), [navhard](../benchmarks/navhard.md), [bench2drive](../benchmarks/bench2drive.md), [nuplan](../benchmarks/nuplan.md), [comma2k19](../benchmarks/comma2k19.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -413,7 +413,7 @@ scenarios, zero failures, 69 min) and `results/navsim_v1/meteor/20260915T005223-
 | v1 | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | — | — |
 
 Above the constant-velocity floor (0.239 v2, 0.207 v1) and below every learned
-model (VisionPilot 0.431 / 0.488, Drive-JEPA 0.843 / 0.892). That is a different
+model (VisionPilot 0.454 / 0.472, Drive-JEPA 0.843 / 0.892). That is a different
 standing from nuScenes, where its L2 sits with Drive-JEPA's, and the difference
 is worth reading carefully, because **a quarter of what NAVSIM scored here is
 not the model's output.**

@@ -1,0 +1,49 @@
+{
+  "run_id": "20261110T160343-25e0e5",
+  "site": "uvother-fastcode-shakaal",
+  "benchmark": "navsim_v1",
+  "model": "vad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-10T16:03:43+00:00",
+  "duration_s": 1501.1,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "013e89176339021d",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [],
+    "split": "navtest",
+    "agent": "paddock_replay",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "node": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "replayed_from": "navsim/vad/20261110T095855-0ebf09",
+    "plans": {
+      "n": 12146,
+      "sha256": "157b8bd9ea8d381c",
+      "from": [
+        "20261110T095855-0ebf09"
+      ]
+    }
+  },
+  "hardware": {},
+  "provenance": {},
+  "status": "complete",
+  "valid": false,
+  "superseded_by": "20261112T132424-25e0e5",
+  "notes": "replayed from navsim/vad/20261110T095855-0ebf09, which is stored valid=false: site env override may change what was measured: VAD_HORIZON_S (values in config.model_env); no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277, stored valid=false); the same plans, this benchmark's scorer Superseded by 20261112T132424-25e0e5: the same plans replayed again from the NAVSIM run after its record was re-written valid (byte-identical checkpoint override no longer counted as one)",
+  "ingested_from": ""
+}

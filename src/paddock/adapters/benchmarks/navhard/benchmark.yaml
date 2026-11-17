@@ -1,0 +1,32 @@
+name: navhard
+description: NAVSIM v2.2 pseudo closed-loop EPDMS on navhard_two_stage - the model plans on a real scene (stage one), then again on synthetic follow-up scenes that start near where a 4 s plan could have taken it (stage two), each weighted by how close it starts to the model's own stage-one endpoint; the NAVSIM v2 leaderboard protocol, scored by the v2.2 devkit
+# Open loop in the sense that matters: the recording (and its pre-rendered follow-ups)
+# decides what happens next. The v2.2 scorer owns the iteration; paddock supplies the
+# model over HTTP, as for navsim. See docs/benchmarks/navhard.md.
+mode: open_loop
+dataset: navhard
+metrics:
+  - epdms
+  - epdms_stage_one
+  - epdms_stage_two
+  - no_at_fault_collisions_stage_one
+  - drivable_area_compliance_stage_one
+  - driving_direction_compliance_stage_one
+  - traffic_light_compliance_stage_one
+  - ego_progress_stage_one
+  - time_to_collision_within_bound_stage_one
+  - lane_keeping_stage_one
+  - history_comfort_stage_one
+  - two_frame_extended_comfort_stage_one
+  - no_at_fault_collisions_stage_two
+  - drivable_area_compliance_stage_two
+  - driving_direction_compliance_stage_two
+  - traffic_light_compliance_stage_two
+  - ego_progress_stage_two
+  - time_to_collision_within_bound_stage_two
+  - lane_keeping_stage_two
+  - history_comfort_stage_two
+  - two_frame_extended_comfort_stage_two
+# epdms per sample is one stage-one frame's score x the weighted mean of its follow-ups'
+# (harness.py); their mean is the devkit's extended_pdm_score_combined.
+primary_metric: epdms

@@ -306,12 +306,19 @@ def test_speed_sweep_reproduces(data: dict) -> None:
         assert row[3] == f"{s['route_completion']:.2f}", row[0]
 
 
-def test_the_baseline_has_no_bench2drive_cell_and_the_page_keeps_its_sweep(data: dict) -> None:
-    """Constant velocity has no 220-route run, so its cell in the 220-route column is empty; the
-    50-route sweep's ♣ figure and the table's 40.39 are still both stated on the page."""
+def test_the_baseline_cell_is_its_220_route_run_and_the_page_keeps_its_sweep(data: dict) -> None:
+    """Constant velocity's 220-route column cell is its fixed 3 m/s run over all 220 routes, the
+    number its record stores and the 220-route table states; the 50-route sweep's ♣ figure is
+    still stated on the page."""
     s = data["summaries"]["all50"]["constant_velocity_3mps"]
-    assert f"**{s['driving_score']:.2f} ♣**" in PAGE.read_text()
-    assert _matrix_cell("constant_velocity") == ""
+    page = PAGE.read_text()
+    assert f"**{s['driving_score']:.2f} ♣**" in page
+    record = REPO_ROOT / "results/bench2drive/constant_velocity/full220-3mps-86aa45e768a29a64-c8f3e4"
+    stored = json.loads((record / "metrics.json").read_text())
+    assert stored["n"] == 220 and json.loads((record / "run.json").read_text())["valid"]
+    ds = f"{stored['metrics']['driving_score']['mean']:.2f}"
+    assert _matrix_cell("constant_velocity") == ds
+    assert f"| {ds} |" in page and record.name in page
 
 
 def test_bench2drive_page_still_links_a_tracked_run() -> None:
@@ -470,7 +477,7 @@ def test_the_220_route_tables_reproduce() -> None:
         ], run_id
     own = _readme_table(OWN_SCORES)[1:]
     abilities = {r[0]: r for r in _readme_table(ABILITIES)[1:]}
-    assert len(own) == 4 and set(abilities) == {r[0] for r in own}
+    assert len(own) == 5 and set(abilities) == {r[0] for r in own}
     order = ["Merging", "Overtaking", "Emergency_Brake", "Give_Way", "Traffic_Signs"]
     for r in own:
         record = _record(r[-1].strip("`"))

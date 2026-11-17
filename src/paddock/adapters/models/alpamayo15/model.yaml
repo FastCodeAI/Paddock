@@ -116,4 +116,5 @@ capabilities:
     - dataset: public-driving-qa
 # One key, not one per benchmark that arrived: two `benchmarks:` lines make YAML
 # keep the last and silently drop the rest, which is how alpasim once went missing.
-benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, bench2drive, alpasim, nuscenes, comma2k19, nuplan, hugsim]
+# navhard's synthetic scenes exist only at 2 Hz, so there its inputs are 2 Hz.
+benchmarks: [kitscenes, neuroncap, navsim, navsim_v1, navhard, bench2drive, alpasim, nuscenes, comma2k19, nuplan, hugsim]

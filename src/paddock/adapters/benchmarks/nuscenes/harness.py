@@ -22,6 +22,21 @@ Two conventions coexist in the literature and both are reported:
 (4.084 x 1.85 m) against every annotated box at the same future step, in the
 scored keyframe's ego frame; heading of the planned footprint follows the plan
 (UniAD's get_yaw).
+
+**Streamed mode** (`PADDOCK_NUSCENES_STREAMED=1`; off by default, and then
+nothing here changes). Each sample resets the node, so Drive-JEPA's momentum
+stage -- on for every benchmark -- never has a previous plan here. In streamed
+mode each sample also names its scene (`benchmark.Sample.stream`: the scene,
+the scored keyframe's own timestamp and its global pose from `ego2world`), and
+the runner scores on one node, one sample at a time, in index order
+(`serial_streams`), so the node can hand each keyframe the plan it chose for
+the scene's previous scored keyframe -- upstream's sequential loop, one
+keyframe per request. Only a plan 0.45-0.55 s old is fed (Drive-JEPA's rule):
+of the 5,119 samples, 150 open their scene and 4,969 have their predecessor
+scored, of which 4,485 are 0.45-0.55 s after it (the rest 0.4, 0.6 or 0.7 s). No
+warm-up is planned. The mode is recorded as `config.streamed = "per_scene"`,
+per sample as `extra.momentum_fed`, and counted in `by_group.streamed`. See
+docs/benchmarks/nuscenes.md.
 """
 
 from __future__ import annotations
@@ -38,7 +53,14 @@ import numpy as np
 from paddock.adapters.benchmarks.nuscenes import history as H
 from paddock.adapters.benchmarks.nuscenes import infos as I
 from paddock.adapters.benchmarks.nuscenes import loader as L
-from paddock.benchmark import OpenLoopBenchmark, Sample, SampleSequence
+from paddock.benchmark import (
+    OpenLoopBenchmark,
+    Sample,
+    SampleSequence,
+    stream_frame,
+    streamed_switch,
+    streamed_switch_problems,
+)
 from paddock.metrics import pdm
 from paddock.policy.protocol import Command, Observation, Trajectory
 
@@ -51,6 +73,12 @@ VAL_SCENES = Path(__file__).with_name("val_scenes.json")
 #: others. Open-loop runs take no scene filter, and the regression gate's nuScenes
 #: subset is spread over every val scene (`tools/gate_subsets.py`).
 ENV_SAMPLES = "PADDOCK_NUSCENES_SAMPLES"
+#: Streamed mode's switch (module docstring). Recorded as `config.streamed` when
+#: on; a standard run's config has no such key, so its id and `--resume` check
+#: are what they were before the switch existed.
+ENV_STREAMED = "PADDOCK_NUSCENES_STREAMED"
+#: What `config.streamed` says: one stream per scene, keyed by the scene's name.
+STREAMED_PER_SCENE = "per_scene"
 #: How the scored keyframes are fed, `[benchmarks.nuscenes] sequence`:
 #: "window" (the default) -- each scored keyframe its own episode: a reset, the keyframes before it
 #: (`history_keyframes`), then it;
@@ -231,7 +259,34 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         if wanted := sample_filter():
             digest = hashlib.sha256(",".join(sorted(wanted)).encode()).hexdigest()[:16]
             config["sample_filter"] = f"{len(wanted)} samples, sha256 {digest}"
+        if self.streamed:
+            config["streamed"] = STREAMED_PER_SCENE
         return config
+
+    # ---- streamed mode (module docstring) -------------------------------
+
+    @property
+    def streamed(self) -> bool:
+        return streamed_switch(ENV_STREAMED)
+
+    def stream_mode(self) -> str | None:
+        return STREAMED_PER_SCENE if self.streamed else None
+
+    def serial_streams(self) -> bool:
+        """A scene's keyframes share one stream, so they are planned in order on one node."""
+        return self.streamed
+
+    def remarks(self) -> list[str]:
+        if not self.streamed:
+            return super().remarks()
+        return [
+            *super().remarks(),
+            f"streamed ({ENV_STREAMED}): keyframes planned in index order on one node, each naming its "
+            f"scene with its own timestamp and global pose, so the node could hand each the plan it "
+            f"chose for the scene's previous scored keyframe (fed only when that is 0.45-0.55 s "
+            f"earlier, Drive-JEPA's rule); no warm-up. The open-loop protocol hands no model a previous "
+            f"plan. Counts in by_group.streamed",
+        ]
 
     def invalid_reasons(self) -> list[str]:
         """A run on a sample list is a subset, whether or not `--limit` came with it.
@@ -278,10 +333,13 @@ class NuScenesBenchmark(OpenLoopBenchmark):
         return problems
 
     def preflight(self) -> list[str]:
-        problems: list[str] = []
+        problems: list[str] = streamed_switch_problems(ENV_STREAMED)
         dataset = self.dataset
         if dataset is None:
-            return ["dataset 'nuscenes' is not configured in paddock.toml ([datasets.nuscenes] path = ...)"]
+            return [
+                *problems,
+                "dataset 'nuscenes' is not configured in paddock.toml ([datasets.nuscenes] path = ...)",
+            ]
         try:
             root = dataset.resolve()
         except Exception as exc:  # noqa: BLE001 - any resolution failure is the finding
@@ -306,6 +364,12 @@ class NuScenesBenchmark(OpenLoopBenchmark):
             problems.append(
                 'sequence = "scene" feeds keyframes; camera_history replaces them with camera sweeps '
                 "(openpilot's), so the two cannot be combined"
+            )
+        if self.in_sequence() and self.streamed:
+            problems.append(
+                f'sequence = "scene" and {ENV_STREAMED} are two ways of carrying a model\'s state through a '
+                "scene (one /infer_each episode per scene, or one node handed its own previous plan per "
+                "keyframe); set one"
             )
         if camera_history:
             image_root = Path(self.setting("history_image_root") or str(root))
@@ -557,6 +621,9 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 window = H.before(self._camera_history_cache[cur.scene], cur.timestamp_us, history_s) + [cur]
             observations = [self._observation(f, cmd, maneuver, distance) for f in window]
         sample_id = self._sample_id(cur)
+        # The last observation is `cur`'s in every history mode: the scene's
+        # stream, at the scored keyframe's own time and global pose.
+        stream = stream_frame(cur.scene, observations[-1]) if self.streamed else None
         self._boxes[sample_id] = [L.boxes_to_ego(cur.ego2world, f.boxes_world) for f in future]
         return Sample(
             sample_id=sample_id,
@@ -575,6 +642,7 @@ class NuScenesBenchmark(OpenLoopBenchmark):
                 "index_in_scene": cur.index_in_scene,
                 "command": cmd,
             },
+            stream=stream,
         )
 
     def _observation(self, frame, cmd: int, maneuver, distance) -> Observation:

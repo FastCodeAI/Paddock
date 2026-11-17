@@ -1,0 +1,11 @@
+# A constant-velocity baseline that actually runs. The fork ships one that
+# cannot: ConstantVelocityAgent still has the stock two-argument
+# compute_trajectory override while the fork's scoring script passes four.
+_target_: paddock.adapters.benchmarks.navsim.agent.PaddockConstantVelocityAgent
+_convert_: 'all'
+
+trajectory_sampling:
+  _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+  _convert_: 'all'
+  time_horizon: 4
+  interval_length: 0.5

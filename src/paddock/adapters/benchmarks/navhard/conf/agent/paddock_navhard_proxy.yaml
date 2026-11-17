@@ -1,0 +1,38 @@
+# Forwards NAVSIM's AgentInput to a paddock policy node over HTTP. The harness
+# fills node_url, cameras and sensor_blobs_path from the model's registry entry
+# and the site's paddock.toml -- never hardcode them here.
+_target_: paddock.adapters.benchmarks.navhard.agent.PaddockNavhardProxyAgent
+_convert_: 'all'
+
+node_url: ???
+node_urls: null
+cameras: [CAM_FRONT]
+sensor_blobs_path: null
+# navhard_two_stage/sensor_blobs, the stage-two scenes' images; the harness sets it.
+# Looked up before sensor_blobs_path (agent.py).
+synthetic_blobs_path: null
+# Streamed mode: each real stage-one frame also names its log (with its own timestamp
+# and global pose), so a node that keeps a previous plan per drive -- Drive-JEPA's
+# momentum -- has one; synthetic frames go as they always do. The harness sets it
+# under PADDOCK_NAVHARD_STREAMED, and score.py then plans stage one in time order.
+stream: false
+timeout_s: 600.0
+dump_path: null
+retries: 2
+# A 10 Hz history from nuPlan's full-rate sensor data instead of OpenScene's
+# four 0.5 s frames. The harness sets all three for a model that needs it and
+# leaves them alone otherwise; see dense.py and docs/benchmarks/navsim.md.
+nuplan_root: null
+nuplan_split: null
+dense_hz: 0.0
+history_s: 0.0
+# Views with no nuPlan frames (the full-rate pull holds F0/L0/R0 only) taken from
+# OpenScene's own blobs at its 2 Hz keyframes; the 10 Hz frames in between carry no
+# image for them. Set by the harness when [benchmarks.navsim] keyframe_cameras is on.
+keyframe_cameras: false
+
+trajectory_sampling:
+  _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+  _convert_: 'all'
+  time_horizon: 4
+  interval_length: 0.5

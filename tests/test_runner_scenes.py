@@ -580,6 +580,40 @@ def test_the_released_drivejepa_checkpoint_swapped_by_a_site_is_named(tmp_path) 
     assert _env_override_reasons(_cfg(tmp_path), spec) == [], "no env block, nothing to say"
 
 
+def test_a_checkpoint_copied_to_another_disk_is_not_an_override(tmp_path) -> None:
+    """Drive-JEPA's navhard run loaded the released checkpoint from an SSD copy: same bytes, another path.
+    Content decides, not the name: a different file under the released file's name is still an override."""
+    from paddock.config import SiteConfig
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["drivejepa"]
+    navsim = tmp_path / "navsim"
+    (navsim / "exp").mkdir(parents=True)
+    (tmp_path / "runs").mkdir()
+    copy = tmp_path / "ssd" / "agent.ckpt"
+    copy.parent.mkdir()
+
+    def site(env: dict[str, str]) -> SiteConfig:
+        body = "".join(f'{k} = "{v}"\n' for k, v in env.items())
+        (tmp_path / "site.toml").write_text(
+            f'site = "t"\n[roots]\nrepos = "{tmp_path}"\nruns = "{tmp_path / "runs"}"\n'
+            f'weights = "{tmp_path}"\n'
+            f'[datasets.navsim]\npath = "{navsim}"\nexp = "{navsim / "exp"}"\n[models.drivejepa.env]\n{body}'
+        )
+        return SiteConfig.load(tmp_path / "site.toml")
+
+    cfg = site({})
+    released = Path(cfg.resolve(spec.runtime.env["DRIVEJEPA_CHECKPOINT"], **spec.context(cfg)))
+    released.parent.mkdir(parents=True, exist_ok=True)
+    released.write_bytes(b"released weights")
+    copy.write_bytes(b"released weights")
+    assert _env_override_reasons(site({"DRIVEJEPA_CHECKPOINT": str(copy)}), spec) == []
+    copy.write_bytes(b"finetuned weights")
+    (reason,) = _env_override_reasons(site({"DRIVEJEPA_CHECKPOINT": str(copy)}), spec)
+    assert "DRIVEJEPA_CHECKPOINT" in reason
+
+
 def test_drivejepa_declares_momentum_so_a_site_saying_on_is_not_an_override(tmp_path) -> None:
     """Momentum is part of the model's definition; a site that switches it off is the override."""
     from paddock.registry import Registry

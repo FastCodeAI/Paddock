@@ -1,0 +1,115 @@
+{
+  "run_id": "20261110T000020-53cda0",
+  "site": "fastcode-navvrat-nusc-scene",
+  "benchmark": "nuscenes",
+  "model": "vad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-10T00:00:20+00:00",
+  "duration_s": 3137.8,
+  "repo_sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 5119,
+    "sequences_sha256": "b507a7d90c5ccae9"
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_RIGHT",
+      "CAM_FRONT_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "camera_history": "keyframes",
+    "sequence": "scene",
+    "scoring_hz": 2.0,
+    "inputs": "vad",
+    "declared_env": {
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1",
+      "VAD_CHECKPOINT": "{weights}VAD_base.pth",
+      "VAD_CONFIG": "{repo}VAD_base_stage_2.py"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "VAD",
+      "sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+      "pinned_sha": "1688c4b",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "ba542fd9ede28b2dd9f90cd76422e4271d58f4eb",
+      "dirty": false
+    },
+    "policy": {
+      "episode": 151,
+      "source_size": {
+        "CAM_FRONT_LEFT": [
+          1600,
+          900
+        ],
+        "CAM_BACK": [
+          1600,
+          900
+        ],
+        "CAM_FRONT_RIGHT": [
+          1600,
+          900
+        ],
+        "CAM_FRONT": [
+          1600,
+          900
+        ],
+        "CAM_BACK_LEFT": [
+          1600,
+          900
+        ],
+        "CAM_BACK_RIGHT": [
+          1600,
+          900
+        ]
+      },
+      "quaternion_source": "canbus",
+      "command": 1,
+      "gravity_added": false,
+      "lidar_source": "observation",
+      "plan_lidar": [
+        [
+          -0.206,
+          2.183
+        ],
+        [
+          -0.55,
+          4.667
+        ],
+        [
+          -1.054,
+          7.426
+        ],
+        [
+          -1.649,
+          10.493
+        ],
+        [
+          -2.345,
+          13.711
+        ],
+        [
+          -3.062,
+          17.186
+        ]
+      ],
+      "steps": 34,
+      "frames_fed": 1
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

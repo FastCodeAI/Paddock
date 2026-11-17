@@ -47,8 +47,34 @@ proposals against the scorer's own comfort metric, and letting one model be
 handed them by the scorer while the others are not is not a comparison. (The
 drivejepa node can rebuild them from its own previous plan --
 ``DRIVEJEPA_MOMENTUM`` -- but each scenario here arrives through
-``/infer_sequence``, which resets the node, so on this benchmark it never has a
-previous plan to use.) See docs/benchmarks/navsim.md.
+``/infer_sequence``, which resets the node, so outside streamed mode (below)
+it never has a previous plan to use.) See docs/benchmarks/navsim.md.
+
+**Streamed mode** is the one way a node gets that previous plan here, and it
+never comes from the scorer. Off by default: the request body is then exactly
+``{"observations": [...]}``, as always. Two proxies turn it on:
+
+* this one, on navtest (``PADDOCK_NAVSIM_STREAMED``; the harness passes
+  ``stream=true``). Every frame's request adds ``"stream"``, a
+  `protocol.StreamFrame` (`cache_stream_frame`): the log's name, the frame's
+  own timestamp and its own recorded global pose. They are read from the
+  metric cache the v2 scorer passes -- ``log_name``, ``timepoint`` and
+  ``ego_state.rear_axle``, the state of the frame being planned, which is what
+  upstream's sequential loop hands Drive-JEPA as ``metric_cache.ego_state`` --
+  and nothing else of the cache is read: not its future, not its PDM state.
+  The scorer already plans a log's frames in time order, one worker per log
+  (run_pdm_score_sequential.py), so nothing about the order changes;
+* navhard's (``PADDOCK_NAVHARD_STREAMED``; adapters/benchmarks/navhard/agent.py),
+  for real stage-one frames, from the Scene; a synthetic frame is sent exactly
+  as in a standard run.
+
+The node keeps the book (adapters/models/drivejepa/momentum.py), not this
+proxy, so it can keep its own plan per log across the per-sample reset;
+``past_ego_simulated_states`` -- the scorer's own simulation of the previous
+plan -- stays ignored. The observations are byte-identical to a standard
+run's. The plan dump then also records each frame's ``stream`` and the node's
+``momentum_fed`` (`momentum_fed`); navtest adds ``stream_time_us``, navhard
+``synthetic``.
 """
 
 from __future__ import annotations
@@ -75,10 +101,44 @@ from paddock.adapters.benchmarks.navsim.convert import (
     to_navsim_poses,
 )
 from paddock.adapters.benchmarks.navsim.dense import DenseHistory, as_ego_status
-from paddock.policy.protocol import Command, Observation, constant_velocity
+from paddock.policy.protocol import Command, Observation, StreamFrame, constant_velocity
 
 #: Seconds between proxy retries, multiplied by the attempt number.
 RETRY_BACKOFF_S = 1.0
+
+
+def momentum_fed(body: dict) -> bool | None:
+    """Whether the node says its pick was made against a previous plan.
+
+    Read from the first model-native block of the answer's `extras` -- a dict,
+    as Drive-JEPA's `drivejepa_pick` is -- that carries `momentum_fed`. None
+    when none does: a model with no momentum stage, which is not the same as a
+    stage that had nothing to compare with.
+    """
+    extras = body.get("extras") or {}
+    for block in extras.values():
+        if isinstance(block, dict) and "momentum_fed" in block:
+            return bool(block["momentum_fed"])
+    return None
+
+
+def cache_stream_frame(metric_cache: Any) -> StreamFrame:
+    """The `StreamFrame` of the frame a v2 metric cache was built for (module docstring).
+
+    Three fields of the cache and no others: the log's name, the frame's own
+    time (integer microseconds, the clock upstream's sequential loop measures
+    its 0.55 s cutoff on) and the frame's recorded global rear-axle pose.
+    Raises when the scorer passed no cache: a frame that cannot name its log
+    must fail, not be planned as though it had no previous frame.
+    """
+    if metric_cache is None:
+        raise RuntimeError("streamed mode needs the metric cache and the scorer passed none")
+    rear_axle = metric_cache.ego_state.rear_axle
+    return StreamFrame(
+        key=str(metric_cache.log_name),
+        timestamp_us=int(metric_cache.timepoint.time_us),
+        pose=(float(rear_axle.x), float(rear_axle.y), float(rear_axle.heading)),
+    )
 
 
 def scene_label(scene: Any) -> dict:
@@ -190,8 +250,13 @@ class PaddockProxyAgent(_PaddockAgentBase):
         dense_hz: float = 0.0,
         history_s: float = 0.0,
         keyframe_cameras: bool = False,
+        stream: bool = False,
     ) -> None:
         super().__init__(trajectory_sampling)
+        # Streamed mode (module docstring). Read by this class's v2
+        # `compute_trajectory` only: the v1 proxy plans from the Scene and
+        # never streams, and navhard's proxy sets it under its own switch.
+        self._stream = bool(stream)
         # One node per scorer worker, when the harness started several. Each
         # worker is its own process and picks by PID, so the assignment is
         # sticky for the life of the run and, with the consecutive PIDs a
@@ -309,7 +374,7 @@ class PaddockProxyAgent(_PaddockAgentBase):
         for name in self._cameras:
             camera = getattr(cameras, CAMERA_SLOTS[name])
             if camera.camera_path is not None and self._sensor_blobs_path:
-                image_paths[name] = os.path.join(self._sensor_blobs_path, str(camera.camera_path))
+                image_paths[name] = self._image_path(str(camera.camera_path))
             elif camera.image is not None:
                 images[name] = np.asarray(camera.image)
             else:
@@ -335,6 +400,11 @@ class PaddockProxyAgent(_PaddockAgentBase):
             # the lidar frame need not assume this benchmark's convention.
             lidar2ego=np.eye(4),
         )
+
+    def _image_path(self, relative: str) -> str:
+        """A Camera's camera_path is relative to the blob root its scene was
+        loaded from. One root here; navhard's proxy has two (real and synthetic)."""
+        return os.path.join(self._sensor_blobs_path, relative)
 
     def _frame_payload(self, agent_input: AgentInput, index: int, yaw_rate: float) -> dict[str, Any]:
         return self._observation(agent_input, index, yaw_rate).to_wire()
@@ -389,8 +459,15 @@ class PaddockProxyAgent(_PaddockAgentBase):
         observation_interval: Any = None,
     ) -> Trajectory:
         """The v2 scorer's call. The privileged arguments are accepted and
-        ignored (module docstring); the metric cache only labels the plan dump."""
-        return self._plan(agent_input, self._cache_label(metric_cache))
+        ignored (module docstring); the metric cache only labels the plan dump,
+        and in streamed mode also names the frame's log, time and pose
+        (`cache_stream_frame`)."""
+        label = self._cache_label(metric_cache)
+        if not self._stream:
+            return self._plan(agent_input, label)
+        frame = cache_stream_frame(metric_cache)
+        streamed = {"stream": frame.key, "stream_time_us": frame.timestamp_us}
+        return self._plan(agent_input, label, stream=frame, streamed=streamed)
 
     @staticmethod
     def _cache_label(metric_cache: Any) -> dict:
@@ -412,8 +489,21 @@ class PaddockProxyAgent(_PaddockAgentBase):
             "time_s": getattr(getattr(metric_cache, "timepoint", None), "time_s", None),
         }
 
-    def _plan(self, agent_input: AgentInput, scenario: dict) -> Trajectory:
-        """Ask the node for a plan and record it under *scenario*'s label."""
+    def _plan(
+        self,
+        agent_input: AgentInput,
+        scenario: dict,
+        stream: StreamFrame | None = None,
+        streamed: dict | None = None,
+    ) -> Trajectory:
+        """Ask the node for a plan and record it under *scenario*'s label.
+
+        Outside streamed mode the last two are None, and the request and the
+        dump line are what they always were. In it, `stream` is the
+        `StreamFrame` sent beside the observations (None for a frame that must
+        stay plain, such as a synthetic one) and `streamed` what the dump line
+        adds about the frame; the node's `momentum_fed` joins it.
+        """
         if self._dense is not None:
             observations = self._dense_payloads(agent_input)
         else:
@@ -438,16 +528,16 @@ class PaddockProxyAgent(_PaddockAgentBase):
 
         import httpx
 
+        payload: dict[str, Any] = {"observations": observations}
+        if stream is not None:
+            payload["stream"] = stream.to_wire()
         body = None
         last_error = None
         for attempt in range(1 + self._retries):
             if attempt:
                 time.sleep(RETRY_BACKOFF_S * attempt)
             try:
-                response = self._http().post(
-                    f"{self._node_url}/infer_sequence",
-                    json={"observations": observations},
-                )
+                response = self._http().post(f"{self._node_url}/infer_sequence", json=payload)
             except httpx.TransportError as exc:
                 last_error = exc
                 continue
@@ -460,6 +550,8 @@ class PaddockProxyAgent(_PaddockAgentBase):
             raise last_error if last_error is not None else RuntimeError("policy node gave no answer")
 
         poses = to_navsim_poses(body["trajectory"], float(body.get("dt", NAVSIM_INTERVAL_S)))
+        if streamed is not None:
+            scenario = {**scenario, **streamed, "momentum_fed": momentum_fed(body)}
         self._record(agent_input, body, poses, scenario, len(observations))
         return Trajectory(poses.astype(np.float32), self._trajectory_sampling)
 

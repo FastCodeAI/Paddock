@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from paddock.registry import load_models
 from paddock.results import report, store
 
 
-def _run(root: Path, bench: str, model: str, run_id: str, scenes: str, score: float, n: int, env=None):
-    config = {"model_env": env} if env else {}
+def _run(
+    root: Path, bench: str, model: str, run_id: str, scenes: str, score: float, n: int, env=None, config=None
+):
+    config = {**({"model_env": env} if env else {}), **(config or {})}
     run = store.RunRecord(
         run_id=run_id,
         site="test",
@@ -92,6 +95,18 @@ def test_a_setting_that_moves_no_score_is_not_a_note(tmp_path: Path) -> None:
     assert "[1]" not in text
 
 
+def test_a_streamed_run_says_so_under_its_row(tmp_path: Path) -> None:
+    """Drive-JEPA's momentum-aware rows feed each log, scene or warm-up in order to one node; the standard
+    protocol scores each sample on its own. Ranked, but a reader must see which it is."""
+    _run(tmp_path, "navsim", "drivejepa", "r1", "aaaa1111", 0.8, 10, config={"streamed": "per_log"})
+    _run(tmp_path, "navsim", "constant_velocity", "r2", "aaaa1111", 0.2, 10)
+
+    text = report.markdown(tmp_path)
+
+    assert "| drivejepa [1] | r1 |" in text and "| constant_velocity | r2 |" in text
+    assert "- [1] drivejepa: streamed (per_log)" in text
+
+
 def test_a_run_of_a_model_no_longer_registered_still_renders(tmp_path: Path) -> None:
     _run(tmp_path, "b", "alpamayo", "r1", "aaaa1111", 0.3, 10, env={"ANYTHING": "1"})
 
@@ -115,8 +130,10 @@ def test_the_stored_stretched_meteor_run_carries_its_note() -> None:
     """The row the issue was filed about, in the real store."""
     navsim = report.markdown().split("## navsim\n", 1)[1].split("\n## ", 1)[0]
 
-    assert "| meteor [1] | 20260914T234307-e56cfc |" in navsim
-    assert "plan continued to 4.0 s by paddock" in navsim
+    # Its mark's number depends on the rows above it in the table (Drive-JEPA's streamed row has one too).
+    mark = re.search(r"\| meteor \[(\d+)\] \| 20260914T234307-e56cfc \|", navsim)
+    assert mark, "the stored stretched METEOR run carries no mark"
+    assert f"- [{mark.group(1)}] meteor: plan continued to 4.0 s by paddock" in navsim
 
 
 def test_every_note_names_a_setting_its_model_or_record_uses() -> None:

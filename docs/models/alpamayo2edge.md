@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md), [hugsim](../benchmarks/hugsim.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md), [alpasim](../benchmarks/alpasim.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -161,6 +161,70 @@ adapter keeps a closed-loop client's frames resized, by the time they were taken
 for the 2 s the slots look back, and forgets them at the next route's reset. A plan
 then resizes its 6 new frames, not all 22.
 
+## On AlpaSim through the bridge
+
+AlpaSim ([alpasim.md](../benchmarks/alpasim.md)) is closed loop on replayed real
+drives. Its scenes are NuRec reconstructions of PhysicalAI-AV recordings, made with
+the camera rig Edge was trained on, so here every slot gets its own camera through
+its own lens. AlpaSim ships no Edge driver, so there is no native row to reproduce.
+The settings are the ones every Alpamayo row on AlpaSim uses: the shared 20 Hz
+control step, 3.0 s of replayed warm-up with the node called throughout, 400 steps
+and the same 30 pinned scenes, with Edge's six cameras rendered instead of Alpamayo
+1.5's four (`alpasim.yaml` and `driver/paddock_bridge_alpamayo2edge.yaml` in the
+adapter's folder).
+
+**Cameras.** AlpaSim renders six cameras at 1920×1080, 20 Hz, 30 ms shutter, and
+the bridge renames them to the node's names:
+
+| Edge slot | Trained on | AlpaSim renders |
+|---|---|---|
+| 0 cross left | 120° | `camera_cross_left_120fov` as `CAM_FRONT_LEFT` |
+| 1 front wide | 120° | `camera_front_wide_120fov` as `CAM_FRONT` |
+| 2 cross right | 120° | `camera_cross_right_120fov` as `CAM_FRONT_RIGHT` |
+| 3 rear left | 70° | `camera_rear_left_70fov` as `CAM_BACK_LEFT` |
+| 5 rear right | 70° | `camera_rear_right_70fov` as `CAM_BACK_RIGHT` |
+| 6 front telephoto | 30° | `camera_front_tele_30fov` as `CAM_FRONT_TELE` |
+
+The lenses are f-theta, and the bridge sends no pinhole intrinsics for them. A frame
+that comes without intrinsics is not cropped: it is resized whole to 1920×1080, which
+for a frame already that size is nothing, and then the vendor's own resize runs as on
+every source. A slot that would need a crop, the telephoto cut out of `CAM_FRONT`, is
+refused for such a frame by name instead of approximated. On AlpaSim it never needs
+one: a `CAM_FRONT_TELE` in the request fills slot 6 itself. `CAM_FRONT_TELE` is not
+in `model.yaml`'s `cameras`, which is what a simulator is asked to render, so neuroNCAP
+and Bench2Drive are never asked for it; the node decodes it whenever it is sent.
+
+**Frames and history.** The node is asked for a plan every 100 ms and hears the
+step between through `/observe`, so it holds a frame of every camera and a pose
+every 50 ms. Every slot then gets exactly the frame its time asks for, and every one
+of the 20 history poses is a recorded one. The warm-up is 3.0 s, longer than the
+2.0 s the oldest slot looks back, so this holds from the first plan AlpaSim drives.
+`--canbus-ego-frame` sends the car's forward and sideways speed in its own frame, and
+replaces the zeros AlpaSim reports during the warm-up with the speed from its poses.
+
+**Route.** AlpaSim's command is `FOLLOW_REFERENCE` at every step, which reads as
+"Continue straight". What it holds is the route polyline, and the bridge sends it
+with the time of the car frame it is in. The node moves the route into the newest
+pose's frame through the pose at that time and classifies the bend ahead by heading
+change, as AlpaSim's own Alpamayo driver does (`inputs.route_to_nav_text`, ported
+from AlpaSim's `nav_text.py`): "Turn left in 20m", "Turn right in 9m" or "Continue
+straight", with turns nearer than 5 m or beyond 40 m ignored. A route with no usable
+point falls back to the command, so "Continue straight": Edge refuses an input with
+no sentence, where AlpaSim's driver gives Alpamayo 1.5 none.
+
+**Plan.** All 64 poses go back, 0.1 s apart, with the model's own headings, and the
+bridge drives them all.
+
+**Checked.** `tests/test_alpasim_inputs.py` covers the slots, the uncropped frames,
+the route and its move into the newest frame, and that the route port agrees with
+alpamayo15's port of the same function. `tests/test_alpasim_vendor.py`, in the model's
+environment, puts a full-size 1920×1080 AlpaSim sample with the telephoto through
+NVIDIA's `validate_sample` and `prepare_model_inputs`. Run on the real checkpoint on an H200 with
+AlpaSim-shaped requests (20 Hz pixels at 1916×1080, no intrinsics, the telephoto, a
+route 0.5 s old), one plan took 0.5 s after the first, every slot's frame times were
+the vendor's, and a turn 24 m ahead on a route 0.5 s old at 8 m/s read "Turn left
+in 20m". The 30-scene result is under [Results, AlpaSim](#alpasim).
+
 ## Settings
 
 Each is read from the environment of the node; `model.yaml` declares the defaults.
@@ -174,7 +238,6 @@ Each is read from the environment of the node; `model.yaml` declares the default
 | `ALPAMAYO2_EDGE_NAV_DISTANCE_M` | unset | a distance for turns the source gives none ("Turn left in 20m") | no |
 | `ALPAMAYO2_EDGE_SAVE_REASONING` | `0` | `1` keeps the rationale's first 400 characters in each plan's extras | yes |
 | `ALPAMAYO2_EDGE_ABSENT_CAMERAS` | `refuse` | `black`: a slot whose camera the source never sends gets a black frame at each time it asks for, and is named in `black_slots`. comma2k19 needs it | yes, with a note |
-| `ALPAMAYO2_EDGE_THREADS` | `4` | torch's CPU threads in the node; the plan is the same at any count | yes |
 
 No default was chosen by scoring navtest. They are the vendor's settings, plus the
 reasons above.
@@ -191,10 +254,16 @@ Edge on comma2k19, set it for that pairing alone in `paddock.toml`:
 ALPAMAYO2_EDGE_ABSENT_CAMERAS = "black"
 ```
 
-`ALPAMAYO2_EDGE_THREADS` exists because torch takes every core by default. On a
-48-core machine shared with CARLA, the vendor's processor then took 1.4 s to pack one
-plan's 22 frames, where 4 threads take 0.18 s and 16 take 0.07 s. The packed pixels
-and the plan were bit-identical at 2, 4, 8, 16 and 48 threads, on one input.
+`model.yaml` also sets `OMP_NUM_THREADS` to 4, the CPU threads torch and numpy use in
+the node, because torch takes every core by default. On a 48-core machine shared with
+CARLA, the vendor's processor then took 1.4 s to pack one plan's 22 frames, where 4
+threads take 0.18 s and 16 take 0.07 s. The packed pixels and the plan were
+bit-identical at 2, 4, 8, 16 and 48 threads, on one input. The runner counts
+`OMP_NUM_THREADS` as a speed setting for every model, so a site that sets its own in
+`[models.alpamayo2edge.env]` in `paddock.toml` keeps its run ranked. Edge's Bench2Drive
+record was driven when the 4 threads came from a setting of Edge's own,
+`ALPAMAYO2_EDGE_THREADS`, which its notes name: it set torch's threads alone and left
+numpy's at every core.
 
 The seed is set before every plan. A plan therefore depends on its input alone, not
 on the node, the order, a retry or a resumed run. It is still one draw: on one
@@ -226,7 +295,8 @@ the same steps (`prepare_inputs`). A test checks that both give the same tensors
 ## Tests
 
 `make check` runs `tests/test_inputs.py` and `tests/test_policy.py` in paddock's own
-environment, with the model stubbed. `tests/test_vendor_inputs.py` needs the model's
+environment, with the model stubbed. `tests/test_vendor_inputs.py` and
+`tests/test_alpasim_vendor.py` need the model's
 environment and the checkpoint's config, tokenizer and processor. It runs on the CPU
 and loads no weights. `make check-alpamayo2edge` runs the whole folder there, and
 fails rather than skips when the environment or the checkpoint is missing:
@@ -363,7 +433,7 @@ frame is the one at the time Edge asks for and no pose history is extrapolated. 
 
 The first is the support-matrix cell. It is given the route the way Alpamayo 1.5's
 cell (`legacy-full-nav`, 1.002 m) is: a turn on 39 of the 223 keyframes, from the
-recorded future ([kitscenes.md](../benchmarks/kitscenes.md#the-eight-rows-and-where-each-came-from)
+recorded future ([kitscenes.md](../benchmarks/kitscenes.md#the-rows-and-where-each-came-from)
 says how that column was made here). The second shows what the route is worth. The 184
 keyframes told to go straight give identical plans in both runs; on the 39 turns ADE
 moves from 1.068 to 1.012 m, a paired bootstrap 95% interval of −0.172 to +0.014 m.
@@ -460,7 +530,7 @@ is the scenario's command, so a turn has no distance ("Turn right").
 | 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54 % | `neuroncap/alpamayo2edge/20261111T231934-33adca` |
 
 Fifth of the eight model rows on the full set: below Drive-JEPA (4.13), Alpamayo 1.5 (3.73), OpenPilot
-(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.58). Side impacts are
+(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.49). Side impacts are
 its weak column: 38 of 50 side runs collided, every run in `side-0103` and `side-0921`. It
 avoided every collision in four pairs: `stationary-0106`, `stationary-0108`, `side-0108` and
 `frontal-0346`.
@@ -472,3 +542,75 @@ closed-loop wire and neuroNCAP code are this branch's, but for two things that c
 nothing here: the stride helper was named `wire_stride`, and the adapter did not yet have
 `ALPAMAYO2_EDGE_ABSENT_CAMERAS`, whose default refuses a missing camera as it did then;
 neuroNCAP sends all five.
+
+### AlpaSim
+
+The 30 pinned `public_2601` scenes (26.01 artifacts), the set every AlpaSim row since the
+scene set was recorded is on, at the shared 20 Hz control step. Edge sees its own six
+cameras through their own lenses, the real telephoto among them, and its route sentence
+comes from AlpaSim's route ([On AlpaSim through the bridge](#on-alpasim-through-the-bridge)).
+
+| scene_score ↑ | Progress ↑ | At-fault collision ↓ | Offroad ↓ | Distance to the human's path ↓ | Run |
+|---:|---:|---:|---:|---:|---|
+| **0.437** | 0.628 | 23 % (7 of 30) | 20 % (6 of 30) | 2.94 m | `alpasim/alpamayo2edge/20261112T220852-f6d995` |
+
+Sixth of nine rows on these 30 scenes: below Alpamayo 1.5 (0.795), OpenPilot (0.773),
+Qwen-Drive (0.700), VisionPilot (0.629) and the constant-velocity floor (0.488), above
+METEOR (0.423), Drive-JEPA (0.421) and AutoE2E (0.169). A scene that ends in an at-fault
+collision or off the road scores 0, and 13 of the 30 did; the other 17 average 0.77, and six
+of them scored 1.0. Where it collided or
+left the road it had decided to: the last rationale before the end is a deliberate move, as
+in "Steer right into the open roadway and accelerate to bypass the road debris ahead" or a
+left turn on a green arrow, not a plan that stopped making sense. It also leaves the human's
+line on purpose elsewhere ("Change lanes to the left to overtake the slower lead vehicle"),
+which `dist_to_gt_trajectory` counts against it up to its 4 m cap. Alpamayo 1.5's row is on
+the same settings but four cameras, so the gap is the two models, not the harness; Edge also
+sits below Alpamayo 1.5 on neuroNCAP (2.92 against 3.73).
+
+What was checked on this run, rather than argued: every scene ran its full length (168 or 169
+plans each, 5,048 in all); every plan came back whole and was driven on the model's own
+headings (`bridge_plans`: 5,048 `model`, 0 `derived`); every route sentence came from
+AlpaSim's route (`from route` on all 5,048), 520 of them a turn; the first scene, driven twice,
+scored the same to the last digit. Edge wrote `<NOMINAL>` on 2,216 plans (44 %) and no plan was
+drawn again.
+
+Made at `c372441` with no local changes, on one of the site's H200s shared with the
+simulator, 3.3 hours (about 6.6 minutes a scene). On this site Docker cannot mount either
+NFS share, so the AlpaSim checkout, the scene cache and the run directory were on local
+`/tmp`; that changes where files are, not what is computed.
+
+### Bench2Drive
+
+Every route of `bench2drive220.xml`, driven under the
+[220-route protocol](../benchmarks/bench2drive.md#the-220-route-protocol): asked at its
+declared 10 Hz, routes ended after 30 s without progress or at four times the expert's
+time, up to three attempts a route. 216 routes were driven on two A100s; the four that
+site set aside for every model (3800, 11715, 23695, 24071) were driven here later under
+patch 0003, from the same commit (`f873bc2`), and pooled with them.
+
+| Routes | Driving score ↑ | Route completion ↑ | Infraction penalty ↑ | Run | How |
+|---|---:|---:|---:|---|---|
+| 220 of 220 | **13.87** | 38.78 % | 0.483 | `bench2drive/alpamayo2edge/full220-86aa45e768a29a64-ffe60a` | 216 routes: 4 workers on each of two A100s, 11.6 h; 4 routes: one RTX PRO 6000 Blackwell, 1 h |
+
+It replaces the 216-route record `full220-836dda734659a86c-56db50` (13.74). It ranks
+tenth of the eleven models in that column, just below AutoE2E (14.29) and above METEOR
+(1.89). The tables, and Bench2Drive's own scores for the 216 routes, are in
+[bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
+
+- **The four routes driven here** scored 16.55 (3800), 41.46 (11715), 21.11 (23695)
+  and 4.77 (24071). The 30 s rule ended three of them and the over-time rule 11715;
+  23695 and 24071 have a collision. Each scored on its first attempt, and patch 0003
+  acted on 11715, 23695 and 24071.
+
+The rest of this part is over the 216 routes driven on the A100s.
+
+- **It completes 16 routes, and none is a success.** Each of the 16 has an
+  infraction, and 142 of the 216 routes have a collision.
+- **Its one ability is Traffic signs:** 52 of 94 routes got past their first junction
+  with no red light or stop sign run, the most of any model in the column.
+- **Most routes end on the 30 s rule:** 166 of 216, and 14 on the over-time rule.
+- **The model wrote `<NOMINAL>` in 18 % of plans** (18,069 of 99,399), against 37 %
+  of NAVSIM scenarios, and a rationale in the rest.
+- **One plan was drawn again.**
+- **With eight nodes sharing the two cards,** a plan took 2.1 s in the model at the
+  median, 14.2 s at most.
