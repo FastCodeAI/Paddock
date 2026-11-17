@@ -15,6 +15,9 @@ two runs of it is the harness, never the policy.
 
 from __future__ import annotations
 
+import math
+import os
+
 import numpy as np
 
 # N_WAYPOINTS and CANBUS_VELOCITY come from the protocol, not from here. This
@@ -38,8 +41,22 @@ class ConstantVelocityPolicy(Policy):
     #: history would change nothing and only obscure that.
     self_prime: bool = False
 
+    def __init__(self) -> None:
+        # A closed-loop route starts at rest, and the measured speed of a car at
+        # rest plans to stay at rest: on Bench2Drive the floor never moves (DS 0,
+        # RC 0 on every route). PADDOCK_CV_SPEED_M_S drives it at that fixed speed
+        # instead -- the speed bands of the 50-route Bench2Drive records. It is in
+        # model.yaml's score_notes, so a ranked run that sets it says so.
+        raw = os.environ.get("PADDOCK_CV_SPEED_M_S", "").strip()
+        self.fixed_speed: float | None = None
+        if raw:
+            fixed = float(raw)
+            if not math.isfinite(fixed) or fixed <= 0:
+                raise ValueError(f"PADDOCK_CV_SPEED_M_S must be a positive finite speed, got {raw!r}")
+            self.fixed_speed = fixed
+
     def infer(self, obs: Observation) -> Trajectory:
-        speed = self.speed_of(obs)
+        speed = self.speed_of(obs) if self.fixed_speed is None else self.fixed_speed
         # x forward, y left; evenly spaced from t = dt, no waypoint for "now".
         distances = speed * self.waypoint_dt * np.arange(1, N_WAYPOINTS + 1, dtype=np.float64)
         waypoints = np.zeros((N_WAYPOINTS, 2), dtype=np.float64)

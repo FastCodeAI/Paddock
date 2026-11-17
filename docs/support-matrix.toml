@@ -72,6 +72,14 @@ name = "AlpaSim"
 loop = "closed"
 header = "nuRec scene score ↑ (0–1), 30 of 913 scenes"
 decimals = 4
+# HUGSIM's 420 runnable scenarios of 436 (the release cannot run 16), the whole plan sent (up to 4 s), each model at
+# its own rate; docs/benchmarks/hugsim.md, Results. HD-Score as stored, 0-1 (the page's tables show it x100).
+[[benchmark]]
+key = "hugsim"
+name = "HUGSIM"
+loop = "closed"
+header = "HD-Score ↑ (0–1), 420 of 436 scenarios"
+decimals = 3
 
 [[model]]
 key = "openpilot"
@@ -128,6 +136,7 @@ navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz"
 bench2drive = { run = "bench2drive/openpilot/full220-86aa45e768a29a64-102db6", marks = "P" }  # routes can end early; it ranks
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
+hugsim = { run = "hugsim/openpilot/fullplan-f7d8f9d4b9736ddd-cac3b5", note = "4 Hz" }  # below its 10 Hz min_input_hz: HUGSIM steps at 4 Hz (hugsim.md)
 
 [cells.alpamayo15]
 nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd", marks = "A" }  # five nuScenes-built sets on its card
@@ -138,6 +147,7 @@ navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", 
 bench2drive = { run = "bench2drive/alpamayo15/full220-86aa45e768a29a64-600411", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the bridge, 30 scenes
+hugsim = { run = "hugsim/alpamayo15/fullplan-f7d8f9d4b9736ddd-7ea973" }
 
 [cells.alpamayo2edge]
 # A model built for 0.1 s frames, on OpenScene's 2 Hz: it has not been run on nuPlan's
@@ -151,6 +161,8 @@ nuscenes = { run = "nuscenes/alpamayo2edge/20261111T231928-e4e2d6", note = "2 Hz
 neuroncap = { run = "neuroncap/alpamayo2edge/20261111T231934-33adca" }
 # One recorded camera in 2 of its 6 slots, the other 4 black (ALPAMAYO2_EDGE_ABSENT_CAMERAS).
 comma2k19 = { run = "comma2k19/alpamayo2edge/20261112T012152-9b1e09" }
+# Through the bridge on its own six cameras, the real telephoto among them, 30 scenes.
+alpasim = { run = "alpasim/alpamayo2edge/20261112T220852-f6d995" }
 
 [cells.drivejepa]
 nuscenes = { run = "nuscenes/drivejepa/20261105T201953-308dc5" }
@@ -161,6 +173,7 @@ navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
 bench2drive = { run = "bench2drive/drivejepa/pooled220-86aa45e768a29a64-1507a1", note = "2 Hz" }
 neuroncap = { run = "neuroncap/drivejepa/20261012T224707-f11ac0" }
 alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
+hugsim = { run = "hugsim/drivejepa/fullplan-f7d8f9d4b9736ddd-b89341", note = "2 Hz" }
 
 [cells.visionpilot]
 nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5", marks = "S" }
@@ -171,6 +184,7 @@ navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583", marks = "S" 
 bench2drive = { run = "bench2drive/visionpilot/pooled220-86aa45e768a29a64-9f3c17" }
 neuroncap = { run = "neuroncap/visionpilot/20260905T121810-155d36", marks = "S" }
 alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes", marks = "S" }
+hugsim = { run = "hugsim/visionpilot/fullplan-f7d8f9d4b9736ddd-92c0b7" }
 
 [cells.meteor]
 nuscenes = { run = "nuscenes/meteor/20260914T202122-4320bb" }
@@ -183,6 +197,7 @@ navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 bench2drive = { run = "bench2drive/meteor/full220-86aa45e768a29a64-2144df", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
+hugsim = { run = "hugsim/meteor/fullplan-f7d8f9d4b9736ddd-241d7f" }
 
 [cells.qwendrive]
 nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e", marks = "A" }  # VLM trained on nuScenes train
@@ -193,6 +208,7 @@ navsim_v1 = { run = "navsim_v1/qwendrive/20261104T205054-df25d5", marks = "A" }
 bench2drive = { run = "bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
 alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8" }
+hugsim = { run = "hugsim/qwendrive/fullplan-f7d8f9d4b9736ddd-1ddf85", note = "2 Hz" }
 
 [cells.autoe2e]
 nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # camera encoder trained on nuScenes train
@@ -205,6 +221,15 @@ navsim_v1 = { run = "navsim_v1/autoe2e/20261104T210206-3022fb", marks = "A", not
 bench2drive = { run = "bench2drive/autoe2e/full220-86aa45e768a29a64-740c68", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
+hugsim = { run = "hugsim/autoe2e/fullplan-f7d8f9d4b9736ddd-4d9640" }
+
+[cells.uniad]
+bench2drive = { run = "bench2drive/uniad/full220-86aa45e768a29a64-fb1f0a", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
+hugsim = { run = "hugsim/uniad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
+
+[cells.vad]
+bench2drive = { run = "bench2drive/vad/full220-86aa45e768a29a64-6cb75d", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
+hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
@@ -214,3 +239,5 @@ navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
 neuroncap = { value = 0, source = "docs/benchmarks/neuroncap.md", note = "by construction" }
 alpasim = { run = "alpasim/constant_velocity/legacy-cv_023_20hz_30scenes" }
+bench2drive = { run = "bench2drive/constant_velocity/full220-3mps-86aa45e768a29a64-c8f3e4", note = "3 m/s" }  # routes start at rest: a fixed target
+hugsim = { run = "hugsim/constant_velocity/fullplan-f7d8f9d4b9736ddd-a8f5b7" }
