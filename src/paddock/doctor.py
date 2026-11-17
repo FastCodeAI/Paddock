@@ -10,6 +10,7 @@ Nothing here mutates anything. It is safe to run at any time.
 
 from __future__ import annotations
 
+import errno
 import os
 import subprocess
 from collections.abc import Sequence
@@ -21,6 +22,28 @@ from paddock.config import ConfigError, SiteConfig
 from paddock.registry import Registry
 from paddock.runtime import env as env_builder
 from paddock.runtime import gpu
+
+# The errors that mean "no interpreter here". exists() swallowed these and nothing else.
+_MISSING_ERRNOS = frozenset({errno.ENOENT, errno.ENOTDIR, errno.ELOOP, errno.EBADF})
+
+
+def interpreter_present(interpreter: Path) -> bool:
+    """Whether the interpreter path resolves to something, by stat() rather than exists().
+
+    exists() returns False on a permission error on Python 3.14, so an interpreter this
+    account cannot reach read as merely missing. stat() raises PermissionError there, and
+    that is re-raised for the caller to name the model. Any other OSError that does not
+    mean missing is raised too, rather than reported as a missing interpreter.
+    """
+    try:
+        interpreter.stat()
+    except PermissionError:
+        raise
+    except OSError as exc:
+        if exc.errno in _MISSING_ERRNOS:
+            return False
+        raise
+    return True
 
 
 class Status(Enum):
@@ -317,13 +340,8 @@ def run(model_filter: str | None = None) -> Report:
         except ConfigError as exc:
             report.add("models", name, Status.FAIL, "", str(exc))
             continue
-        # stat(), not exists(): on Python 3.14 exists() returns False for a permission
-        # error, so an unreachable interpreter was reported as merely missing.
         try:
-            interpreter.stat()
-            present = True
-        except (FileNotFoundError, NotADirectoryError):
-            present = False
+            present = interpreter_present(interpreter)
         except PermissionError:
             # A folder on the way this account may not enter, often a venv built on a
             # Python inside someone's home folder. It crashed doctor whole, run as a
