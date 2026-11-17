@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md), [alpasim](../benchmarks/alpasim.md), [hugsim](../benchmarks/hugsim.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md), [alpasim](../benchmarks/alpasim.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -419,6 +419,29 @@ What the plans look like, from the run's plan dump and node logs:
 - **The model wrote `<NOMINAL>` in 37 % of scenarios** (4,488 of 12,146) and a
   rationale in the rest.
 - **Two plans were drawn again**, the two the first run lost, both at seed 44.
+
+### navhard
+
+NAVSIM v2.2's two-stage protocol on `navhard_two_stage`
+([navhard.md](../benchmarks/navhard.md#results)): all 450 stage-one frames scored,
+none failed, on OpenScene's 2 Hz frames, the only rate navhard's synthetic follow-ups
+exist at. It ran as one node on the site's shared RTX PRO 6000 in 3.5 h.
+
+| Benchmark | Score | stage one | stage two | Run |
+|---|---:|---:|---:|---|
+| navhard | **0.180** EPDMS | 0.501 | 0.340 | `navhard/alpamayo2edge/20261113T111924-f36c51` |
+
+**The frames are the ones the other rows used.** The record carries
+`sequences_sha256: 3af39efa412cc8df`, as all nine earlier navhard records do, and its
+per-frame mean (0.179572) equals the devkit's combined row
+(`by_group.source_aggregates.paddock_check`).
+
+Alpamayo 1.5 scores 0.193 on the same frames (0.507 and 0.366 by stage), so Edge sits
+just below it, fifth of ten. What pulls the score down, from the record's sub-metrics:
+drivable-area compliance (0.636 in stage one, 0.647 in stage two), lane keeping in
+stage two (0.479) and two-frame extended comfort (0.409 and 0.444). Traffic-light
+compliance (0.996) and no at-fault collisions in stage one (0.912) are high. EPDMS is a
+per-frame product, so its median frame scores 0.
 
 ### KITScenes
 
