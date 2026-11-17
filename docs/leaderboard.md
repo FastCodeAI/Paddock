@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-108 runs across 9 benchmarks.
+111 runs across 9 benchmarks.
 62 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -14,6 +14,7 @@
 | qwendrive | 20261027T215528-d231d8 | 30 | 0.700 | 0.787 | 0.333 | 0.167 | 0.067 | 0.631 | 2.177 |
 | visionpilot | visionpilot_v2_30scenes | 30 | 0.629 | 0.636 | 0.367 | 0.133 | 0.033 | 0.570 | 1.740 |
 | constant_velocity | cv_023_20hz_30scenes | 30 | 0.488 | 0.541 | 0.267 | 0.067 | 0.167 | 0.447 | 2.189 |
+| alpamayo2edge | 20261112T220852-f6d995 | 30 | 0.437 | 0.628 | 0.233 | 0.233 | 0.200 | 0.370 | 2.942 |
 | meteor | meteor_011_published_30scenes | 30 | 0.423 | 0.430 | 0.333 | 0.033 | 0.167 | 0.469 | 1.694 |
 | drivejepa | drivejepa_014_20hz_30scenes | 30 | 0.421 | 0.509 | 0.400 | 0.233 | 0.167 | 0.465 | 2.056 |
 | autoe2e | 20261022T045847-86b955 | 30 | 0.169 | 0.287 | 0.333 | 0.300 | 0.233 | 0.121 | 2.855 |
@@ -37,6 +38,7 @@
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | visionpilot | pooled220-86aa45e768a29a64-9f3c17 | 220 | 46.097 | 66.039 | 0.650 | 0.523 | 1.000 | 0.000 | 301.989 |
 | openpilot | full220-86aa45e768a29a64-102db6 | 220 | 43.871 | 55.961 | 0.811 | 0.232 | 1.000 | 0.000 | 176.775 |
+| constant_velocity [1] | full220-3mps-86aa45e768a29a64-c8f3e4 | 220 | 41.427 | 62.992 | 0.642 | 0.527 | 1.000 | 0.000 | 110.686 |
 | drivejepa | pooled220-86aa45e768a29a64-1507a1 | 220 | 40.742 | 52.674 | 0.827 | 0.241 | 1.000 | 0.000 | 168.731 |
 | alpamayo15 | full220-86aa45e768a29a64-600411 | 220 | 38.221 | 56.775 | 0.744 | 0.400 | 1.000 | 0.000 | 1007.200 |
 | qwendrive | pooled220-86aa45e768a29a64-a23127 | 220 | 27.409 | 61.695 | 0.467 | 0.786 | 1.000 | 0.000 | 227.102 |
@@ -44,6 +46,14 @@
 | vad | full220-86aa45e768a29a64-6cb75d | 220 | 15.582 | 31.454 | 0.672 | 0.527 | 1.000 | 0.000 | 549.497 |
 | autoe2e | full220-86aa45e768a29a64-740c68 | 220 | 14.290 | 27.717 | 0.547 | 0.800 | 1.000 | 0.000 | 594.700 |
 | meteor | full220-86aa45e768a29a64-2144df | 220 | 1.887 | 5.299 | 0.926 | 0.118 | 1.000 | 0.000 | 112.850 |
+
+- [1] constant_velocity: driven at a fixed 3 m/s, not the measured ego speed
+
+### n = 216, scene set 836dda73
+
+| model | run | n | driving_score ↑ | route_completion ↑ | infraction_penalty ↑ | collision_rate ↓ | n_runs ↑ | n_crashed ↑ | duration_s ↑ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alpamayo2edge | full220-836dda734659a86c-56db50 | 216 | 13.740 | 38.839 | 0.481 | 0.657 | 1.000 | 0.000 | 1373.664 |
 
 ### n = 50, scene set 40c29d24
 

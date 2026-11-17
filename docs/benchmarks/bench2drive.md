@@ -1015,6 +1015,7 @@ its own rate. Each record is `paddock ingest`'s pool (`routes = "all"`); the sup
 |---|---|---|---:|---:|---:|---:|---|
 | VisionPilot | every tick | no | 46.10 | 66.04 | 0.650 | 52.27 | [`pooled220-86aa45e768a29a64-9f3c17`](../../results/bench2drive/visionpilot/pooled220-86aa45e768a29a64-9f3c17/run.json) |
 | OpenPilot (P) | every tick | yes | 43.87 | 55.96 | 0.811 | 23.18 | [`full220-86aa45e768a29a64-102db6`](../../results/bench2drive/openpilot/full220-86aa45e768a29a64-102db6/run.json) |
+| Constant velocity (a fixed 3 m/s target, straight ahead) | every tick | no | 41.43 | 62.99 | 0.642 | 52.73 | [`full220-3mps-86aa45e768a29a64-c8f3e4`](../../results/bench2drive/constant_velocity/full220-3mps-86aa45e768a29a64-c8f3e4/run.json) |
 | Drive-JEPA (released NAVSIM v2 checkpoint, zero-shot) | 2 Hz | no | 40.74 | 52.67 | 0.827 | 24.09 | [`pooled220-86aa45e768a29a64-1507a1`](../../results/bench2drive/drivejepa/pooled220-86aa45e768a29a64-1507a1/run.json) |
 | Alpamayo 1.5 | 10 Hz | yes | 38.22 | 56.77 | 0.744 | 40.00 | [`full220-86aa45e768a29a64-600411`](../../results/bench2drive/alpamayo15/full220-86aa45e768a29a64-600411/run.json) |
 | Qwen-Drive, frames every 0.1 s between plans | 2 Hz | no | 27.41 | 61.70 | 0.467 | 78.64 | [`pooled220-86aa45e768a29a64-a23127`](../../results/bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127/run.json) |
@@ -1027,10 +1028,10 @@ What to read with them:
 
 - **Two ways of ending a route.** OpenPilot, Alpamayo 1.5, AutoE2E and METEOR ran under the protocol above: a route
   ends 30 s after the car last made 3 m of progress, or at 4x Think2Drive's time (*Ending routes early*), and is
-  scored as it stood. VisionPilot, Drive-JEPA, Qwen-Drive, UniAD and VAD ran with no early stop: every route
+  scored as it stood. VisionPilot, Drive-JEPA, Qwen-Drive, UniAD, VAD and constant velocity ran with no early stop: every route
   ran until Bench2Drive's own rules ended it (blocked, off route, out of time or finished). For the first three
   that is because their sweep began before the rule was set; UniAD and VAD (9-12 Nov) were run the same way to
-  match them. A route's
+  match them, and constant velocity (13 Nov) the same way. A route's
   score can differ between the two when a car that stalls for 30 s would have moved on.
 - **Two sites for four of them.** The early-stop records hold 216 routes driven at `a100-gpu-vm-002` (6-9 Nov 2026,
   Bench2Drive 7ec25d1 + patches 0001-0002), taken from each record's `upstream_scores.json` rows (*Routes from a
@@ -1040,7 +1041,7 @@ What to read with them:
   `driving_supercombo.onnx` and `modeld`; none of the 14 touches what the adapter imports.
 - **Patch 0003** acted (printed `ActorFlow: removed flow car` in `evaluator.log`) on Drive-JEPA's 11755 and five
   Town13 routes and VisionPilot's 11755; UniAD's 3785, 3800, 23670, 23708 and 24041; VAD's 3785, 3800, 11755, 23658,
-  23670, 23687, 23695 and 24041; Alpamayo 1.5's 3800 and 23695; AutoE2E's 23695 and 24071; and on none of
+  23670, 23687, 23695 and 24041; constant velocity's 11755, 23695, 23708 and 24071; Alpamayo 1.5's 3800 and 23695; AutoE2E's 23695 and 24071; and on none of
   Qwen-Drive's, METEOR's or OpenPilot's. On every other route the code it adds is never reached or never acts.
 - **Up to three attempts per route.** An attempt that broke in the simulator or the client was set aside and the
   route driven again; a poor drive was always kept.
@@ -1081,7 +1082,7 @@ by succeeding: completed, with no infraction but a minimum-speed one. A traffic-
 route also earns that one if the car got past its first junction with no red
 light or stop sign run.
 
-The four paragraphs below describe the 216 routes driven at `a100-gpu-vm-002`.
+The five paragraphs below describe the 216 routes driven at `a100-gpu-vm-002`.
 
 **OpenPilot** drives through openpilot's own longitudinal planner and its
 driver-resume nudge (P), asked every 20 Hz tick, as in its 50-route cell. CARLA
@@ -1118,6 +1119,17 @@ here under patch 0003 (*Routes set aside*); every other route scored on its firs
 here, and is second to openpilot on driving score: 88 routes have a collision, and
 the 30 s rule ended 110 and the over-time rule 22. Six routes are a success; its
 best ability is Traffic signs, 49 of 94 routes.
+
+**Alpamayo 2 Edge** is asked at its declared 10 Hz, the last plan followed in between,
+with five of paddock's cameras, a telephoto crop of the front one, and the route as
+navigation text; the controller follows its plan's own points every 0.5 s. CARLA
+crashed once, on route 23670's first attempt, 66 s in, and the route scored on its
+next. It completes 16 of its 216 routes, and none is a success: each of the 16 has an
+infraction, and 142 of the 216 routes have a collision. Its median route completion
+is 35%, and 19 routes end under 1%. The 30 s rule ended 166 routes and the
+over-time rule 14. Its one ability credit is Traffic signs, for 52 of 94 routes that
+got past their first junction with no red light or stop sign run, the most of any
+model here (Alpamayo 1.5: 49).
 
 ### The 50 routes are not a sample of the 220
 
