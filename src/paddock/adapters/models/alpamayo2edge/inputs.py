@@ -8,7 +8,10 @@ Edge reads one sample, shaped the way the vendor's PhysicalAI-AV loader shapes i
   (3) and rear right (5) at -1, -0.1 and 0 s. Each frame keeps the time it was
   taken, and the prompt prints that time beside it (`<t=-0.5s>`).
 - **20 ego poses** 0.1 s apart, from -1.9 s to now, in the frame of the newest.
-- **One route sentence**, "Turn left in 25m" or "Continue straight".
+- **One route sentence**, "Turn left in 25m" or "Continue straight". Where a
+  source sends a route polyline and its time (AlpaSim), it is classified the way
+  AlpaSim's own Alpamayo driver classifies it (`route_to_nav_text`); everywhere
+  else the source's command or next maneuver decides (`nav_text`).
 
 This module decides which recorded frame fills each slot, crops it, rebuilds the
 pose history at 0.1 s from whatever rate the source records, and writes the
@@ -61,6 +64,20 @@ SLOTS: tuple[tuple[int, str, float | None], ...] = (
 #: The cameras the slots read, CAM_FRONT first: NAVSIM's 10 Hz path anchors its
 #: history on the first declared camera.
 CAMERAS = ("CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK_LEFT", "CAM_BACK_RIGHT")
+#: A real 30 deg telephoto, where a source renders one (AlpaSim, whose scenes are
+#: recordings of Edge's own camera rig). When a source sends it, it fills ID 6 as it
+#: is, instead of a crop of CAM_FRONT: the camera the slot was trained on beats a
+#: crop that only matches its field of view. No other source sends one.
+TELE_CAMERA = "CAM_FRONT_TELE"
+TELE_ID = 6
+
+
+def slots(have_tele: bool) -> tuple[tuple[int, str, float | None], ...]:
+    """SLOTS, with ID 6 read from TELE_CAMERA uncropped when the source sends one."""
+    if not have_tele:
+        return SLOTS
+    return tuple((i, TELE_CAMERA, None) if i == TELE_ID else (i, c, h) for i, c, h in SLOTS)
+
 
 #: Seconds before now each camera's frames are taken at, oldest first
 #: (`_FRONT_OFFSETS_US` and `_OTHER_OFFSETS_US` in the vendor's loader).
@@ -157,6 +174,24 @@ def warp(image: np.ndarray, fx: float, cx: float, cy: float, hfov_deg: float | N
     height, width = image.shape[:2]
     box = crop_box(width, height, fx, cx, cy, hfov_deg)
     resized = Image.fromarray(np.asarray(image, dtype=np.uint8)).crop(box).resize(FRAME_SIZE, Image.BICUBIC)
+    return np.asarray(resized.convert("RGB"), dtype=np.uint8)
+
+
+def fit(image: np.ndarray) -> np.ndarray:
+    """A frame sent without pinhole intrinsics, resized to FRAME_SIZE whole: (1080, 1920, 3) uint8.
+
+    AlpaSim sends its cameras with no K: they are f-theta lenses, which the
+    principal-point crop cannot model, and they are already the lens and field of
+    view of the slot they fill. So nothing is cropped. The resize is there only
+    because the vendor packs all 22 frames into one tensor; a frame already
+    1920x1080 is returned as it came.
+    """
+    image = np.asarray(image, dtype=np.uint8)
+    if image.shape[:2] == (FRAME_SIZE[1], FRAME_SIZE[0]):
+        return image
+    from PIL import Image
+
+    resized = Image.fromarray(image).resize(FRAME_SIZE, Image.BICUBIC)
     return np.asarray(resized.convert("RGB"), dtype=np.uint8)
 
 
@@ -312,6 +347,92 @@ def nav_text(
     if distance is None:
         return f"Turn {side}"
     return f"Turn {side} in {max(0, int(round(distance)))}m"
+
+
+# Route classification below is ported from NVIDIA AlpaSim (https://github.com/NVlabs/alpasim
+# at the sha in repos.yaml), src/driver/src/alpasim_driver/models/nav_text.py
+# (`route_to_nav_text`) and models/alpamayo_base.py (`route_in_rig_at_t0`),
+# Copyright (c) 2026 NVIDIA Corporation, Apache-2.0.
+#
+# AlpaSim gives no command: its bridge sends FOLLOW_REFERENCE, which `nav_text` reads as
+# "Continue straight" at every junction. What AlpaSim holds is the route polyline, and its
+# own Alpamayo driver turns that into the same sentences Edge is trained on, by heading
+# change. alpamayo15/route_nav.py ports the same two functions; they are restated here,
+# number for number, because one adapter does not import another.
+
+#: Shortest segment that still defines a bearing; resampled routes repeat their last point.
+ROUTE_MIN_SEGMENT_M = 1e-3
+#: Turns nearer than this are ignored: the car is already in them.
+ROUTE_MIN_LOOKAHEAD_M = 5.0
+#: Heading change that separates a turn from the road's curvature.
+ROUTE_TURN_DEG = 30.0
+#: Turns beyond this are ignored; a later plan reports them as the car nears.
+ROUTE_MAX_LOOKAHEAD_M = 40.0
+
+
+def route_in_frame(
+    route_xyz: np.ndarray, frame_to_world: np.ndarray, route_frame_to_world: np.ndarray
+) -> np.ndarray:
+    """Route points in the frame `route_frame_to_world`, re-expressed in `frame_to_world`.
+
+    AlpaSim sends the route in the rig frame at the route's own time, which can trail the
+    newest pose; its driver moves it into the newest pose's frame before classifying it.
+    Both poses are 4x4 rig-to-world. NaN rows stay NaN.
+    """
+    relative = np.linalg.inv(np.asarray(frame_to_world, dtype=np.float64)) @ np.asarray(
+        route_frame_to_world, dtype=np.float64
+    )
+    return np.asarray(route_xyz, dtype=np.float64) @ relative[:3, :3].T + relative[:3, 3]
+
+
+def route_to_nav_text(route_in_rig: np.ndarray) -> str | None:
+    """The route ahead as "Turn left in {N}m", "Turn right in {N}m" or "Continue straight".
+
+    `route_in_rig` is (N, 2) or (N, 3) in the newest pose's frame (x forward, y left); rows
+    may be NaN. None when no row is usable: the caller decides what Edge is told then,
+    since Edge, unlike Alpamayo 1.5, refuses an input without a sentence.
+    """
+    route = np.asarray(route_in_rig, dtype=np.float64)
+    if route.size == 0:
+        return None
+    xy = route.reshape(len(route), -1)[:, :2]
+    points = xy[~np.isnan(xy).any(axis=1)]
+    if len(points) == 0:
+        return None
+    if len(points) >= 2:
+        keep = np.ones(len(points), dtype=bool)
+        keep[1:] = np.linalg.norm(np.diff(points, axis=0), axis=1) > ROUTE_MIN_SEGMENT_M
+        points = points[keep]
+    # A heading change needs two segments: with one, the route cannot be told from a
+    # straight road at an angle to the car.
+    if len(points) < 3:
+        return "Continue straight"
+
+    distances = np.linalg.norm(points, axis=1)
+    # The road's starting heading is the chord across the near zone, not the first segment,
+    # so a constant yaw offset between car and road does not read as a turn.
+    near = np.flatnonzero(distances <= ROUTE_MIN_LOOKAHEAD_M)
+    start, end = (near[0], near[-1]) if len(near) >= 2 else (0, 1)
+    base = points[end] - points[start]
+    if np.linalg.norm(base) < ROUTE_MIN_SEGMENT_M:
+        base = points[1] - points[0]
+    initial = np.arctan2(base[1], base[0])
+
+    # Segment k runs points[k] -> points[k + 1]; a turn is placed at its far end, where the
+    # heading change has happened, which is also the distance reported.
+    segments = np.diff(points, axis=0)
+    deviations = np.remainder(np.arctan2(segments[:, 1], segments[:, 0]) - initial + np.pi, 2 * np.pi) - np.pi
+    ends = distances[1:]
+    turning = (
+        (ends >= ROUTE_MIN_LOOKAHEAD_M)
+        & (ends <= ROUTE_MAX_LOOKAHEAD_M)
+        & (np.abs(deviations) > np.radians(ROUTE_TURN_DEG))
+    )
+    if not turning.any():
+        return "Continue straight"
+    index = int(np.argmax(turning))
+    side = "left" if deviations[index] > 0 else "right"
+    return f"Turn {side} in {max(1, round(ends[index]))}m"
 
 
 # -- output ---------------------------------------------------------------------
