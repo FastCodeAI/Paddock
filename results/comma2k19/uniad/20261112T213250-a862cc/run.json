@@ -1,0 +1,137 @@
+{
+  "run_id": "20261112T213250-a862cc",
+  "site": "uvcomma-fastcode-shakaal",
+  "benchmark": "comma2k19",
+  "model": "uniad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-13T13:39:38+00:00",
+  "duration_s": 52485.7,
+  "repo_sha": "532fc330151758c5e345aef74d2a1bf1042e50ab",
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff",
+    "n_expected": 10165
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_RIGHT",
+      "CAM_FRONT_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "ground_truth_frame": "car (recorded future rotated by the route calibration)",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "ego_history_frame": "car (window poses rotated by the route calibration)",
+    "declared_env": {
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1",
+      "UNIAD_CHECKPOINT": "{weights}/uniad/uniad_base_e2e.pth",
+      "UNIAD_CONFIG": "{repo}/projects/configs/stage2_e2e/base_e2e.py",
+      "UNIAD_MOTION_ANCHORS": "{weights}/uniad/motion_anchor_infos_mode6.pkl"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "UniAD",
+      "sha": "532fc330151758c5e345aef74d2a1bf1042e50ab",
+      "pinned_sha": "532fc33",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "79a230f22b3875508d1bff3d716edc8c798d727a",
+      "dirty": false
+    },
+    "policy": {
+      "episode": 743,
+      "blank_views": [
+        "CAM_FRONT_RIGHT",
+        "CAM_FRONT_LEFT",
+        "CAM_BACK",
+        "CAM_BACK_LEFT",
+        "CAM_BACK_RIGHT"
+      ],
+      "source_size": {
+        "CAM_FRONT_RIGHT": [
+          1600,
+          900
+        ],
+        "CAM_FRONT_LEFT": [
+          1600,
+          900
+        ],
+        "CAM_BACK": [
+          1600,
+          900
+        ],
+        "CAM_FRONT": [
+          1164,
+          874
+        ],
+        "CAM_BACK_LEFT": [
+          1600,
+          900
+        ],
+        "CAM_BACK_RIGHT": [
+          1600,
+          900
+        ]
+      },
+      "quaternion_source": "ego2world",
+      "command": 2,
+      "command_record": {
+        "source": "given",
+        "command": 2,
+        "name": "FORWARD",
+        "given": "STRAIGHT"
+      },
+      "gravity_added": true,
+      "lidar_source": "nominal",
+      "plan_lidar": [
+        [
+          -0.044,
+          0.081
+        ],
+        [
+          0.007,
+          0.135
+        ],
+        [
+          -0.027,
+          0.234
+        ],
+        [
+          -0.04,
+          0.489
+        ],
+        [
+          -0.025,
+          0.735
+        ],
+        [
+          0.04,
+          1.079
+        ]
+      ],
+      "steps": 17,
+      "frames_fed": 17
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "resumed: 2748 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}
