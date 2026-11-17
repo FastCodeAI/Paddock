@@ -25,7 +25,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "20260905T121810-155d36",
-  "notes": "Superseded by 20260905T121810-155d36: a single-episode check; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md and docs/ROADMAP.md still quote this one.",
+  "superseded_by": "20261111T204212-854d8b",
+  "notes": "Superseded by 20260905T121810-155d36: a single-episode check; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md and docs/ROADMAP.md still quote this one. Superseded by 20261111T204212-854d8b: 20260905T121810-155d36, which replaced it, is itself replaced by the post-CURV_SCALE re-run.",
   "ingested_from": ""
 }

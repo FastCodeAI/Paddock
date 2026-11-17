@@ -43,6 +43,7 @@ def _client(agent_module, hz: float):
         _native=None,
         _payload=None,
         _plan_us=None,
+        _obs_us=None,
         _http=_Node(),
         _metric_path=None,
         _log=None,
@@ -80,6 +81,38 @@ def test_the_client_asks_at_the_models_rate_and_holds_the_plan_between(agent_mod
     if hz:
         # Asked at frames 0, 10 and 20; every frame between follows the plan last returned.
         assert steered == [1.0] * 10 + [2.0] * 10 + [3.0]
+
+
+class _ObservingNode(_Node):
+    """A node that also takes frames of history (POST /observe) and logs which endpoint each request hit."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.endpoints: list[str] = []
+
+    def post(self, url, json, timeout):
+        self.endpoints.append(url.rsplit("/", 1)[1])
+        if url.endswith("/observe"):
+            return types.SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"observed": True})
+        return super().post(url, json, timeout)
+
+
+@pytest.mark.parametrize("observe, frames", [(10.0, [2, 4, 6, 8, 12, 14, 16, 18]), (0.0, [])])
+def test_between_plans_the_client_hands_frames_at_the_input_rate(agent_module, observe, frames) -> None:
+    """Qwen-Drive: a plan every 0.5 s and, in between, a frame every 0.1 s (POST /observe), so its
+    0.1 s pose history is real; the plan in force is still the last /infer reply."""
+    agent, steered = _client(agent_module, 2.0)
+    agent_module.OBSERVE_HZ = observe
+    agent._http = _ObservingNode()
+    for frame in range(21):  # 1 s of a 20 Hz simulation
+        agent.run_step({"SPEED": (frame, {"speed": 5.0})}, frame * 0.05)
+    asked = [i for i, e in enumerate(agent._http.endpoints) if e == "infer"]
+    observed = [i for i, e in enumerate(agent._http.endpoints) if e == "observe"]
+    assert len(asked) == 3 and len(observed) == len(frames)
+    # Frames 0, 10 and 20 ask for a plan; the even frames between hand one over at 10 Hz.
+    sent = [f for f in range(21) if f % 2 == 0]
+    assert [sent[i] for i in observed] == frames if observe else observed == []
+    assert steered == [1.0] * 10 + [2.0] * 10 + [3.0], "an observed frame never changes the plan"
 
 
 class _V3:

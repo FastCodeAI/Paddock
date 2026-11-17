@@ -25,7 +25,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "20261105T201953-308dc5",
-  "notes": "Superseded by 20261105T201953-308dc5: Re-run on 5 Nov 2026 with the camera-frame fix of 13 Oct 2026; this run was camera-blind, so the model planned from ego status alone.",
+  "superseded_by": "20261111T061849-382fec",
+  "notes": "Superseded by 20261105T201953-308dc5: Re-run on 5 Nov 2026 with the camera-frame fix of 13 Oct 2026; this run was camera-blind, so the model planned from ego status alone. Superseded by 20261111T061849-382fec: The row it pointed at, 20261105T201953-308dc5, is retired too: Drive-JEPA's rows are its momentum-aware model now, so this one points at that run.",
   "ingested_from": ""
 }

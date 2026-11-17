@@ -65,7 +65,7 @@
   },
   "status": "complete",
   "valid": false,
-  "superseded_by": "drivejepa/20261106T192049-391e2d",
-  "notes": "Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026.",
+  "superseded_by": "drivejepa/20261111T074533-0f26ee",
+  "notes": "Superseded by drivejepa/20261106T192049-391e2d: Drive-JEPA's comma2k19 row is now the perception-based model that every other benchmark runs. This perception-free agent was its comma2k19 row only because, when comma2k19 was added in September 2026, the perception-based adapter needed a lidar mounting that comma2k19 does not have; that need went in October 2026. Superseded by drivejepa/20261111T074533-0f26ee: The row it pointed at, drivejepa/20261106T192049-391e2d, is retired too: Drive-JEPA's rows are its momentum-aware model now, so this one points at that run.",
   "ingested_from": ""
 }

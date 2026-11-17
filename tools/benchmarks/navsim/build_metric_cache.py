@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--bench", default="navsim_v1", help="navsim or navsim_v1 (default navsim_v1)")
+    parser.add_argument("--bench", default="navsim_v1", help="navsim, navsim_v1 or navhard (default navsim_v1)")
     parser.add_argument(
         "--logs", default="", help="comma-separated log names for a timing smoke; default the split"
     )

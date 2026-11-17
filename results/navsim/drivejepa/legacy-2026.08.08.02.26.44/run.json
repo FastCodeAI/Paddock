@@ -20,7 +20,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "20260902T173156-7e208f",
-  "notes": "aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score.",
+  "superseded_by": "20261111T052813-8f96dd",
+  "notes": "aggregate rows kept as context, not scored: average_all_frames=0.90673, pseudo_closed_loop=0.45337, average_expert_frames=0.90673. Source log reported 0.90488 over the same scenarios; paddock recomputes from per-sample scores. See the ingest module docstring. Superseded by 20260902T173156-7e208f: Covers 242 of the 12,146 scenarios, and came from the vendor's own agent, which reads the scorer's simulator while planning; the full run through paddock's proxy agent is the comparable score. Superseded by 20261111T052813-8f96dd: The row it pointed at, 20260902T173156-7e208f, is retired too: Drive-JEPA's rows are its momentum-aware model now, so this one points at that run.",
   "ingested_from": "navsim_workspace/exp/eval_reproduce_drive_jepa_perception_based_agent_v2"
 }

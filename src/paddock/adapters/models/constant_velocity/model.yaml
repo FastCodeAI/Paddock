@@ -58,4 +58,4 @@ capabilities:
 score_notes:
   PADDOCK_CV_SPEED_M_S: "driven at a fixed {value} m/s, not the measured ego speed"
 
-benchmarks: [alpasim, nuscenes, bench2drive, comma2k19, nuplan]
+benchmarks: [alpasim, nuscenes, bench2drive, comma2k19, nuplan, hugsim]

@@ -22,7 +22,7 @@ import logging
 import time
 from typing import Any, Optional
 
-from paddock.policy.protocol import Observation, Policy
+from paddock.policy.protocol import Observation, Policy, StreamFrame
 
 logger = logging.getLogger(__name__)
 
@@ -128,9 +128,26 @@ def build_app(policy: Policy, model: str | None = None, nonce: str | None = None
         path forwards it: the auxiliary heads are predictions the benchmark can
         score against its own recorded truth, and dropping them here would make
         open loop the one path where a model is judged on less than it produced.
+
+        An optional `stream` (`StreamFrame`) says which recorded drive the last
+        frame belongs to; only a harness in a streamed mode sends one, and only
+        then is `infer_sequence_streamed` called -- which a model that keeps
+        nothing between samples does not override, so it ignores the key.
+
+        This handler is `async def` with no `await` inside, so the event loop
+        runs one request to completion before it starts the next: two scorer
+        workers sharing a node interleave whole samples, never the steps of
+        one. A model's per-drive state relies on that (Drive-JEPA's momentum
+        book, keyed by stream); making this a plain `def` would move it onto
+        a thread pool and end it. `tests/test_server_streamed.py` pins it.
         """
         observations = [Observation.from_wire(item, cameras=policy.cameras) for item in body["observations"]]
-        return _plan_body(policy.infer_sequence(observations))
+        stream = body.get("stream")
+        if stream is None:
+            trajectory = policy.infer_sequence(observations)
+        else:
+            trajectory = policy.infer_sequence_streamed(observations, StreamFrame.from_wire(stream))
+        return _plan_body(trajectory)
 
     @app.post("/infer_each")
     async def infer_each(body: dict) -> dict:

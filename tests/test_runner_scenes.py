@@ -34,11 +34,15 @@ def b2d_site(tmp_path, monkeypatch) -> SiteConfig:
         "leaderboard/leaderboard/leaderboard_evaluator.py",
         "leaderboard/leaderboard/autoagents/autonomous_agent.py",
         "scenario_runner/srunner/scenariomanager/carla_data_provider.py",
+        "scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py",
     ):
         (repo / relative).parent.mkdir(parents=True, exist_ok=True)
         (repo / relative).write_text("")
-    # The evaluator as patches/Bench2Drive/ leaves it, which preflight checks for.
+    # The evaluator and ActorFlow as patches/Bench2Drive/ leaves them, which preflight checks for.
     (repo / "leaderboard/leaderboard/leaderboard_evaluator.py").write_text("# --connect-timeout\n")
+    (repo / "scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py").write_text(
+        "def _remove_far_cars(self):\n"
+    )
     (repo / "leaderboard" / "data").mkdir()
     shutil.copy(FIXTURES / "routes_sample.xml", repo / "leaderboard" / "data" / "routes_sample.xml")
     for sub in ("repos", "runs", "weights"):
@@ -574,6 +578,40 @@ def test_the_released_drivejepa_checkpoint_swapped_by_a_site_is_named(tmp_path) 
     (reason,) = _env_override_reasons(cfg, spec)
     assert "DRIVEJEPA_CHECKPOINT" in reason
     assert _env_override_reasons(_cfg(tmp_path), spec) == [], "no env block, nothing to say"
+
+
+def test_a_checkpoint_copied_to_another_disk_is_not_an_override(tmp_path) -> None:
+    """Drive-JEPA's navhard run loaded the released checkpoint from an SSD copy: same bytes, another path.
+    Content decides, not the name: a different file under the released file's name is still an override."""
+    from paddock.config import SiteConfig
+    from paddock.registry import Registry
+    from paddock.runner import _env_override_reasons
+
+    spec = Registry.load().models["drivejepa"]
+    navsim = tmp_path / "navsim"
+    (navsim / "exp").mkdir(parents=True)
+    (tmp_path / "runs").mkdir()
+    copy = tmp_path / "ssd" / "agent.ckpt"
+    copy.parent.mkdir()
+
+    def site(env: dict[str, str]) -> SiteConfig:
+        body = "".join(f'{k} = "{v}"\n' for k, v in env.items())
+        (tmp_path / "site.toml").write_text(
+            f'site = "t"\n[roots]\nrepos = "{tmp_path}"\nruns = "{tmp_path / "runs"}"\n'
+            f'weights = "{tmp_path}"\n'
+            f'[datasets.navsim]\npath = "{navsim}"\nexp = "{navsim / "exp"}"\n[models.drivejepa.env]\n{body}'
+        )
+        return SiteConfig.load(tmp_path / "site.toml")
+
+    cfg = site({})
+    released = Path(cfg.resolve(spec.runtime.env["DRIVEJEPA_CHECKPOINT"], **spec.context(cfg)))
+    released.parent.mkdir(parents=True, exist_ok=True)
+    released.write_bytes(b"released weights")
+    copy.write_bytes(b"released weights")
+    assert _env_override_reasons(site({"DRIVEJEPA_CHECKPOINT": str(copy)}), spec) == []
+    copy.write_bytes(b"finetuned weights")
+    (reason,) = _env_override_reasons(site({"DRIVEJEPA_CHECKPOINT": str(copy)}), spec)
+    assert "DRIVEJEPA_CHECKPOINT" in reason
 
 
 def test_drivejepa_declares_momentum_so_a_site_saying_on_is_not_an_override(tmp_path) -> None:

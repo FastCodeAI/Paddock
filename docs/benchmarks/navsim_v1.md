@@ -220,10 +220,11 @@ from `results/navsim/` for reference: a different composite, not a ranking.
 
 | model | PDMS | NC | DAC | EP | TTC | comfort | DDC (weight 0) | v2 EPDMS | run | how |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| drivejepa | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 | 0.843 | `20260911T082329-575df6` | proxy, 7.5 h |
+| drivejepa | **0.894** | 0.984 | 0.984 | 0.879 | 0.893 | 0.999 | 0.988 | 0.870 | `20261111T090508-ad88e6` | replay of the streamed, momentum-aware `navsim/drivejepa/20261111T052813-8f96dd`, no GPU |
+| drivejepa, retired: momentum never acted | 0.892 | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 | 0.843 | `20260911T082329-575df6` | proxy, 7.5 h |
 | alpamayo15 | **0.676** | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 | 0.608 | `20260911T044805-0aea35` | replay of `navsim/alpamayo15/20260903T183818-5879c1`'s 12,146 plans, 30 min, no GPU |
 | alpamayo2edge | **0.699** | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 | 0.626 | `20261111T070439-f19e8f` | replay of `navsim/alpamayo2edge/20261111T052918-f9f90a`'s 12,146 plans, 9 min, no GPU |
-| visionpilot | **0.488** | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 | 0.431 | `20260911T083323-c07583` | proxy, four nodes, 8.2 h |
+| visionpilot | **0.472** | 0.756 | 0.802 | 0.442 | 0.605 | 0.997 | 0.902 | 0.454 | `20261111T194001-cc5073` | replay of `navsim/visionpilot/20261111T173726-ff827e`'s 12,146 plans, no GPU |
 | meteor | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 | 0.303 | `20260915T005223-071c0b` | replay of `navsim/meteor/20260914T234307-e56cfc`, 12 min. Its plans are 3 s extended to 4 s (`METEOR_HORIZON_S`); see `docs/models/meteor.md` |
 | constant_velocity | **0.207** | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 | 0.239 | `20260911T034553-8f28ac` | node-less baseline, 27 min |
 | human (`valid: false`) | 0.946 | 1.000 | 1.000 | 0.870 | 1.000 | 0.999 | 0.988 | — | `20260911T041230-67c4f3` | node-less anchor, 35 min |
@@ -246,10 +247,11 @@ The README reports the 10 Hz pair for both models, so each model's two columns
 describe one run.
 
 Two consistency checks across the scorer generations, for the two models whose
-plans are the same under both: Drive-JEPA is deterministic and Alpamayo's plans
-were replayed, and for both the no-at-fault-collision and drivable-area terms
-agree with the v2 run to three or four decimals (0.984 / 0.985 and 0.941 /
-0.788). The terms that move are the ones v2 redefined: time to collision (v2
+plans are the same under both: Alpamayo's plans were replayed, and so were
+Drive-JEPA's for its momentum-aware row (its retired fresh proxy run, which agreed
+the same way, relied on the model being deterministic). For both the
+no-at-fault-collision and drivable-area terms agree with the v2 run to three or
+four decimals (0.984 / 0.984 and 0.941 / 0.788). The terms that move are the ones v2 redefined: time to collision (v2
 applies its human-penalty filter and a collision horizon), ego progress, and
 comfort, which is a different metric in each generation.
 
@@ -259,8 +261,8 @@ the same models took about half as long.
 
 Drive-JEPA's paper reports 93.3 PDMS. That figure is its v1-trained checkpoint
 through its own scorer-aware agent; paddock scores the released v2 checkpoint
-through the proxy, so the two are not the same measurement and 0.892 is the
-comparable one here.
+through the proxy, so the two are not the same measurement and 0.894 (the
+momentum-aware replay) is the comparable one here.
 
 ## Support-matrix results
 
@@ -275,9 +277,10 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 The same 12,146 navtest scenarios, scored by the v1.1 devkit as PDMS =
 NC × DAC × (5·TTC + 5·EP + 2·comfort) / 12 (`docs/benchmarks/navsim_v1.md`).
 Driving direction compliance is recorded with weight zero. Full navtest,
-12,146 scenarios each, zero failures. Drive-JEPA and VisionPilot are fresh
-proxy runs; the Alpamayo, OpenPilot and AutoE2E rows replay the plans their v2 runs
-recorded (the 10 Hz nuPlan history and, for Alpamayo 1.5, the 2 Hz OpenScene run
+12,146 scenarios each, zero failures. VisionPilot's is a fresh proxy run; the
+Drive-JEPA, Alpamayo, OpenPilot and AutoE2E rows replay the plans their v2 runs
+recorded (Drive-JEPA's, its streamed momentum-aware run: 10,040 of the 12,146
+plans were made with a previous plan fed) (the 10 Hz nuPlan history and, for Alpamayo 1.5, the 2 Hz OpenScene run
 too), so each scores the very plans behind the v2 figure above. Alpamayo 2 Edge's
 row replays its 2 Hz OpenScene run the same way; it has not been run at 10 Hz (see ‡
 in `docs/benchmarks/navsim.md`). The baseline
@@ -291,12 +294,23 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
 | Alpamayo 1.5, 2 Hz OpenScene | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | Alpamayo 2 Edge, 2 Hz OpenScene ‡ | 0.699 | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 |
-| Drive-JEPA | **0.892** | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 |
-| VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| Drive-JEPA | **0.894** | 0.984 | 0.984 | 0.879 | 0.893 | 0.999 | 0.988 |
+| VisionPilot | 0.472 | 0.756 | 0.802 | 0.442 | 0.605 | 0.997 | 0.902 |
 | METEOR ◊ | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | AutoE2E v1.0, 10 Hz nuPlan history ‡ | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
+| UniAD ⊟ | 0.532 | 0.826 | 0.729 | 0.525 | 0.692 | 0.963 | 0.914 |
+| VAD ⊟ | 0.473 | 0.813 | 0.722 | 0.451 | 0.682 | 0.958 | 0.843 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
+
+⊟ UniAD's and VAD's rows replay the plans of their NAVSIM v2 runs
+(`20261112T130241-e02e88` from `navsim/uniad/20261109T082522-c24426`,
+`20261112T132424-25e0e5` from `navsim/vad/20261110T095855-0ebf09`), no model process
+running. Those plans are 3 s held to 4 s by paddock (`UNIAD_HORIZON_S` /
+`VAD_HORIZON_S`), a setting their `model.yaml` lists as ranked with a note, so both
+rows rank with that note. The first replays (`20261110T154404-e02e88`,
+`20261110T160343-25e0e5`) inherited their sources' old `valid: false` and are
+superseded by these; see ⊟ in [navsim.md](navsim.md#notes-on-the-matrix-cells).
 
 **Qwen-Drive reproduces its own published row here, term by term.** Its
 technical report gives the `planner-sft`-without-reasoning navtest row — the

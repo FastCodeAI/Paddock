@@ -83,8 +83,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261111T074533-0f26ee",
+  "notes": "Superseded by 20261111T074533-0f26ee: Drive-JEPA's rows are its momentum-aware model now: 20261111T074533-0f26ee plans each keyframe after a discarded warm-up plan for the frame 0.5 s earlier (a Paddock choice, not upstream protocol; 10,163 of 10,165 fed). Momentum was on in this run but could not act: each open-loop sample reset the node (the node whose counts the record keeps fed 0 of 1,271 replans).",
   "ingested_from": ""
 }
