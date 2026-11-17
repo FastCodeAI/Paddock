@@ -116,6 +116,34 @@ def test_doctor_names_an_interpreter_it_may_not_reach_and_carries_on(alt_site) -
     assert ("models", "openpilot") in by_name, "the other models are still checked"
 
 
+def test_doctor_reports_an_unexpected_os_error_for_its_model_and_carries_on(
+    alt_site, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An OSError that is neither a permission nor a missing-path error is reported for
+    its own model; it must not abort the whole check."""
+    import errno
+
+    import paddock.doctor as doctor_module
+
+    real = doctor_module.interpreter_present
+
+    def broken_for_drivejepa(interpreter: Path) -> bool:
+        if str(interpreter).startswith(str(venv)):
+            raise OSError(errno.EIO, "input/output error", str(interpreter))
+        return real(interpreter)
+
+    venv = alt_site / "drivejepa-env"
+    (venv / "bin").mkdir(parents=True)
+    config = Path(os.environ["PADDOCK_CONFIG"])
+    config.write_text(config.read_text() + f'\n[models.drivejepa]\nvenv = "{venv}"\n')
+    monkeypatch.setattr(doctor_module, "interpreter_present", broken_for_drivejepa)
+    report = doctor_run()
+    by_name = {(c.section, c.name): c for c in report.checks}
+    check = by_name[("models", "drivejepa")]
+    assert check.status is Status.FAIL and "could not check interpreter" in check.detail
+    assert ("models", "openpilot") in by_name, "the other models are still checked"
+
+
 def test_a_boolean_setting_a_site_wrote_as_false_reads_as_false(alt_site) -> None:
     """`false` in a site config must not arrive at a harness as True.
 
