@@ -17,8 +17,10 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 ## Known issues
 
-- **VisionPilot's figures predate the `CURV_SCALE` fix.** Every VisionPilot cell
-  but comma2k19's and KITScenes', re-run in November 2026, is due to be re-run.
+- **VisionPilot cells marked S predate the `CURV_SCALE` fix.** nuScenes, NAVSIM v2
+  and v1 and neuroNCAP were re-run in November 2026, as comma2k19 and KITScenes
+  were; AlpaSim's driver never had the bug. The 50-route Bench2Drive cell is
+  replaced by its 220-route run (#167).
 - **comma2k19's `pdm_style_score` proxy ranks a parked car first.** It pairs
   waypoints by index; pairing by arc length fixes it and moves a published
   column. The benchmark's primary metric, ADE, is unaffected.
@@ -50,8 +52,6 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   fails until `palette.py` gets an entry, which `CONTRIBUTING.md` says adding a model
   must not need. A colour set in the model's own `model.yaml` would remove the conflict.
 
-- **Bench2Drive's ranked runs cover 50 of 220 routes and 14 of 44 scenario types.**
-  They cannot be compared with published 220-route scores.
 - **AlpaSim's matrix cells cover 30 of 913 scenes, one rollout each.** A gap under
   about 0.16 is within two standard errors.
 - **NAVSIM v2's `navhard` two-stage set has no matrix column yet.** Paddock's
@@ -69,10 +69,11 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 ## Next
 
-- Bench2Drive over all 220 routes, one column of its own, made the same way for
-  every model ("The 220-route protocol" in docs/benchmarks/bench2drive.md):
-  openpilot's, METEOR's, AutoE2E's, Alpamayo 1.5's and Alpamayo 2 Edge's cells are
-  in; the other models after (issue #158).
+- Bench2Drive's 220-route column under one end condition. Five of its eleven records
+  end a route early (30 s without progress, or 4x the expert's time) and six run each
+  route to Bench2Drive's own end ("Bench2Drive — 220 routes" in
+  docs/benchmarks/bench2drive.md); driving the six again with the early stop, or the
+  five without it, would put every cell under one protocol (issue #158).
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
 - HUGSIM driven through paddock's own harness; today its runs are imported.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.

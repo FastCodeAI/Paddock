@@ -224,7 +224,7 @@ from `results/navsim/` for reference: a different composite, not a ranking.
 | drivejepa, retired: momentum never acted | 0.892 | 0.984 | 0.985 | 0.887 | 0.881 | 0.999 | 0.988 | 0.843 | `20260911T082329-575df6` | proxy, 7.5 h |
 | alpamayo15 | **0.676** | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 | 0.608 | `20260911T044805-0aea35` | replay of `navsim/alpamayo15/20260903T183818-5879c1`'s 12,146 plans, 30 min, no GPU |
 | alpamayo2edge | **0.699** | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 | 0.626 | `20261111T070439-f19e8f` | replay of `navsim/alpamayo2edge/20261111T052918-f9f90a`'s 12,146 plans, 9 min, no GPU |
-| visionpilot | **0.488** | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 | 0.431 | `20260911T083323-c07583` | proxy, four nodes, 8.2 h |
+| visionpilot | **0.472** | 0.756 | 0.802 | 0.442 | 0.605 | 0.997 | 0.902 | 0.454 | `20261111T194001-cc5073` | replay of `navsim/visionpilot/20261111T173726-ff827e`'s 12,146 plans, no GPU |
 | meteor | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 | 0.303 | `20260915T005223-071c0b` | replay of `navsim/meteor/20260914T234307-e56cfc`, 12 min. Its plans are 3 s extended to 4 s (`METEOR_HORIZON_S`); see `docs/models/meteor.md` |
 | constant_velocity | **0.207** | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 | 0.239 | `20260911T034553-8f28ac` | node-less baseline, 27 min |
 | human (`valid: false`) | 0.946 | 1.000 | 1.000 | 0.870 | 1.000 | 0.999 | 0.988 | — | `20260911T041230-67c4f3` | node-less anchor, 35 min |
@@ -295,7 +295,7 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | Alpamayo 1.5, 2 Hz OpenScene | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
 | Alpamayo 2 Edge, 2 Hz OpenScene ‡ | 0.699 | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 |
 | Drive-JEPA | **0.894** | 0.984 | 0.984 | 0.879 | 0.893 | 0.999 | 0.988 |
-| VisionPilot | 0.488 | 0.771 | 0.818 | 0.451 | 0.617 | 0.996 | 0.920 |
+| VisionPilot | 0.472 | 0.756 | 0.802 | 0.442 | 0.605 | 0.997 | 0.902 |
 | METEOR ◊ | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | AutoE2E v1.0, 10 Hz nuPlan history ‡ | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |

@@ -16,7 +16,7 @@ import pytest
 
 from paddock.results import store
 from paddock.results.ingest import hugsim
-from paddock.results.ingest.hugsim import CONTROLLER_NOTE, call_interval
+from paddock.results.ingest.hugsim import CONTROLLER_NOTE, IDM_NOTE, call_interval, plan_facts
 
 NOTE = (
     f"{CONTROLLER_NOTE} traj2control heading, not on main)\n"
@@ -185,6 +185,77 @@ def test_model_env_is_the_operators_statement(tmp_path: Path) -> None:
     )
     assert run.config["model_env"] == {"MODELX_SWITCH": "off"}
     assert "operator's statement" in run.notes
+
+
+def _full_plan(root: Path, observe: bool = True, sent: int = 8) -> None:
+    """Rewrite a campaign's logs as paddock's own bridge leaves them: the IDM guard announced, ``n_sent`` on
+    each call's line, and (``observe``) ``observed`` on every step between plans."""
+    for log in (root / "logs").glob("*.log"):
+        if "Ready for simulation" in log.read_text():
+            log.write_text(f"{IDM_NOTE} (IDM one-point lookahead guard, not upstream)\n" + log.read_text())
+    for agent_log in root.glob("*_bridge/*/agent_log.jsonl"):
+        rows = [json.loads(line) for line in agent_log.read_text().splitlines()]
+        for r in rows:
+            r.update({"dt": 0.5, "n_sent": sent} if r["called"] else ({"observed": True} if observe else {}))
+        agent_log.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def _complete(root: Path) -> Path:
+    rows = [json.loads(line) for line in (root / "results.jsonl").read_text().splitlines()]
+    rows = [r for r in rows if r["scenario"] != "scene-0166-medium-01"]
+    (root / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return root
+
+
+def test_a_campaign_recorded_before_the_full_plan_bridge_keeps_its_config(tmp_path: Path) -> None:
+    [(run, _, _)] = hugsim.ingest(_complete(_campaign(tmp_path)), model="modelx", site="test-site")
+    assert not {"idm_lead", "waypoints_sent", "observe"} & set(run.config)
+
+
+def test_a_full_plan_campaign_records_the_guard_the_plan_length_and_the_frames(tmp_path: Path) -> None:
+    root = _complete(_campaign(tmp_path))
+    _full_plan(root)
+    [(run, _, _)] = hugsim.ingest(root, model="modelx", site="test-site")
+    assert run.config["idm_lead"] == "one-point lookahead guard (patches/HUGSIM/0003)"
+    assert run.config["waypoints_sent"] == 8
+    assert run.config["observe"] is True
+    assert run.config["infer_every"] == 2  # the /observe steps are not calls
+    assert run.valid is True
+
+
+def test_a_campaign_mixing_observed_and_unobserved_frames_does_not_rank(tmp_path: Path) -> None:
+    root = _complete(_campaign(tmp_path))
+    _full_plan(root)
+    agent_log = root / "nuscenes_bridge" / "scene-0013_easy_00" / "agent_log.jsonl"
+    rows = [json.loads(line) for line in agent_log.read_text().splitlines()]
+    unobserved = [{k: v for k, v in r.items() if k != "observed"} for r in rows]
+    agent_log.write_text("".join(json.dumps(r) + "\n" for r in unobserved))
+    [(run, _, _)] = hugsim.ingest(root, model="modelx", site="test-site")
+    assert run.config["observe"] == "on 2 of 3 scenarios"
+    assert "does not rank" in run.notes and run.valid is False
+
+
+def test_a_campaign_mixing_the_idm_guard_still_ranks(tmp_path: Path) -> None:
+    root = _complete(_campaign(tmp_path))
+    _full_plan(root, observe=False)
+    log = root / "logs" / "scene-021-hard-00.log"
+    log.write_text(log.read_text().replace(IDM_NOTE, "NOTE: something else"))
+    [(run, _, _)] = hugsim.ingest(root, model="modelx", site="test-site")
+    assert run.config["idm_lead"].endswith("announced on 2 of 3 scored logs")
+    assert "observe" not in run.config
+    assert run.valid is True
+
+
+def test_plan_facts(tmp_path: Path) -> None:
+    log = tmp_path / "agent_log.jsonl"
+    assert plan_facts(log) == (set(), None)
+    rows = [{"called": True, "n_sent": 8}, {"called": False, "observed": True}, {"called": True, "n_sent": 6}]
+    log.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert plan_facts(log) == ({6, 8}, True)
+    log.write_text("".join(json.dumps(r) + "\n" for r in [*rows, {"called": False}]))
+    assert plan_facts(log) == ({6, 8}, None)  # some steps between plans observed, some not
+    log.write_text(json.dumps({"called": True, "n_sent": 8}) + "\n")
+    assert plan_facts(log) == ({8}, None)  # no step between plans to tell
 
 
 def test_call_interval() -> None:

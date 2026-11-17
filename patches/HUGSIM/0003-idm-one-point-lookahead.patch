@@ -1,0 +1,35 @@
+Subject: [PATCH 3/3] IDM: a lead on a one-point lookahead path is as far away as the point
+
+Crash fix. IDM.update measures how far a lead car is along the agent's lookahead path from the
+cumulative lengths of its segments, and pads that with its last entry. When the agent is one point
+from its path's end, the lookahead path has a single point and no segment: the lengths are empty,
+the pad is empty, and a car standing within lead_distance_threshold of that point indexes an empty
+tensor -- IndexError in the simulator, and the episode dies with no score
+(agent_controller.py:170, nuscenes scene-0166-medium-01: both attempts, at step 60, with released
+Drive-JEPA's car standing there).
+
+Fix: in that one case only, the lead's distance is the agent's distance to the point. Every other
+path is upstream's code unchanged, so an episode where this never happens is unchanged. With it,
+scene-0166-medium-01 ran to the end: steps 0-59 identical to the crashed attempt (ego path and all
+30 model calls), then on past step 60 (HD-Score 0.501, 400 steps).
+
+Not reachable from outside: the crash is inside the simulator's own agent planner. Upstreamable.
+
+diff --git a/sim/utils/agent_controller.py b/sim/utils/agent_controller.py
+index a7ff993..fe1a27b 100644
+--- a/sim/utils/agent_controller.py
++++ b/sim/utils/agent_controller.py
+@@ -166,7 +166,12 @@ class IDM:
+             lookahead_lengths = torch.cumsum(torch.norm(
+                 lookahead_path[1:, :2] - lookahead_path[:-1, :2], dim=1
+             ), dim=0)
+-            lookahead_lengths = torch.cat([lookahead_lengths, lookahead_lengths[-1:]])
++            if lookahead_lengths.numel():
++                lookahead_lengths = torch.cat([lookahead_lengths, lookahead_lengths[-1:]])
++            else:
++                # A one-point lookahead path (this agent is one point from its path's end): no segment to
++                # sum, so the lead on that point is as far away as the point is.
++                lookahead_lengths = torch.norm(lookahead_path[:1, :2] - state[None, :2], dim=1).clamp(min=1e-6)
+             lead_distance = lookahead_lengths[indices_lead]
+ 
+             # compute lead speed

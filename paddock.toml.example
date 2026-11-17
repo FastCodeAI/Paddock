@@ -149,6 +149,7 @@ weights = "/path/to/weights"
 # expert = "/path/to/expert"                           # tools.benchmarks.bench2drive.expert summarize's output
 #                                                      # a route the stuck or over-time rule ends is a failed drive; see the docs
 # camera_rig = "paddock"                               # default; "bench2drive" / "kitscenes" make a run valid: false
+# recordings = "/path/to/runs"                         # where the website videos (render.py) find recorded drives; default: [roots] runs
 
 # [benchmarks.hugsim]                          # HUGSIM closed-loop; docs/benchmarks/hugsim.md
 # python = "/path/to/hugsim/venv/bin/python"   # HUGSIM's interpreter: imports closed_loop, omegaconf, requests
@@ -515,6 +516,14 @@ serialize = true
 # routes = ["1711", "1852", "2802"]   # or "all": every route of the routes file, for a full-set
 #                                     # pool (see "The 220-route protocol" in bench2drive.md)
 # notes  = "24 routes from the 03-04 Sep campaign, 26 from the 09 Sep expansion"
+#
+# Records in results/ whose upstream_scores.json rows supply the routes that no
+# run under `runs` scored: a record pooled at another site, completed by routes
+# driven here. A raw route takes precedence. Each route is measured as from its
+# results.json, except duration_s (wall clock), which the rows do not hold and
+# metrics.json counts as missing. A record the rows do not fully describe is
+# refused ("Routes from a record made at another site" in bench2drive.md).
+# tracked = ["bench2drive/drivejepa/full220-<route hash>-<config hash>"]
 #
 # Environment overrides recorded in the run's config. The ingest reads what the
 # source runs recorded; this is layered on top, for what they did not. For the

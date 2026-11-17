@@ -128,6 +128,7 @@ NC is no at-fault collisions and DAC drivable-area compliance.
 |---|---:|---:|---:|---:|---:|---:|---:|---|---|
 | Drive-JEPA ⟲ | 0.4277 | 0.818 | 0.529 | 0.956 | 0.960 | 0.884 | 0.852 | `20261110T165434-167fd4` | true |
 | Qwen-Drive 1.0 | 0.3124 | 0.763 | 0.427 | 0.969 | 0.880 | 0.812 | 0.745 | `20261111T060112-5231af` | true |
+| OpenPilot ⊘ | 0.2326 | 0.463 | 0.470 | 0.971 | 0.784 | 0.947 | 0.812 | `20261113T112649-2fe1d7` | true |
 | Alpamayo 1.5 | 0.1928 | 0.507 | 0.366 | 0.924 | 0.664 | 0.841 | 0.650 | `20261111T090014-04904f` | true |
 | VisionPilot ∗ | 0.1921 | 0.453 | 0.390 | 0.921 | 0.618 | 0.847 | 0.672 | `20261110T165413-30c0d8` | true |
 | Alpamayo 2 Edge | 0.1796 | 0.501 | 0.340 | 0.912 | 0.636 | 0.808 | 0.647 | `20261113T111924-f36c51` | true |
@@ -149,6 +150,15 @@ disk; the copy's sha256 is
 recorded for the file model.yaml declares, and both are 3,735,352,913 bytes. A
 byte-identical copy is not an override, so the record, written again from its
 stored chunks (`--resume`, nothing scored again), is ranked.
+
+⊘ **OpenPilot is fed navhard's 2 Hz, below the 10 Hz it declares as its minimum**, each 0.5 s frame shown
+ten times to its 20 Hz model (`_repeats`; the run config records `below_min_input_hz: 10.0`). supercombo
+infers its own speed from the change between frames and reads held frames as near standstill: its
+plans are short, which few collisions and little progress reflect (ego progress, stage one, 0.350).
+Its driving model ran as the site's CUDA build of the same graph (`PADDOCK_OPENPILOT_CUDA_MODEL`,
+`DEV=CUDA`), which its model.yaml lists as ranked with a note; on one nuScenes sequence that build
+was within 0.0078 m of the CPU model. Run `20261113T112649-2fe1d7`, 13 Nov 2026, from the stored
+chunk rewritten (`--resume`, nothing scored again) once the model.yaml declared it.
 
 ∗ **VisionPilot's plan is built by paddock around its outputs, and most of it
 is extrapolation.** The stack plans 1.0 s ahead; the adapter extends that to

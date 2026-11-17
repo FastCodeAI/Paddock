@@ -790,6 +790,7 @@ def _run_one_model(
             for episode in episodes:
                 episode.config["cameras"] = list(model_spec.cameras)
                 episode.config["planning_hz"] = model_spec.planning_hz
+                episode.config["native_input_hz"] = model_spec.native_input_hz
                 out_dir = artifacts / episode.episode_id
                 # On a resume, an episode with all its runs already scored is
                 # simulator time already spent; re-driving it to reach the next

@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_OP_ROAD`, `CAM_OP_WIDE`, `CAM_FRONT` |
 | Plan | waypoints, 0.5 s apart, 10 s ahead |
-| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [neuroncap](../benchmarks/neuroncap.md), [bench2drive](../benchmarks/bench2drive.md), [navsim](../benchmarks/navsim.md), [navhard](../benchmarks/navhard.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [nuplan](../benchmarks/nuplan.md) |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [neuroncap](../benchmarks/neuroncap.md), [bench2drive](../benchmarks/bench2drive.md), [navsim](../benchmarks/navsim.md), [navhard](../benchmarks/navhard.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [nuplan](../benchmarks/nuplan.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -341,6 +341,16 @@ Like the scale, both knobs describe one camera rig. A site that adopts them
 sets them in a pairing table, `[models.openpilot.benchmarks.kitscenes.env]`,
 not in `[models.openpilot.env]`, where they would reach comma2k19's camera too.
 See [site-setup.md](../site-setup.md#2-configure).
+
+### The CUDA build of the driving model
+
+A site may run the driving model as a CUDA build of the same `driving_supercombo.onnx`, compiled by upstream
+`compile_modeld.py` (`PADDOCK_OPENPILOT_CUDA_MODEL`, with `DEV=CUDA` and `WARP_DEV=CPU`); how to build it is in
+[nuscenes.md](../benchmarks/nuscenes.md#openpilot-camera-history-and-gpu-inference). On one 60-observation
+nuScenes sequence its waypoints were within 0.0078 m of the CPU model's; that is not a full equivalence check.
+model.yaml lists the three settings as ranked with a note, so a record made with the build ranks and
+`paddock report` prints the note under it. Two cells were made with it: nuScenes
+(`20260908T110028-b71f4f`) and NAVSIM v2 hard (`20261113T112649-2fe1d7`).
 
 ### Which backend ran, and one number it used to change
 
