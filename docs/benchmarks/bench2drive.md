@@ -998,26 +998,30 @@ its own rate. Each record is `paddock ingest`'s pool (`routes = "all"`); the sup
 | UniAD (1.0 base, nuScenes-trained, zero-shot) | 2 Hz | no | 16.23 | 41.61 | 0.422 | 84.55 | [`full220-86aa45e768a29a64-fb1f0a`](../../results/bench2drive/uniad/full220-86aa45e768a29a64-fb1f0a/run.json) |
 | VAD (base, nuScenes-trained, zero-shot) | 2 Hz | no | 15.58 | 31.45 | 0.672 | 52.73 | [`full220-86aa45e768a29a64-6cb75d`](../../results/bench2drive/vad/full220-86aa45e768a29a64-6cb75d/run.json) |
 | AutoE2E | 10 Hz | yes | 14.29 | 27.72 | 0.547 | 80.00 | [`full220-86aa45e768a29a64-740c68`](../../results/bench2drive/autoe2e/full220-86aa45e768a29a64-740c68/run.json) |
+| Alpamayo 2 Edge | 10 Hz | yes | 13.87 | 38.78 | 0.483 | 65.45 | [`full220-86aa45e768a29a64-ffe60a`](../../results/bench2drive/alpamayo2edge/full220-86aa45e768a29a64-ffe60a/run.json) |
 | METEOR | 5 Hz | yes | 1.89 | 5.30 | 0.926 | 11.82 | [`full220-86aa45e768a29a64-2144df`](../../results/bench2drive/meteor/full220-86aa45e768a29a64-2144df/run.json) |
 
 What to read with them:
 
-- **Two ways of ending a route.** OpenPilot, Alpamayo 1.5, AutoE2E and METEOR ran under the protocol above: a route
+- **Two ways of ending a route.** OpenPilot, Alpamayo 1.5, Alpamayo 2 Edge, AutoE2E and METEOR ran under the protocol above: a route
   ends 30 s after the car last made 3 m of progress, or at 4x Think2Drive's time (*Ending routes early*), and is
   scored as it stood. VisionPilot, Drive-JEPA, Qwen-Drive, UniAD, VAD and constant velocity ran with no early stop: every route
   ran until Bench2Drive's own rules ended it (blocked, off route, out of time or finished). For the first three
   that is because their sweep began before the rule was set; UniAD and VAD (9-12 Nov) were run the same way to
   match them, and constant velocity (13 Nov) the same way. A route's
   score can differ between the two when a car that stalls for 30 s would have moved on.
-- **Two sites for four of them.** The early-stop records hold 216 routes driven at `a100-gpu-vm-002` (6-9 Nov 2026,
+- **Two sites for five of them.** The early-stop records hold 216 routes driven at `a100-gpu-vm-002` (6-12 Nov 2026,
   Bench2Drive 7ec25d1 + patches 0001-0002), taken from each record's `upstream_scores.json` rows (*Routes from a
   record made at another site*), and routes 3800, 11715, 23695 and 24071, which that site set aside, driven here
-  on 12 Nov 2026 with patch 0003 and the same recorded settings. The four 216-route records are superseded by them.
+  on 12 Nov 2026 with patch 0003 and the same recorded settings. The five 216-route records are superseded by them.
+  Alpamayo 2 Edge's four ran on 14 Nov from `f873bc2`, the commit its 216 routes ran at, so that its routes share
+  one `model.yaml` env: #209 later declared `ALPAMAYO2_EDGE_ABSENT_CAMERAS`, and a pool across two declared envs
+  does not rank.
   OpenPilot's four routes here ran from a copy of openpilot 14 commits before the pin `555f48c5d`, with the same
   `driving_supercombo.onnx` and `modeld`; none of the 14 touches what the adapter imports.
 - **Patch 0003** acted (printed `ActorFlow: removed flow car` in `evaluator.log`) on Drive-JEPA's 11755 and five
   Town13 routes and VisionPilot's 11755; UniAD's 3785, 3800, 23670, 23708 and 24041; VAD's 3785, 3800, 11755, 23658,
-  23670, 23687, 23695 and 24041; constant velocity's 11755, 23695, 23708 and 24071; Alpamayo 1.5's 3800 and 23695; AutoE2E's 23695 and 24071; and on none of
+  23670, 23687, 23695 and 24041; constant velocity's 11755, 23695, 23708 and 24071; Alpamayo 1.5's 3800 and 23695; AutoE2E's 23695 and 24071; Alpamayo 2 Edge's 11715, 23695 and 24071; and on none of
   Qwen-Drive's, METEOR's or OpenPilot's. On every other route the code it adds is never reached or never acts.
 - **Up to three attempts per route.** An attempt that broke in the simulator or the client was set aside and the
   route driven again; a poor drive was always kept.
@@ -1030,7 +1034,7 @@ What to read with them:
   VAD 23687) finished past it while only the harness process waited (the evaluator, CARLA and the node kept driving).
 
 **Bench2Drive's own scores, over the 216 routes driven at `a100-gpu-vm-002`.** Success, efficiency, comfort and
-the abilities come from Bench2Drive's own scripts, in `upstream_scores.json` beside each of the four records
+the abilities come from Bench2Drive's own scripts, in `upstream_scores.json` beside each of the five records
 made there ([Efficiency and comfort](#efficiency-and-comfort)); a 220-route pool has no such file yet, so these
 are over those 216 routes, and Bench2Drive's own tables divide DS and success by 220, a route not driven
 counting as 0.
@@ -1041,6 +1045,7 @@ counting as 0.
 | METEOR | 216 | 0.00 | 148.74 | 95.73 | `full220-836dda734659a86c-dda00e` |
 | AutoE2E | 216 | 0.00 | 219.49 | 50.46 | `full220-836dda734659a86c-63902e` |
 | Alpamayo 1.5 | 216 | 2.78 | 161.32 | 51.83 | `full220-836dda734659a86c-f81033` |
+| Alpamayo 2 Edge | 216 | 0.00 | 140.89 | 63.56 | `full220-836dda734659a86c-56db50` |
 
 Bench2Drive's five abilities over the same 216 routes, in % of the routes that count towards each:
 
@@ -1050,6 +1055,7 @@ Bench2Drive's five abilities over the same 216 routes, in % of the routes that c
 | METEOR | 0.00 | 0.00 | 0.00 | 0.00 | 3.19 | 0.64 |
 | AutoE2E | 0.00 | 0.00 | 0.00 | 0.00 | 11.70 | 2.34 |
 | Alpamayo 1.5 | 1.32 | 4.44 | 3.33 | 10.00 | 52.13 | 14.24 |
+| Alpamayo 2 Edge | 0.00 | 0.00 | 0.00 | 0.00 | 55.32 | 11.06 |
 
 A route counts towards an ability by its scenario, the same for every model:
 Merging 76 of these routes, Overtaking 45, Emergency brake 60, Give way 10 and

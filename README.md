@@ -70,7 +70,7 @@ it differs.
   whether its Bench2Drive routes end early as failed drives are never reasons to
   leave a cell unranked.
 - **Ranked, though some Bench2Drive routes end early.** In the Bench2Drive column,
-  Alpamayo 1.5's, AutoE2E's, METEOR's and OpenPilot's runs end a route after 30 s
+  Alpamayo 1.5's, Alpamayo 2 Edge's, AutoE2E's, METEOR's and OpenPilot's runs end a route after 30 s
   without progress or at 4x the expert's time, and score it as it stood, as a failed
   drive; the rest of that column drove every route to Bench2Drive's own end. That can move a score
   either way: a car that would have crept on, or finished just after the cut,
@@ -103,7 +103,7 @@ Before comparing numbers:
   `navtest`, stage one only; its public leaderboard uses `navhard`, two stages.
 - **Bench2Drive is all 220 routes,** every route scored, each model at its own
   rate and up to three tries per route. Two ways of ending a route are in it:
-  OpenPilot, Alpamayo 1.5, AutoE2E and METEOR ran under the protocol that ends a
+  OpenPilot, Alpamayo 1.5, Alpamayo 2 Edge, AutoE2E and METEOR ran under the protocol that ends a
   route 30 s after the car last made progress or at 4x the expert's time
   ([The 220-route protocol](docs/benchmarks/bench2drive.md#the-220-route-protocol)),
   and the others ran to Bench2Drive's own end of each route. Patch 0003 makes the

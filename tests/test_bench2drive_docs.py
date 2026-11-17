@@ -477,7 +477,7 @@ def test_the_220_route_tables_reproduce() -> None:
         ], run_id
     own = _readme_table(OWN_SCORES)[1:]
     abilities = {r[0]: r for r in _readme_table(ABILITIES)[1:]}
-    assert len(own) == 4 and set(abilities) == {r[0] for r in own}
+    assert len(own) == 5 and set(abilities) == {r[0] for r in own}
     order = ["Merging", "Overtaking", "Emergency_Brake", "Give_Way", "Traffic_Signs"]
     for r in own:
         record = _record(r[-1].strip("`"))
