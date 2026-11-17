@@ -85,8 +85,8 @@ situation and pass on the strength of having a row in the tables above.
 
 ### Drive-JEPA × navsim
 
-**Drive-JEPA trained on NAVSIM's own data, and it leads that benchmark by 0.235
-EPDMS.** It was post-trained on NAVSIM `navtrain` and pre-trained partly on
+**Drive-JEPA trained on NAVSIM's own data, and it leads that benchmark by 0.244
+EPDMS** over the 2 Hz field (its momentum-aware run, against Alpamayo 2 Edge at 2 Hz). It was post-trained on NAVSIM `navtrain` and pre-trained partly on
 OpenScene — which *is* the NAVSIM dataset. Qwen-Drive, AutoE2E and Alpamayo 1.5
 also trained on NAVSIM or nuPlan data (their sections below); OpenPilot and
 VisionPilot meet `navtest` zero-shot.
@@ -104,7 +104,7 @@ To be precise about what this is and is not: training on `navtrain` and testing
 on `navtest` is **the protocol NAVSIM intends**. Drive-JEPA is not cheating; it
 is playing the benchmark the way the benchmark is designed to be played. What
 makes the column hard to read is that the other three are not playing it that
-way at all. The 0.235 EPDMS gap therefore conflates *"better planner"* with
+way at all. The 0.244 EPDMS gap therefore conflates *"better planner"* with
 *"in-distribution versus zero-shot"*, and nothing on the page previously said so.
 
 **Sourced at the pinned sha, not taken on trust.** In `Drive-JEPA @ e21f474`,
@@ -424,7 +424,7 @@ item in `docs/ROADMAP.md`.
 
 ### UniAD × nuscenes — the benchmark is UniAD's own protocol, and its training set's twin
 
-**UniAD's nuScenes cell is in-distribution, by design.** Both of its training stages read nuScenes `train`
+**UniAD on nuScenes is in-distribution, by design** (no UniAD nuScenes record is stored yet). Both of its training stages read nuScenes `train`
 (`nuscenes_infos_temporal_train.pkl` in `projects/configs/stage1_track_map/base_track_map.py` and
 `stage2_e2e/base_e2e.py` at the pinned sha) and its paper reports the `val` split, which is the split
 paddock's nuScenes benchmark scores. The scenes are held out; the cameras, the city streets, the rig and the
@@ -440,7 +440,7 @@ none (up to 0.50 m); `test_golden.py` holds the adapter to the original pipeline
 
 ### VAD × nuscenes — trained on nuScenes train, scored on val
 
-**VAD's nuScenes cell is in-distribution too.** Its two stages train on nuScenes `train`
+**VAD on nuScenes is in-distribution too** (no VAD nuScenes record is stored yet). Its two stages train on nuScenes `train`
 (`vad_nuscenes_infos_temporal_train.pkl` in `projects/configs/VAD/VAD_base_stage_{1,2}.py` at the pinned sha)
 and its paper reports `val`, the split paddock scores; the command it is given on this benchmark is derived
 from the recorded future by VAD's own rule. Read the column the way the UniAD section above says: held-out
@@ -517,8 +517,9 @@ ahead (22.6 % of stopped anchors), and its plans carry a left bias twice as
 large in Boston as in Singapore. See `docs/models/meteor.md`.
 
 ✦ **Two models here declare training exposure to a benchmark's own dataset.**
-Drive-JEPA leads that benchmark by 0.096 EPDMS on v2 and 0.085 PDMS on v1 over
-OpenPilot with its 10 Hz history (0.235 and 0.216 over the 2 Hz field): it was
+Drive-JEPA leads that benchmark by 0.123 EPDMS on v2 and 0.086 PDMS on v1 over
+OpenPilot with its 10 Hz history (0.244 and 0.195 over the 2 Hz field, which
+Alpamayo 2 Edge leads; its momentum-aware runs): it was
 post-trained on NAVSIM `navtrain` and pre-trained partly on OpenScene, which
 *is* the NAVSIM dataset. Qwen-Drive 1.0 reports navtest as its own headline
 planning result, so its adapter declares `navtrain` too — read off the report

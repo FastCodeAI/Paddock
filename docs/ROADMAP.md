@@ -52,8 +52,18 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 
 - **AlpaSim's matrix cells cover 30 of 913 scenes, one rollout each.** A gap under
   about 0.16 is within two standard errors.
-- **NAVSIM v2 has not been run two-stage on `navhard`,** the set its public
-  leaderboard uses. Paddock's column is `navtest`, stage one only.
+- **NAVSIM v2's `navhard` two-stage set has no matrix column yet.** Paddock's
+  NAVSIM v2 column is `navtest`, stage one only. navhard runs as its own
+  benchmark in NAVSIM v2.2's devkit (`docs/benchmarks/navhard.md`): eight models
+  and the floor are stored, and the devkit it scores
+  with is a site setting that `repos.yaml` does not pin.
+- **A `--resume` that finds every chunk already stored writes no note saying so.**
+  The record's `started_utc` and `duration_s` then describe the re-write, not the
+  run (UniAD's navtest `20261109T082522-c24426`, and the navhard records re-written
+  on 12 Nov). The runner should say "resumed" in `notes`, as a partial resume does.
+- **Nodeless replays record no provenance.** `navsim.nodeless --replay` stores an
+  empty `provenance` and no Paddock sha (the NAVSIM v1 replays, navhard's
+  constant-velocity row); it should record them as `paddock run` does.
 
 ## Next
 
@@ -71,3 +81,7 @@ Report bugs and ask for models or benchmarks in GitHub issues.
 - Alpamayo 2 Edge on NAVSIM with nuPlan's 10 Hz frames, which it is built for. Its
   NAVSIM cells are 2 Hz: the site that ran it holds no nuPlan 10 Hz data.
 - Failure-mode analysis, the same for every model and dataset.
+- navhard's scorer pinned and recorded: the NAVSIM v2.2 devkit is in no `repos.yaml` entry, and a navhard
+  run records neither its commit nor any setting that tells two devkits apart (the stored runs used
+  `0a380a9`, docs/benchmarks/navhard.md). Pin it, and record the sha the way AlpaSim records
+  `scorer_repo_sha` (it changes a navhard run's config and so its id, which is why it is a separate step).

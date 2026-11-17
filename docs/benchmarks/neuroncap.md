@@ -744,15 +744,22 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 
 ### Notes on the matrix cells
 
-⊙ Re-measured with the camera-frame fix of 13 Oct 2026: 4.13, against 3.57 camera-blind.
-See the neuroNCAP table.
+⊙ Momentum-aware, with the camera-frame fix of 13 Oct 2026: 4.06 (run
+`20261110T204020-036fb3`). The camera-fixed run it replaces, made while momentum-aware
+selection was off by default, scored 4.13, and the camera-blind one 3.57. See the
+neuroNCAP table.
 
-§ Not run — zero by construction. Every neuroNCAP scenario is staged so that an
-ego holding its current velocity collides at full speed. A run that avoids the
-collision scores a flat **5**; a run that collides scores
-`4 · max(0, 1 − v_impact / v_reference)`, which is 0 when the two speeds are
-equal. The baseline therefore scores 0 in all three scenarios with a 100%
-collision rate.
+⊡ UniAD (`20261109T092826-5919f1`) and VAD (`20261110T033544-7f435b`): the
+nuScenes checkpoints, given the six surround cameras. neuroNCAP asks every 0.1 s;
+the adapter steps the model every 0.5 s, the 2 Hz it was trained at, and answers
+the calls in between from the plan it holds.
+
+§ Run `20261112T200906-cce2d4` (valid): the floor holds the speed it has, straight ahead, as on every
+benchmark but Bench2Drive. Every neuroNCAP scenario is staged so that an ego holding its current velocity
+collides, and 194 of the 200 runs do (frontal 50 of 50, side 49 of 50, stationary 95 of 100). A run that
+avoids the collision scores a flat **5**; a run that collides scores `4 · max(0, 1 − v_impact / v_reference)`,
+which is 0 when the two speeds are equal. The six runs the scenario jitter let through give 0.15 of its
+0.60, and impacts a little slower than the reference speed the rest; its median run scores 0.007.
 
 Note the discontinuity: **a single run scores either exactly 5, or at most 4** —
 grazing an obstacle at walking pace scores 4, not 4.9. Anything between the two
@@ -766,18 +773,27 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 
 | Model | stationary ↑ (0–5) | frontal ↑ (0–5) | side ↑ (0–5) | overall ↑ (0–5) | CR ↓ (of 200) |
 |---|---:|---:|---:|---:|---:|
-| Drive-JEPA ⊙ | 5.00 ±0.00 | 2.51 ±1.42 | 4.01 ±2.00 | **4.13** | 24.5% |
+| Drive-JEPA ⊙ | 4.94 ±0.51 | 2.41 ±1.40 | 3.97 ±1.95 | **4.06** | 27.0% |
 | Alpamayo 1.5 | 4.41 ±1.48 | 3.64 ±2.01 | 2.45 ±1.93 | **3.73** | 32.5% |
 | OpenPilot | 4.52 ±1.34 | 2.30 ±1.24 | 3.08 ±2.25 | **3.60** | 38.0% |
 | AutoE2E | 3.46 ±2.16 | 3.71 ±1.82 | 2.01 ±2.30 | **3.16** | 42.0% |
 | Alpamayo 2 Edge | 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54.0% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
+| VAD ⊡ | 2.83 ±2.23 | 1.15 ±1.75 | 3.23 ±2.22 | **2.51** | 57.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
+| UniAD ⊡ | 3.23 ±2.29 | 0.77 ±1.52 | 1.62 ±2.34 | **2.21** | 59.0% |
 | VisionPilot | 2.53 ±1.60 | 1.17 ±1.38 | 0.08 ±0.18 | **1.58** | 85.5% |
-| Baseline (Constant Velocity) | 0.00 | 0.00 | 0.00 | 0.00 § | 100.0% |
+| Baseline (Constant Velocity) § | 0.95 ±1.11 | 0.33 ±0.42 | 0.17 ±0.71 | **0.60** | 97.0% |
 
-⊙ Measured after the camera-frame fix, run `20261012T224707-f11ac0`. The
-camera-blind run (`20260905T220225-f11ac0`) scored 4.23 / 2.42 / 3.39, overall 3.57,
+⊙ Momentum-aware, run `20261110T204020-036fb3` (valid): the default protocol at the
+same 20 pairs x 10 seeded runs, with the selection stage model.yaml has declared on
+since 26 Oct 2026, so each replan may be handed the node's own plan from 0.5 s
+earlier. The run was resumed: 19 of its 20 episodes come from its first attempt, and
+the momentum counts its record keeps (894 replans, 844 fed) are the second attempt's
+node only. It replaces `20261012T224707-f11ac0`, made after the camera-frame fix
+while the selection stage was off by default: 5.00 / 2.51 / 4.01, overall 4.13, with
+24.5% collisions. The text below about Drive-JEPA's frontal runs was measured on that
+run. The camera-blind run (`20260905T220225-f11ac0`) scored 4.23 / 2.42 / 3.39, overall 3.57,
 with 45.5% collisions. Paired over the 20 scenario-scene pairs the fix is worth
 +0.56 (SE 0.44, t 1.28), mostly stationary (+0.77, SE 0.30) and side.
 
@@ -789,7 +805,8 @@ first on KITScenes and comma2k19 and second on nuScenes, then fifth of eight. Th
 column is where it goes, 1.56 with 76% of those runs ending in a collision.
 
 **Qwen-Drive is the widest open-loop-to-closed-loop gap in the table.** It leads
-KITScenes and ties Drive-JEPA on NAVSIM, then places fourth here, below three
+KITScenes and is second to Drive-JEPA on NAVSIM (0.840 against 0.870), then places
+fourth here, below three
 models it beat on every open-loop column. The frontal column is where it goes:
 1.52 with 86% of those runs ending in a collision, against 3.64 for Alpamayo.
 **It brakes; it does not steer.** Over the 50 frontal episodes its planned 3 s
@@ -834,6 +851,10 @@ compared paired sample for sample rather than as means:
 | Alpamayo − VisionPilot | **+2.15** | 0.17 | **12.89** | 0.38 | **5.73** |
 | METEOR − Drive-JEPA | −1.49 | 0.21 | −7.16 | 0.48 | **−3.07** |
 | METEOR − Qwen-Drive | +0.16 | 0.19 | 0.83 | 0.41 | 0.39 |
+
+The rows with Drive-JEPA, and the paragraphs below that compare it, were computed on
+its earlier run `20261012T224707-f11ac0` (4.13), before its row became the
+momentum-aware `20261110T204020-036fb3` (4.06); they have not been recomputed.
 
 **Read the pair-level columns.** The 200 episodes are 10 seeded runs of each of
 20 scenario-scene pairs, not 200 independent draws, and this benchmark's error

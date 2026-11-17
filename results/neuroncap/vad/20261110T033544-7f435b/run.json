@@ -1,0 +1,118 @@
+{
+  "run_id": "20261110T033544-7f435b",
+  "site": "uvother-fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "vad",
+  "mode": "closed_loop",
+  "started_utc": "2026-11-10T18:20:59+00:00",
+  "duration_s": 26554.0,
+  "repo_sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 200,
+    "sequences_sha256": "ef927e969576db84",
+    "n_expected": 200,
+    "n_failed": 0,
+    "n_reused": 80
+  },
+  "config": {
+    "scene": "0099,0101,0103,0106,0108,0110,0278,0331,0346,0783,0796,0921,0923,0966",
+    "runs": 10,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_RIGHT",
+      "CAM_FRONT_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "declared_env": {
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1",
+      "VAD_CHECKPOINT": "{weights}VAD_base.pth",
+      "VAD_CONFIG": "{repo}VAD_base_stage_2.py"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "VAD",
+      "sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+      "pinned_sha": "1688c4b",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "ea97b04fbf5ab26982c53d8fdf8a59562cee3616",
+      "dirty": false
+    },
+    "policy": {
+      "episode": 121,
+      "source_size": {
+        "CAM_FRONT": [
+          1599,
+          900
+        ],
+        "CAM_FRONT_RIGHT": [
+          1599,
+          900
+        ],
+        "CAM_FRONT_LEFT": [
+          1599,
+          900
+        ],
+        "CAM_BACK": [
+          1599,
+          900
+        ],
+        "CAM_BACK_LEFT": [
+          1599,
+          900
+        ],
+        "CAM_BACK_RIGHT": [
+          1599,
+          900
+        ]
+      },
+      "quaternion_source": "canbus",
+      "command": 2,
+      "gravity_added": false,
+      "lidar_source": "observation",
+      "plan_lidar": [
+        [
+          -0.02,
+          2.519
+        ],
+        [
+          -0.071,
+          5.001
+        ],
+        [
+          -0.14,
+          7.437
+        ],
+        [
+          -0.239,
+          9.807
+        ],
+        [
+          -0.34,
+          12.093
+        ],
+        [
+          -0.463,
+          14.313
+        ]
+      ],
+      "steps": 9,
+      "frames_fed": 1,
+      "held": 27
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "resumed: 8 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}

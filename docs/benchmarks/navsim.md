@@ -39,12 +39,12 @@ Four things a reader should not have to infer, stated once:
   has no lane-keeping, traffic-light or two-frame-comfort terms, so the two are
   not interchangeable, and a v1 checkpoint scored here gets a v2 number.
 - **Not the v2 leaderboard protocol.** Published NAVSIM v2 figures are EPDMS
-  on `navhard` *two-stage*: a synthetic second stage (`synthetic_scenes/`)
-  branches off each real scene to test reactivity, and scores are far lower
-  there. This fork ships `navtest_two_stage` and `navsafe_two_stage` but no
-  `navhard`, and `synthetic_scenes/` is not on disk at this site, so nothing
-  two-stage can run here yet. EPDMS on navtest is the same metric on
-  different, easier data — do not compare it to published navhard numbers.
+  on `navhard` *two-stage*: a synthetic second stage branches off each real
+  scene to test reactivity, and scores are far lower there. This fork ships
+  `navtest_two_stage` and `navsafe_two_stage` but no `navhard`; paddock runs
+  navhard as its own benchmark, in NAVSIM v2.2's devkit
+  ([navhard.md](navhard.md)). EPDMS on navtest is the same metric on
+  different, easier data — do not compare it to navhard numbers.
 
 ## OpenScene is nuPlan, not nuScenes
 
@@ -131,6 +131,10 @@ made with one can never share a config hash with a run made without it:
   OpenScene's 2 Hz anyway. Stored `valid: false`: it measures the rate gap.
 - `PADDOCK_NAVSIM_OVERRIDES="k=v ..."` — extra hydra overrides for the scorer,
   recorded verbatim.
+- `PADDOCK_NAVSIM_STREAMED=1` — streamed mode: each frame names its log so a
+  node can keep its own previous plan (Drive-JEPA's momentum stage); see
+  "navtest's streamed mode" below. Recorded as `config.streamed = "per_log"`,
+  absent from a standard run; the run stays valid and its notes say so.
 - `PADDOCK_NAVSIM_MERGE_FROM=<run dir>` — take another run's completed chunk
   CSVs as this run's rows and leave their logs out of the chunks. For
   continuing a run whose chunking changed: `--resume` reuses chunks by
@@ -193,12 +197,96 @@ observation and knows its own previous plan, so it can build all three itself:
 (`adapters/models/drivejepa/momentum.py`), for closed-loop benchmarks where
 consecutive calls belong to one drive.
 
-That switch does not change this benchmark. The proxy scores each scenario
-through `/infer_sequence`, which resets the node first, so no previous plan
-survives from one scenario to the next and the stage never runs: proxy rows are
-the raw argmax with the switch on or off. Feeding the proxy's plans back across
-scenarios — which is what would close the 0.02705 below — is a separate
-decision about this benchmark's comparability and is not made here.
+That switch does not change a standard run of this benchmark. The proxy scores
+each scenario through `/infer_sequence`, which resets the node first, so no
+previous plan survives from one scenario to the next and the stage never runs:
+standard proxy rows are the raw argmax with the switch on or off. Every
+Drive-JEPA navtest row made before streamed mode existed (below) is such a row.
+
+### navtest's streamed mode (opt in)
+
+`PADDOCK_NAVSIM_STREAMED=1 paddock run --bench navsim --model drivejepa` lets
+the node keep its own previous plan per log, so the momentum stage acts on
+navtest the way upstream's `run_pdm_score_sequential.py` (:120-168) makes it
+act: each frame is handed the plan chosen for the same log's frame 0.5 s
+earlier, if there is one. Off, nothing changes for any model. On:
+
+- Each frame's `/infer_sequence` request adds a `stream`
+  (`protocol.StreamFrame`): the log's name, the frame's own timestamp and its
+  recorded global rear-axle pose, read from the metric cache the v2 scorer
+  passes the proxy (`log_name`, `timepoint.time_us`, `ego_state.rear_axle`;
+  `agent.cache_stream_frame`). That is the state upstream's loop hands
+  Drive-JEPA as `metric_cache.ego_state`. Nothing else of the cache is read,
+  `past_ego_simulated_states` (the scorer's own simulation) stays ignored, and
+  the observations are byte-identical to a standard run's.
+- The order is upstream's own: the scorer gives each worker whole logs and plans
+  a log's frames sorted by metric-cache time (:106-118); the proxy pins each
+  worker to one node; the node keeps one book per log (`momentum.py`) and feeds
+  a plan 0.45-0.55 s old. A log's first frame, and a frame after a gap or after
+  a frame that failed, gets none -- upstream drops a plan older than 0.55 s.
+- Expected on full navtest: 10,040 of the 12,146 frames have a frame of the same
+  log 0.5 s before them (the other 2,106 are the 136 logs' first frames and
+  frames after a gap; counted from a standard run's dump, every in-window gap
+  498-501 ms). `by_group.streamed` in `metrics.json` records `momentum_fed`
+  (the node's say, per scored frame) beside `previous_planned` (scored frames
+  whose log has a frame planned 0.45-0.55 s before them, from the dump), so a
+  shortfall is visible there.
+- A retry pass re-plans failed frames with a neighbour so the scorer can
+  aggregate. The neighbour's row is discarded already; in streamed mode its
+  re-plan is also moved out of the dump (`trajectories.retry-neighbours.jsonl`),
+  so the dump holds exactly the plans that were scored.
+- The run records it: `config.streamed = "per_log"` changes the run id, a
+  standard run cannot be resumed as a streamed one or back, the notes say so,
+  and each sample carries `extra.momentum_fed`. `PADDOCK_NAVSIM_RESUME_FROM` and
+  `PADDOCK_NAVSIM_MERGE_FROM` are refused with it: another run's chunks are not
+  known to have been streamed.
+
+NAVSIM v1 has no streamed mode: its scorer plans in set order, and the switch
+is refused there. A streamed run's v1 PDMS is its own plans replayed,
+`python -m paddock.adapters.benchmarks.navsim.nodeless --bench navsim_v1 --replay navsim/drivejepa/<run_id>`;
+the replay copies `streamed` into its config (it is in `PLAN_SETTINGS`), says
+so in its notes, and counts the fed plans over its own scored frames. Nothing
+is re-planned.
+
+A streamed row is a different protocol from a standard paddock navtest row and
+from the vendor's native-agent row (which is also handed the scorer's own
+simulation of the previous plan). Report it beside them, not as one number.
+
+### navhard's streamed mode (opt in)
+
+navhard (NAVSIM v2.2, `navhard_two_stage`) has an opt-in mode that does feed
+the node its own plans back, for the stage-one frames upstream's sequential
+loop would: `PADDOCK_NAVHARD_STREAMED=1 paddock run --bench navhard --model drivejepa`.
+Off, nothing changes for any model. On:
+
+- For each **real** stage-one frame the proxy adds a `stream` to the
+  `/infer_sequence` request: the log name, the frame's own timestamp and its
+  global pose, read from the Scene (`protocol.StreamFrame`). The observations
+  are byte-identical to a standard run's. The node still resets per sample, but
+  Drive-JEPA keeps one previous-plan book per log across those resets and is
+  fed a plan that is 0.45-0.55 s old, as in closed loop. The scorer's
+  `metric_cache` and `past_ego_simulated_states` are still ignored.
+- **Synthetic** stage-two scenes are sent exactly as in a standard run, with no
+  stream, and never enter a log's book. The Scene tells them apart:
+  `scene_metadata.corresponding_original_scene` is set only for a synthetic scene.
+- The v2.2 scorer plans each worker's stage-one frames in set order (hash
+  order). In one standard run's plan dump (uniad, 10 Nov 2026), only 109 of the
+  225 (previous, now) pairs had the earlier frame planned first. `adapters/benchmarks/navhard/score.py`
+  therefore swaps that one line of the official worker for the same tokens
+  sorted by (log, timestamp), in streamed mode only. A log's frames all go to
+  one worker, and each request blocks until the node has kept its plan. So
+  all 225 "now" frames can be fed, unless the frame before one failed.
+- The run records it. `config.streamed = "per_log"` changes the run id, and a
+  standard run cannot be resumed as a streamed one or the other way round. Each
+  sample's `extra.momentum_fed` and `by_group.streamed` (real and synthetic
+  frames, how many were fed) come from the plan dump, and the notes say so.
+
+`PADDOCK_NAVSIM_STREAMED` is refused on navhard, and navhard's switch does
+nothing on navtest: the two never stack.
+
+Upstream's navhard protocol gives no agent a previous plan. So a streamed
+navhard row is a different protocol from published navhard numbers and from
+a standard paddock run. Report them side by side, not as one number.
 
 ## The fork's own baselines do not run
 
@@ -506,7 +594,8 @@ so nothing below the full split can be averaged or ranked against a real one.
 
 | model | EPDMS | collisions | drivable | progress | run |
 |---|---:|---:|---:|---:|---|
-| drivejepa | **0.8427** | 0.984 | 0.985 | 0.889 | `20260902T173156-7e208f` |
+| drivejepa, momentum-aware (streamed per log) | **0.8700** | 0.984 | 0.984 | 0.882 | `20261111T052813-8f96dd` |
+| drivejepa, retired: momentum never acted | 0.8427 | 0.984 | 0.985 | 0.889 | `20260902T173156-7e208f` |
 | openpilot, 10 Hz nuPlan history | **0.7468** | 0.970 | 0.913 | 0.712 | `20260911T161513-3a4c90` |
 | alpamayo15, 10 Hz nuPlan history | **0.6910** | 0.957 | 0.856 | 0.681 | `20260912T040211-a9562c` |
 | alpamayo15, 2 Hz OpenScene | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
@@ -699,8 +788,8 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 † Every NAVSIM figure is the full navtest split, 12,146 real recorded
 scenarios, scored through paddock's proxy agent. This is NAVSIM v2's **stage
 one** only: the leaderboard's stage two, the pseudo-simulation on synthetic
-scenes (navhard / navsafe two-stage), is not run -- it needs the
-`synthetic_scenes/` download and a second metric cache. Alpamayo's 0.691 is
+scenes, is the separate `navhard` benchmark ([navhard.md](navhard.md)), which
+has no matrix column yet. Alpamayo's 0.691 is
 with the 10 Hz history from nuPlan (see ‡); at OpenScene's 2 Hz the same model
 scores 0.608 on the same split. Its earlier 242-scenario estimate was 0.653
 against that 0.608, which is why subsets are stored `valid: false`. On the subset Drive-JEPA scored 0.880
@@ -716,7 +805,8 @@ reports constant velocity 20.6 and human 94.8 -- see
 `docs/benchmarks/navsim_v1.md`. Alpamayo's and OpenPilot's v1 figures replay the
 plans their 10 Hz v2 runs recorded -- the same plans, the other scorer -- so each
 model's two columns describe one run; Alpamayo's 2 Hz pair (0.608 / 0.676) is in
-the tables below. Drive-JEPA and VisionPilot are fresh proxy runs at 2 Hz.
+the tables below. VisionPilot's are fresh proxy runs at 2 Hz. Drive-JEPA's v2 figure
+is a streamed proxy run at 2 Hz (⟲) and its v1 figure replays that run's plans.
 
 ‡ OpenScene is a 2 Hz dataset and OpenPilot infers motion from frame-to-frame
 change, so on it OpenPilot plans a parked car — 0.30 m of travel in 4 s at
@@ -736,6 +826,28 @@ site that ran it holds no nuPlan 10 Hz data. Its 0.626 compares with Alpamayo 1.
 0.1 s pose history from the measured speeds, so the slower rate reaches it in a
 different way than it reaches Alpamayo 1.5 ([docs/models/alpamayo2edge.md](../models/alpamayo2edge.md)).
 
+⊟ **UniAD's and VAD's figures rank with a note** (`20261109T082522-c24426`,
+`20261110T095855-0ebf09`). Both nuScenes checkpoints plan 3 s; NAVSIM scores 4 s and
+refuses a shorter plan, so the site set `UNIAD_HORIZON_S` / `VAD_HORIZON_S` to 4.0 and
+paddock continued each plan by holding its last 0.5 s step, a second the model never
+planned. Their `model.yaml` lists that setting under `ranked_with_note`, as METEOR's
+does. The runs were made before that line went in, so the runner first stored them
+`valid: false`; their records were written again from the stored chunks
+(`paddock run ... --resume`, nothing scored again), and now rank with the note.
+Both are given the six surround cameras.
+
+⟲ **Drive-JEPA's figure is momentum-aware** (`20261111T052813-8f96dd`), in navtest's
+streamed mode (`PADDOCK_NAVSIM_STREAMED`, `config.streamed = "per_log"`; see
+[navtest's streamed mode](#navtests-streamed-mode-opt-in)): each frame names its
+log, time and pose, and the node hands it the plan it made for the log's frame
+0.5 s earlier, as upstream's sequential loop does. 10,040 of the 12,146 frames were
+fed, the expected count; the rest open a log or have no predecessor 0.45-0.55 s
+back. A standard paddock run hands no model a previous plan, so this is a different
+protocol from the other rows. It replaces `20260902T173156-7e208f` (0.843), in
+which momentum never acted. Between the two, two-frame extended comfort, the
+term that compares consecutive frames' plans, moves from 0.477 to 0.784 and ego
+progress from 0.889 to 0.882. The last column is that earlier run's subset figure.
+
 ☉ AutoE2E v1.0, the `kitscenes-epoch-5` checkpoint: the release's nuPlan model
 fine-tuned on KITScenes. NAVSIM is fed from nuPlan at 10 Hz with the rear views
 taken from OpenScene's keyframes (`keyframe_cameras`), which are exactly the
@@ -749,7 +861,7 @@ nuPlan, whose test logs `navtest` is drawn from; see *AutoE2E × navsim* in
 Full navtest (stage one: real recorded scenes, no synthetic stage two), 12,146 scenarios, all sub-metrics 0–1. Every column except EPDMS
 is the mean of a per-scenario pass/fail or ratio, and EPDMS is the weighted
 product the scorer builds from them. Drive-JEPA is scored through paddock's
-proxy agent (see †). Extended comfort is the mean over the scenarios where it
+proxy agent (see †), in streamed mode (see ⟲). Extended comfort is the mean over the scenarios where it
 is defined, 10,040 of the 12,146 -- it compares consecutive frames' plans, so
 it is absent for a log's first frame and for any scenario without a scorable
 predecessor (`docs/results-schema.md`); every other column is over all 12,146.
@@ -762,9 +874,11 @@ was first run on, for reference only.
 | Alpamayo 1.5, 10 Hz nuPlan history ‡ | 0.691 | 0.957 | 0.856 | 0.933 | 0.997 | 0.681 | 0.951 | 0.963 | 0.962 | 0.576 | — |
 | Alpamayo 1.5, 2 Hz OpenScene | 0.608 | 0.941 | 0.788 | 0.890 | 0.998 | 0.596 | 0.939 | 0.931 | 0.938 | 0.490 | 0.653 |
 | Alpamayo 2 Edge, 2 Hz OpenScene ‡ | 0.626 | 0.924 | 0.801 | 0.879 | 0.996 | 0.654 | 0.908 | 0.859 | 0.964 | 0.513 | — |
-| Drive-JEPA | **0.843** | 0.984 | 0.985 | 0.991 | 0.998 | 0.889 | 0.979 | 0.974 | 0.978 | 0.477 | 0.880 |
+| Drive-JEPA ⟲ | **0.870** | 0.984 | 0.984 | 0.991 | 0.998 | 0.882 | 0.978 | 0.976 | 0.979 | 0.784 | 0.880 |
 | VisionPilot | 0.431 | 0.727 | 0.819 | 0.926 | 0.975 | 0.404 | 0.700 | 0.899 | 0.968 | 0.518 | 0.447 |
 | METEOR ◊ | 0.303 | 0.694 | 0.687 | 0.805 | 0.979 | 0.317 | 0.683 | 0.795 | 0.973 | 0.451 | — |
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 | 0.975 | 0.982 | **0.867** | — |
 | AutoE2E, 10 Hz nuPlan history ☉ | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 | 0.830 | 0.984 | 0.812 | — |
+| UniAD ⊟ | 0.478 | 0.826 | 0.729 | 0.919 | 0.984 | 0.517 | 0.792 | 0.842 | 0.877 | 0.389 | — |
+| VAD ⊟ | 0.428 | 0.814 | 0.722 | 0.848 | 0.981 | 0.443 | 0.787 | 0.833 | 0.895 | 0.456 | — |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |

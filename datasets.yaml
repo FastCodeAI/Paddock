@@ -131,6 +131,52 @@ datasets:
         logs: see docs/benchmarks/navsim.md and docs/benchmarks/navsim_v1.md for the
         devkit and `python -m tools.benchmarks.navsim.build_metric_cache`.
 
+  navhard:
+    description: NAVSIM v2.2 navhard_two_stage -- real OpenScene test scenes plus synthetic follow-up scenes for pseudo closed-loop scoring (navhard)
+    requires: [navsim_logs, sensor_blobs, maps, navhard_two_stage]
+    notes: >
+      The navsim root layout plus navhard_two_stage/ (sensor_blobs,
+      synthetic_scene_pickles, openscene_meta_datas, synthetic_scenes_attributes.csv)
+      from upstream download/download_navhard_two_stage.sh (navsim-v2.2 on
+      OpenDriveLab/OpenScene, 38.5 GB). Stage one reads the real test blobs under
+      sensor_blobs/test, stage two the synthetic ones. Needs its own metric cache,
+      built by the v2.2 devkit's run_metric_caching.py with train_test_split=navhard_two_stage.
+    fetch:
+      license: CC BY-NC-SA 4.0, non-commercial use only (OpenScene, and nuPlan's maps)
+      terms: https://www.nuscenes.org/terms-of-use
+      # navsim's revision: it already holds NAVSIM v2.2's navhard archives under navsim-v2/.
+      huggingface: {repo: OpenDriveLab/OpenScene, revision: a76f840b65e972bc45e56c2adced897498e9a026}
+      parts:
+        # Stage one is navtest's real test scenes: navsim's logs, cameras and maps.
+        metadata:
+          files: [openscene-v1.1/openscene_metadata_test.tgz]
+          into: navsim_logs/test
+          strip: 3  # openscene-v1.1/meta_datas/test/<log>.pkl
+        cameras:
+          files: [openscene-v1.1/openscene_sensor_test_camera/openscene_sensor_test_camera_*.tgz]
+          into: sensor_blobs/test
+          strip: 3  # openscene-v1.1/sensor_blobs/test/<log>/<CAM>/*.jpg
+        maps:
+          base: https://motional-nuplan.s3-ap-northeast-1.amazonaws.com/public/nuplan-v1.1/
+          files:
+            nuplan-maps-v1.1.zip:
+              size: 970997691
+              sha256: 444860429f9a3bcf89a6459d683fa82eb9219aa259d8d9b8cdefdb37f0b56b05
+              etag: 0efaac6b7c603ae6f341021b35059bcc-116
+          into: maps
+          strip: 1
+        # Stage two: the three archives upstream's download_navhard_two_stage.sh fetches
+        # (current and history sensors, scene pickles; 38.5 GB). Each unpacks to
+        # navhard_two_stage/.
+        navhard_two_stage:
+          files: [navsim-v2/navsim_v2.2_navhard_two_stage_*.tar.gz]
+          into: navhard_two_stage
+          strip: 1  # navhard_two_stage/{sensor_blobs,synthetic_scene_pickles,openscene_meta_datas,...}
+      after: >
+        navhard scores in NAVSIM v2.2's own devkit, from a metric cache its
+        run_metric_caching.py builds with train_test_split=navhard_two_stage: see
+        docs/benchmarks/navhard.md.
+
   nuplan:
     description: nuPlan v1.1 -- the original 10 Hz camera logs behind NAVSIM's OpenScene; open-loop ADE/FDE
     requires: [nuplan-v1.1, maps]

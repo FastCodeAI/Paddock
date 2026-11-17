@@ -1,0 +1,119 @@
+{
+  "run_id": "20261109T092826-5919f1",
+  "site": "uvother-fastcode-shakaal",
+  "benchmark": "neuroncap",
+  "model": "uniad",
+  "mode": "closed_loop",
+  "started_utc": "2026-11-09T17:34:08+00:00",
+  "duration_s": 36094.1,
+  "repo_sha": "532fc330151758c5e345aef74d2a1bf1042e50ab",
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 200,
+    "sequences_sha256": "ef927e969576db84",
+    "n_expected": 200,
+    "n_failed": 0,
+    "n_reused": 30
+  },
+  "config": {
+    "scene": "0099,0101,0103,0106,0108,0110,0278,0331,0346,0783,0796,0921,0923,0966",
+    "runs": 10,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_RIGHT",
+      "CAM_FRONT_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "declared_env": {
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1",
+      "UNIAD_CHECKPOINT": "{weights}uniad_base_e2e.pth",
+      "UNIAD_CONFIG": "{repo}base_e2e.py",
+      "UNIAD_MOTION_ANCHORS": "{weights}motion_anchor_infos_mode6.pkl"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "UniAD",
+      "sha": "532fc330151758c5e345aef74d2a1bf1042e50ab",
+      "pinned_sha": "532fc33",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "ea97b04fbf5ab26982c53d8fdf8a59562cee3616",
+      "dirty": false
+    },
+    "policy": {
+      "episode": 171,
+      "source_size": {
+        "CAM_FRONT": [
+          1599,
+          900
+        ],
+        "CAM_FRONT_RIGHT": [
+          1599,
+          900
+        ],
+        "CAM_FRONT_LEFT": [
+          1599,
+          900
+        ],
+        "CAM_BACK": [
+          1599,
+          900
+        ],
+        "CAM_BACK_LEFT": [
+          1599,
+          900
+        ],
+        "CAM_BACK_RIGHT": [
+          1599,
+          900
+        ]
+      },
+      "quaternion_source": "canbus",
+      "command": 1,
+      "gravity_added": false,
+      "lidar_source": "observation",
+      "plan_lidar": [
+        [
+          -0.357,
+          1.453
+        ],
+        [
+          -1.02,
+          2.697
+        ],
+        [
+          -1.924,
+          3.693
+        ],
+        [
+          -2.926,
+          4.497
+        ],
+        [
+          -4.01,
+          4.862
+        ],
+        [
+          -5.259,
+          5.197
+        ]
+      ],
+      "steps": 21,
+      "frames_fed": 1,
+      "held": 72
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "resumed: 3 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}

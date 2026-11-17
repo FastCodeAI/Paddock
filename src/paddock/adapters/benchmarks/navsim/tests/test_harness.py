@@ -19,6 +19,7 @@ from paddock.adapters.benchmarks.navsim.harness import (
     ENV_ALLOW_PARTIAL,
     ENV_ALLOW_SLOW,
     ENV_OVERRIDES,
+    ENV_STREAMED,
     PROXY_AGENT,
     SCORER,
     SPLITS_DIR,
@@ -289,7 +290,7 @@ def _navsim_site(
         + "".join(f'{key} = "{value}"\n' for key, value in settings.items())
     )
     monkeypatch.setenv("PADDOCK_CONFIG", str(tmp_path / "site.toml"))
-    for name in (ENV_AGENT, ENV_ALLOW_PARTIAL, ENV_ALLOW_SLOW, ENV_OVERRIDES):
+    for name in (ENV_AGENT, ENV_ALLOW_PARTIAL, ENV_ALLOW_SLOW, ENV_OVERRIDES, ENV_STREAMED):
         monkeypatch.delenv(name, raising=False)
     return SiteConfig.load()
 
@@ -431,6 +432,10 @@ def test_wire_modules_compile_under_python_39() -> None:
         base / "adapters" / "benchmarks" / "navsim" / "dense.py",
         base / "adapters" / "benchmarks" / "navsim" / "agent.py",
         base / "adapters" / "benchmarks" / "navsim_v1" / "agent.py",
+        # navhard's proxy and scorer wrapper run in the v2.2 devkit's 3.9 too.
+        base / "adapters" / "benchmarks" / "navhard" / "agent.py",
+        base / "adapters" / "benchmarks" / "navhard" / "ordering.py",
+        base / "adapters" / "benchmarks" / "navhard" / "score.py",
     ]
     command = [interpreter, "-m", "py_compile", *map(str, files)]
     result = subprocess.run(command, capture_output=True, text=True)

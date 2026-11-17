@@ -56,7 +56,9 @@ def _replay(tmp_path: Path, monkeypatch, source_config: dict) -> dict:
 def test_a_replay_records_the_settings_of_the_run_it_replays(tmp_path: Path, monkeypatch) -> None:
     config = _replay(tmp_path, monkeypatch, dict(SOURCE_SETTINGS))["config"]
 
-    assert {key: config.get(key) for key in PLAN_SETTINGS} == SOURCE_SETTINGS
+    # Only the keys the record has: `streamed` is in PLAN_SETTINGS and absent
+    # from a standard run (test_streamed.py replays a streamed one).
+    assert {key: config[key] for key in PLAN_SETTINGS if key in config} == SOURCE_SETTINGS
     assert config["replayed_from"] == "navsim/toy/r1"
 
 

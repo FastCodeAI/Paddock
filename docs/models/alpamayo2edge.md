@@ -433,7 +433,7 @@ frame is the one at the time Edge asks for and no pose history is extrapolated. 
 
 The first is the support-matrix cell. It is given the route the way Alpamayo 1.5's
 cell (`legacy-full-nav`, 1.002 m) is: a turn on 39 of the 223 keyframes, from the
-recorded future ([kitscenes.md](../benchmarks/kitscenes.md#the-eight-rows-and-where-each-came-from)
+recorded future ([kitscenes.md](../benchmarks/kitscenes.md#the-rows-and-where-each-came-from)
 says how that column was made here). The second shows what the route is worth. The 184
 keyframes told to go straight give identical plans in both runs; on the 39 turns ADE
 moves from 1.068 to 1.012 m, a paired bootstrap 95% interval of −0.172 to +0.014 m.

@@ -10,8 +10,8 @@
 # f-theta cameras at 20 Hz, 3.0 s warm-up with the driver called, 400 steps
 # (paddock_bridge_qwendrive.yaml) -- and its inputs. The three cameras it reads
 # are renamed to the node's names and the fourth is not sent. The node is asked
-# every 1.5 s on a grid, as the native driver asked it, and hears every other
-# tick through /observe, so its frames 0.5 s apart and ego rows 0.1 s apart all
+# every 0.5 s on a grid (its planning_hz; the native driver asked every 1.5 s),
+# and hears every other tick through /observe, so its frames 0.5 s apart and ego rows 0.1 s apart all
 # exist. canbus carries forward and sideways speed and yaw rate, with the forced
 # replay's zeros replaced from the poses; the route and the scene id ride along
 # for the node's command and noise seed. Plans come back as 50 points 0.1 s
@@ -29,9 +29,10 @@ bridge_args:
   - --camera-name
   - camera_cross_right_120fov=CAM_FRONT_RIGHT
   - --named-cameras-only
-  # The native driver's replan period: 30 control steps.
+  # 09 Nov (eval/alpasim-qwen-2hz, uncommitted): a replan every 0.5 s (10 control steps), the model's declared
+  # planning_hz 2.0, where the native driver called it every 1.5 s (30 steps).
   - --replan-every-us
-  - "1500000"
+  - "500000"
   # Both must equal paddock_bridge_qwendrive.yaml's control step and
   # force_gt_duration_us; a test checks they do.
   - --frame-interval-us

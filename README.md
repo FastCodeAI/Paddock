@@ -22,7 +22,7 @@ and every score it produces traces back to a run you can inspect.
 </p>
 
 **A** adapted to the benchmark · **P** a pipeline around the model is graded ·
-**S** stale.
+**S** stale · **V** stored `valid: false`, so not ranked.
 
 Each number is read from the run [docs/support-matrix.toml](docs/support-matrix.toml)
 names for it. The matrix holds released checkpoints only.
@@ -30,6 +30,7 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 [KITScenes](docs/benchmarks/kitscenes.md#support-matrix-results) ·
 [comma2k19](docs/benchmarks/comma2k19.md#support-matrix-results) ·
 [NAVSIM v2](docs/benchmarks/navsim.md#support-matrix-results) ·
+[NAVSIM v2 hard](docs/benchmarks/navhard.md#results) ·
 [NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) ·
 [Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) ·
 [neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
@@ -52,19 +53,35 @@ it differs.
   neuroNCAP (its model card lists two NAVSIM-built and five nuScenes-built public
   training sets), AutoE2E on nuScenes and neuroNCAP (its frozen camera encoder was
   trained on nuScenes train), on NAVSIM (trained on nuPlan's train logs, the
-  source of NAVSIM's scenes) and on KITScenes (fine-tuned on its train split).
+  source of NAVSIM's scenes) and on KITScenes (fine-tuned on its train split). UniAD and VAD on
+  nuScenes and neuroNCAP (both trained on nuScenes train; neuroNCAP's scenes are
+  nuScenes val scenes).
   OpenPilot's KITScenes cell is a configured run, and its
   configuration was chosen by inspecting one scene of the scored split; the stock
   run scores 1.599.
 - **P — grades a pipeline built around the model.** VisionPilot has no
   trajectory output, so paddock builds one from its lane and speed outputs.
-  METEOR plans 3 s and NAVSIM scores 4 s, so the last second is extrapolated.
+  METEOR, UniAD and VAD plan 3 s and NAVSIM scores 4 s, so the last second is
+  extrapolated.
   OpenPilot on Bench2Drive drives through openpilot's own longitudinal planner
   and its driver-resume nudge, which stands in for a driver pressing resume
   once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** A VisionPilot figure marked S
   predates the `CURV_SCALE` fix; the others were re-run since, and AlpaSim's
   driver never had the bug.
+- **V — stored `valid: false`, so not ranked.** No cell carries it now. UniAD's and VAD's
+  NAVSIM cells hold their 3 s plan to NAVSIM's 4 s by a site setting (`UNIAD_HORIZON_S`,
+  `VAD_HORIZON_S`), which their `model.yaml` lists as ranked with a note, as METEOR's is.
+  Their records were written again from the stored chunks (`paddock run ... --resume`,
+  nothing scored again), so they rank with that note.
+- **Drive-JEPA's open-loop and neuroNCAP cells are its momentum-aware model.**
+  Its selection stage hands each plan the node's own plan from 0.5 s earlier, which
+  open loop never does on its own, because every sample resets the node. So these
+  cells are streamed runs: NAVSIM per log, nuScenes per scene, and KITScenes and
+  comma2k19 after a 0.5 s warm-up plan that is discarded, a Paddock choice rather
+  than upstream protocol ([Drive-JEPA](docs/models/drivejepa.md)). The runs they
+  replace, in which momentum never acted, are retired. Its Bench2Drive and AlpaSim
+  cells are earlier runs, made before momentum-aware selection was on.
 - **What never leaves a cell unranked.** How many cameras a model is given,
   whether it drives through paddock's bridge or its own simulator driver, and
   whether its Bench2Drive routes end early as failed drives are never reasons to
@@ -100,7 +117,11 @@ Before comparing numbers:
 
 - **Two columns use part of a benchmark, so don't compare them with published
   scores.** AlpaSim is 30 of the 913 scenes in `public_2601`. NAVSIM v2 is
-  `navtest`, stage one only; its public leaderboard uses `navhard`, two stages.
+  `navtest`, stage one only; its public leaderboard uses `navhard`, two stages,
+  which is the "NAVSIM v2 hard" column ([its page](docs/benchmarks/navhard.md)).
+  navhard is served at 2 Hz for every model, so OpenPilot, which wants 10 Hz
+  (`min_input_hz`), is scored at 2 Hz there with each frame held (see its page);
+  its cell is to follow.
 - **Bench2Drive is all 220 routes,** every route scored, each model at its own
   rate and up to three tries per route. Two ways of ending a route are in it:
   OpenPilot, Alpamayo 1.5, Alpamayo 2 Edge, AutoE2E and METEOR ran under the protocol that ends a
@@ -112,20 +133,22 @@ Before comparing numbers:
 - **Both NAVSIM columns are open loop.** The plan is simulated for 4 s to score it,
   but the model never sees what happened, so errors do not compound.
 - **Open-loop L2 rewards a straight line.** On nuScenes, constant velocity
-  (0.641) beats every learned model except Qwen-Drive, whose cell is adapted.
+  (0.641) beats every learned model except Qwen-Drive (0.450, adapted) and
+  Alpamayo 2 Edge (0.630).
 - **Close closed-loop scores are often ties.** On neuroNCAP (20 scenario pairs,
   10 runs each) the top three are statistically indistinguishable. On AlpaSim
   (30 scenes, one rollout each) a difference under about 0.16 is within two
   standard errors.
 - **Constant velocity is a floor, defined per benchmark, and ranked like a model.**
-  It extrapolates the recorded speed in open loop, holds a fixed 3 m/s target on
-  Bench2Drive, and scores 0 on neuroNCAP by construction: every scenario is
-  staged so that holding speed collides.
+  It holds the speed it has, straight ahead, on every benchmark but Bench2Drive, whose routes
+  start at rest, so there it holds a fixed 3 m/s target. On neuroNCAP every scenario is staged
+  so that holding speed collides: 194 of its 200 runs do, and it scores 0.60.
 - **The AlpaSim rows come from AlpaSim's native drivers**, not paddock's bridge,
-  and were imported into `results/`; Alpamayo's, AutoE2E's and Qwen-Drive's are the
-  exceptions, run through paddock's bridge. The 30-scene rows are ranked together; models
+  and were imported into `results/`; Alpamayo's, AutoE2E's, Qwen-Drive's, UniAD's and
+  VAD's are the exceptions, run through paddock's bridge (UniAD's and VAD's six cameras
+  re-rendered as nuScenes' rig). The 30-scene rows are ranked together; models
   are given different numbers of cameras (OpenPilot, VisionPilot, Drive-JEPA
-  and the floor 1, Qwen-Drive 3, Alpamayo 4, METEOR and AutoE2E 6).
+  and the floor 1, Qwen-Drive 3, Alpamayo 4, METEOR, AutoE2E, UniAD and VAD 6).
 
 </details>
 
@@ -250,6 +273,7 @@ Paddock ships no weights and no datasets.
 | [comma2k19](docs/benchmarks/comma2k19.md) | open loop | ADE | [commaai/comma2k19](https://github.com/commaai/comma2k19) | [A Commute in Data](https://arxiv.org/abs/1812.05752) |
 | [nuPlan](docs/benchmarks/nuplan.md) | open loop | ADE | [nuPlan](https://www.nuscenes.org/nuplan) | [nuPlan](https://arxiv.org/abs/2106.11810) |
 | [NAVSIM v2](docs/benchmarks/navsim.md) | open loop, plan simulated for scoring; `navtest`, stage one | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
+| [NAVSIM v2 hard](docs/benchmarks/navhard.md) | open loop, plan simulated for scoring; `navhard_two_stage`, stage one and synthetic stage two | EPDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [Pseudo-Simulation](https://arxiv.org/abs/2506.04218) |
 | [NAVSIM v1](docs/benchmarks/navsim_v1.md) | open loop, plan simulated for scoring | PDMS | [autonomousvision/navsim](https://github.com/autonomousvision/navsim) | [NAVSIM](https://arxiv.org/abs/2406.15349) |
 | [Bench2Drive](docs/benchmarks/bench2drive.md) | closed loop, CARLA; all 220 routes | driving score | [Thinklab-SJTU/Bench2Drive](https://github.com/Thinklab-SJTU/Bench2Drive) | [Bench2Drive](https://arxiv.org/abs/2406.03877) |
 | [neuroNCAP](docs/benchmarks/neuroncap.md) | closed loop, NeuRAD | NCAP score | [atonderski/neuro-ncap](https://github.com/atonderski/neuro-ncap) | [NeuroNCAP](https://arxiv.org/abs/2404.07762) |

@@ -17,8 +17,10 @@
     "turn_commands": 39
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261111T054224-9f8371",
+  "notes": "Superseded by 20261111T054224-9f8371: Drive-JEPA's rows are its momentum-aware model now: 20261111T054224-9f8371 plans each keyframe after a discarded warm-up plan for the frame 0.5 s earlier (a Paddock choice, not upstream protocol; 223 of 223 fed). This pre-paddock run recorded no momentum setting, and its keyframes are about 9 s apart, so momentum, which hands over a plan made 0.45-0.55 s earlier, had none to hand.",
   "ingested_from": "drivejepa/inference/kitscenes_e2e_final.pkl"
 }

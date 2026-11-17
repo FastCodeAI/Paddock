@@ -68,6 +68,25 @@ degree or two off the car's axis, so the ground truth is rotated by the route
 calibration (`loader.future_in_ego_frame`) -- the same one `camera2ego` tells
 the model -- before it is scored.
 
+## Streamed mode
+
+`PADDOCK_COMMA2K19_STREAMED=1`; off by default, and then nothing here changes.
+Each sample resets the node, so Drive-JEPA's momentum stage -- on for every
+benchmark -- never has a previous plan here, and no streaming order could give
+it one: a segment's keyframes are 210 frames (10.5 s) apart. Streamed mode gives
+each sample a *warm-up* instead (`benchmark.Warmup`): just before the scored
+request, on the same node, the runner plans the window's frame 0.5 s before the
+keyframe (index -10 at 20 Hz; chosen by timestamp, so another rate or a dropped
+frame does not move it) from the window up to it, under a stream keyed by the
+sample, at that frame's own time and pose in the window's frame (the one every
+`ego2world` of the sample is in); discards that plan; then sends the scored
+request under the same key. The node hands the scored pick the warm-up's plan.
+Both requests of a sample go to one node back to back inside one runner job, so
+several nodes are fine. **This is a Paddock choice, not upstream protocol**:
+Drive-JEPA's own sequential loop feeds only the plans of frames it scores.
+Recorded as `config.streamed = "warmup_0.5s"`, per sample as `extra.warmup` and
+`extra.momentum_fed`, and counted in `by_group.streamed`.
+
 ## What is different from the removed implementation
 
 Recorded in `docs/benchmarks/comma2k19.md`. The short version: `camera2ego` was
@@ -103,7 +122,17 @@ from paddock.adapters.benchmarks.comma2k19 import loader as L
 from paddock.adapters.benchmarks.comma2k19 import metrics as MC
 from paddock.adapters.benchmarks.comma2k19 import score as SC
 from paddock.adapters.benchmarks.comma2k19 import toolkit as TK
-from paddock.benchmark import PIPELINE_BATCHES, OpenLoopBenchmark, Sample, input_rate_problems
+from paddock.benchmark import (
+    PIPELINE_BATCHES,
+    STREAMED_WARMUP,
+    OpenLoopBenchmark,
+    Sample,
+    input_rate_problems,
+    stream_frame,
+    streamed_switch,
+    streamed_switch_problems,
+    warmup_before,
+)
 from paddock.metrics import trajectory as T
 from paddock.policy.protocol import (
     CANBUS_VELOCITY,
@@ -183,6 +212,10 @@ ENV_INPUT_HZ = "PADDOCK_COMMA2K19_INPUT_HZ"
 #: Run a model below its declared `min_input_hz` anyway. The resulting number
 #: measures the rate gap, so it is stored `valid: false`.
 ENV_ALLOW_SLOW = "PADDOCK_COMMA2K19_ALLOW_SLOW"
+#: Streamed mode's switch (module docstring). Recorded as `config.streamed` when
+#: on; a standard run's config has no such key, so its id and `--resume` check
+#: are what they were before the switch existed.
+ENV_STREAMED = "PADDOCK_COMMA2K19_STREAMED"
 
 #: Segment length, seconds. Used only to explain, rather than to compute: the
 #: real length comes from the pose stream per segment.
@@ -515,7 +548,30 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         # it moves the run id away from runs whose models read their own past
         # path in the camera's frame, so `--resume` cannot mix the two.
         config["ego_history_frame"] = "car (window poses rotated by the route calibration)"
+        if self.streamed:
+            config["streamed"] = STREAMED_WARMUP
         return config
+
+    # ---- streamed mode (module docstring) -------------------------------
+
+    @property
+    def streamed(self) -> bool:
+        return streamed_switch(ENV_STREAMED)
+
+    def stream_mode(self) -> str | None:
+        return STREAMED_WARMUP if self.streamed else None
+
+    def remarks(self) -> list[str]:
+        if not self.streamed:
+            return super().remarks()
+        return [
+            *super().remarks(),
+            f"streamed with a warm-up ({ENV_STREAMED}): before each scored request the same node planned "
+            f"the window's frame 0.5 s before the keyframe from the window up to it, and that plan -- "
+            f"discarded, never scored -- was the previous plan the scored request could be handed. A "
+            f"Paddock choice: upstream Drive-JEPA never plans a frame only to feed it, and the open-loop "
+            f"protocol hands no model a previous plan. Counts in by_group.streamed",
+        ]
 
     def invalid_reasons(self) -> list[str]:
         """Why a run made here cannot be ranked beside the published rows.
@@ -697,15 +753,19 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
         )
 
     def preflight(self) -> list[str]:
-        problems: list[str] = []
+        problems: list[str] = streamed_switch_problems(ENV_STREAMED)
         dataset = self.dataset
         if dataset is None:
             return [
+                *problems,
                 "dataset 'comma2k19' is not configured; add [datasets.comma2k19] "
-                "to paddock.toml (see docs/data-setup.md)"
+                "to paddock.toml (see docs/data-setup.md)",
             ]
         if not any(root.exists() for root in dataset.roots):
-            return ["no configured comma2k19 tier exists: " + ", ".join(str(r) for r in dataset.roots)]
+            return [
+                *problems,
+                "no configured comma2k19 tier exists: " + ", ".join(str(r) for r in dataset.roots),
+            ]
 
         # Before the decoder and the segments: every rotation under a comma2k19
         # score comes from the toolkit, so without it there is nothing to check
@@ -998,9 +1058,19 @@ class Comma2k19Benchmark(OpenLoopBenchmark):
                 observations = [
                     self._observation(frames[i], pose, can, i, window[0], camera2ego, cal.rpy) for i in window
                 ]
+                sample_id = self._sample_id(segment, k)
+                stream = warmup = None
+                if self.streamed:
+                    # Keyed by the sample, in the window's frame and on the
+                    # segment's clock -- the frame and clock every observation
+                    # of this sample is in, the warm-up's included.
+                    stream = stream_frame(sample_id, observations[-1])
+                    warmup = warmup_before(observations, sample_id)
                 yield Sample(
-                    sample_id=self._sample_id(segment, k),
+                    sample_id=sample_id,
                     observations=observations,
+                    stream=stream,
+                    warmup=warmup,
                     # The calibration that built `camera2ego` above, so the plan
                     # and the future it is scored against share one forward.
                     ground_truth=L.future_in_ego_frame(pose, k, grid.gt_horizons_s, cal.rpy),

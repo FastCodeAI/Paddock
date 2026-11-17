@@ -441,6 +441,30 @@ gap can be **measured** rather than merely refused. A run made with it set is
 stored `valid: false` and excluded from `paddock report`, which is the point: a
 measurement of the gap is worth keeping and must never enter an average.
 
+## Streamed mode: Drive-JEPA's momentum, with a warm-up
+
+Off by default. Every sample goes to the node through `/infer_sequence`, which
+resets it, so Drive-JEPA's momentum-aware selection -- declared on in its
+`model.yaml` -- never has a previous plan here (the recorded Drive-JEPA run's
+diagnostics say `fed: 0` of 1,271 replans on its node), and no order of the
+samples could change that: a segment's keyframes are 210 frames (10.5 s) apart.
+
+`PADDOCK_COMMA2K19_STREAMED=1` gives each sample a **warm-up**, as on KITScenes
+(see [KITScenes](kitscenes.md#streamed-mode-drive-jepas-momentum-with-a-warm-up)):
+just before the scored request, on the same node, the runner plans the window's
+frame 0.5 s before the keyframe (index -10 at 20 Hz; picked by timestamp, so
+another `input_hz` or a dropped frame does not move it) from the window up to
+it, under a stream keyed by the sample, at that frame's time and its pose in
+the window's frame -- the frame every `ego2world` of the sample is in -- and
+discards the plan. The scored request follows under the same key and is handed
+that plan. Both go to one node back to back inside one runner job, so several
+nodes are safe. **Expected: every scored sample fed.**
+
+**This is a Paddock choice, not upstream protocol**, for the reason given on
+the KITScenes page. Recorded as `config.streamed = "warmup_0.5s"`, per sample
+as `extra.warmup` and `extra.momentum_fed`, and counted in metrics.json's
+`by_group.streamed`; the scored request is a standard run's plus the `stream`.
+
 ## Making a sweep finish
 
 10,165 samples of 160 frames each is the largest thing paddock runs, and the
@@ -754,8 +778,19 @@ failure.
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.466 | 0.650 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.640 | 0.766 |
 | visionpilot (synthesised trajectory) | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.747 | 0.676 |
+| vad (`VAD_base`, the road camera as CAM_FRONT, five slots black) | 3 s | 5.759 | 9.682 | 13.658 | — | — | — | 23.621 | 16.093 | 0.846 | 0.781 |
+| uniad (`uniad_base_e2e`, the road camera as CAM_FRONT, five slots black) | 3 s | 6.242 | 10.538 | 14.917 | — | — | — | 25.928 | 18.008 | 0.888 | 0.679 |
 | drivejepa (perception-based agent, NAVSIM v2; the road camera in 1 of 4 slots) | 4 s | 7.474 | 13.080 | 18.754 | 24.385 | — | — | 32.893 | 23.401 | 0.852 | 0.620 |
 | meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.892 | 0.034 |
+
+**VAD plans no faster than about 18 m/s,** the top of the nuScenes city driving it was trained on (run `20261112T213250-61c395`, all 10,165 keyframes). Where the recorded path averages 25 m/s or more over the next 3 s, its plan's median speed is 18.4 m/s. Two thirds of comma2k19's keyframes (6,689 of 10,165) average 20 m/s or more, and there its median ADE@3s is 20.27 m; below 20 m/s it is 1.36 m. UniAD has the same ceiling, a little lower (run `20261112T213250-a862cc`, all 10,165 keyframes): its plan's median speed there is 16.95 m/s, and its median ADE@3s is 22.45 m at 20 m/s or more and 1.64 m below. Its first 1,692 samples ran at paddock `0093535`; the other 8,473 ran at `79a230f`, which computes a black view's backbone features once instead of on every step (PR #217; at most 0.36 mm from the uncached plan on the same input).
+
+The drivejepa row above is `20261106T192049-391e2d`, in which momentum was on and
+could not act: each sample reset the node. It is retired by the momentum-aware run
+`20261111T074533-0f26ee` (a 0.5 s warm-up, a Paddock choice; see
+[Streamed mode](#streamed-mode-drive-jepas-momentum-with-a-warm-up)), 10,163 of 10,165
+keyframes fed: ADE@3s 18.740, the support-matrix row. The analysis of the drivejepa
+row on this page was made on the retired run; the two differ by 0.014 m at 3 s.
 
 **The openpilot row is the run of 6 Nov 2026 at the `repos.yaml` pin,
 `555f48c5d`,** on the ONNX backend; its `run.json` records both
@@ -1101,18 +1136,27 @@ second (0.589), on one camera too: its two side views are black, where it was tr
 cameras. Alpamayo 1.5 and
 OpenPilot follow within 2.4 cm of each other at 3 s, Alpamayo on a **shorter
 horizon and one camera** (it plans 4 s where supercombo plans 10, and two of its
-four view slots go unsent). Only OpenPilot plans 10 s. **Drive-JEPA's 18.754 is
-the same perception-based model as the rest of its row**, fed the one camera
+four view slots go unsent). Only OpenPilot plans 10 s. **Drive-JEPA's 18.740 is
+the same perception-based model as the rest of its row**, momentum-aware with a
+0.5 s warm-up (⟲), fed the one camera
 with its three other views black, which it never reads; until November 2026
 this cell was its perception-free agent, a separate registry entry (16.047). The
 number is a speed prior, not a wiring fault: its plans are the second best
 *shaped* here (0.150 m lateral error at matched arc length, against OpenPilot's
-0.135) but reach only ~59% as far as the car travelled, because its 4 s plan
+0.135) but reach only ~58% as far as the car travelled, because its 4 s plan
 stops growing near 53 m while I-280 runs at 30 m/s. See
 [docs/models/drivejepa.md](../models/drivejepa.md#on-comma2k19) and the
 comma2k19 table below. **METEOR's 30.167 is a reach failure too, and a
 larger one**: the released graph, shown one phone camera in two of its eight
 slots, plans about 17 m ahead whatever the speed, where I-280 needs 55-92 m.
+
+⟲ **Drive-JEPA's comma2k19 figure is momentum-aware, with a 0.5 s warm-up**
+(`20261111T074533-0f26ee`). Before each scored keyframe the same node plans the
+window's frame 0.5 s earlier and that plan is discarded, so the scored request can
+be handed it: 10,163 of 10,165 were (the other two had no warm-up frame). That is a
+Paddock choice, not upstream protocol
+([Streamed mode](#streamed-mode-drive-jepas-momentum-with-a-warm-up)). It replaces
+`20261106T192049-391e2d` (18.754), in which momentum was on and could not act.
 
 ### comma2k19
 
@@ -1135,8 +1179,16 @@ padded. Lower is better throughout.
 | Baseline (Constant Velocity) | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.650 |
 | AutoE2E | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.766 |
 | VisionPilot ∗ | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.676 |
-| Drive-JEPA | 4 s | 7.474 | 13.080 | 18.754 | 24.385 | — | — | 32.893 | 23.401 | 0.620 |
+| VAD | 3 s | 5.759 | 9.682 | 13.658 | — | — | — | 23.621 | 16.093 | 0.781 |
+| UniAD | 3 s | 6.242 | 10.538 | 14.917 | — | — | — | 25.928 | 18.008 | 0.679 |
+| Drive-JEPA ⟲ | 4 s | 7.469 | 13.070 | 18.740 | 24.368 | — | — | 32.869 | 23.401 | 0.622 |
 | METEOR | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.034 |
+
+**VAD and UniAD plan no faster than about 18 m/s,** the top of the nuScenes city
+driving their released checkpoints were trained on, while two thirds of these
+keyframes (6,689 of 10,165) average 20 m/s or more. Below 20 m/s their median
+ADE@3s is 1.36 m (VAD) and 1.64 m (UniAD). Each gets the road camera as
+CAM_FRONT and its five other slots black.
 
 **OpenPilot and the baseline separate after the first second.** Constant
 velocity is better at 1 s (0.252 against 0.299), because I-280 is mostly
@@ -1172,11 +1224,11 @@ would extrapolate to 10 s, because neither goes there.
 **Drive-JEPA's row is a reach failure, not a shape failure, and the auxiliary
 columns are what show the difference.** It has the second-lowest lateral error
 at matched arc length on this benchmark (0.150 m, against OpenPilot's 0.135)
-while travelling only 59% as far as the car did (`path_length_ratio` 0.586), so
+while travelling only 58% as far as the car did (`path_length_ratio` 0.584), so
 it draws close to the right curve and stops two fifths short of where the car
 went. Its 4 s plan follows the car's speed up to about 12 m/s and stops growing
 near 53 m; I-280 covers about 120 m in 4 s. Removing the speed error is exactly
-what `lateral_at_arclength_mae` does, and it takes 18.754 to 0.150 — which is
+what `lateral_at_arclength_mae` does, and it takes 18.740 to 0.150 — which is
 not a number this table will headline, because the model was not asked for a
 shape, it was asked for where the car would be. This is the clearest case in
 the repo for why a benchmark that reported ADE alone would be describing the
@@ -1247,7 +1299,7 @@ derivation and what it still cannot see.
 · [Alpamayo 1.5](../../results/comma2k19/alpamayo15/20261106T005600-6c52a2/metrics.json)
 · [Alpamayo 2 Edge](../../results/comma2k19/alpamayo2edge/20261112T012152-9b1e09/metrics.json)
 · [Qwen-Drive 1.0](../../results/comma2k19/qwendrive/20261106T030530-7d9fd3/metrics.json)
-· [Drive-JEPA](../../results/comma2k19/drivejepa/20261106T192049-391e2d/metrics.json)
+· [Drive-JEPA](../../results/comma2k19/drivejepa/20261111T074533-0f26ee/metrics.json)
 · [VisionPilot](../../results/comma2k19/visionpilot/20261106T003749-c10a7f/metrics.json)
 · [METEOR](../../results/comma2k19/meteor/20261106T064120-226c00/metrics.json)
 · [AutoE2E](../../results/comma2k19/autoe2e/20261106T073744-1b4fe1/metrics.json)

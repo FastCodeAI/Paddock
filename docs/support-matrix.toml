@@ -19,7 +19,7 @@ key = "nuscenes"
 name = "nuScenes"
 loop = "open"
 header = "cumulative L2 avg ↓ (m)"
-metric = "l2_uniad_avg"  # not the primary l2_avg: the column is the UniAD-style cumulative L2
+metric = "l2_uniad_avg"  # not the primary l2_avg: cumulative L2, the ST-P3/VAD convention (`uniad` in the key is historical)
 decimals = 3
 
 [[benchmark]]
@@ -52,6 +52,13 @@ decimals = 3
 
 # All 220 routes of bench2drive220.xml for every model (issue #158; "Bench2Drive — 220 routes" in
 # docs/benchmarks/bench2drive.md). The 50-route column it replaces covered 14 of the 44 scenario types.
+[[benchmark]]
+key = "navhard"
+name = "NAVSIM v2 hard"
+loop = "open"
+header = "EPDMS ↑ (0–1), navhard, two stages"
+decimals = 3
+
 [[benchmark]]
 key = "bench2drive"
 name = "Bench2Drive"
@@ -143,6 +150,7 @@ nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd", marks = "A" }  
 kitscenes = { run = "kitscenes/alpamayo15/legacy-full-nav" }
 comma2k19 = { run = "comma2k19/alpamayo15/20261106T005600-6c52a2" }
 navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
+navhard = { run = "navhard/alpamayo15/20261111T090014-04904f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
 bench2drive = { run = "bench2drive/alpamayo15/full220-86aa45e768a29a64-600411", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
@@ -165,14 +173,18 @@ bench2drive = { run = "bench2drive/alpamayo2edge/full220-86aa45e768a29a64-ffe60a
 # Through the bridge on its own six cameras, the real telephoto among them, 30 scenes.
 alpasim = { run = "alpasim/alpamayo2edge/20261112T220852-f6d995" }
 
+# Momentum-aware: each plan may be handed the node's own plan from 0.5 s earlier, as model.yaml declares.
+# Open loop resets the node every sample, so the open-loop cells are streamed runs (docs/models/drivejepa.md):
+# NAVSIM per log, nuScenes per scene, KITScenes and comma2k19 after a 0.5 s warm-up, a Paddock choice.
 [cells.drivejepa]
-nuscenes = { run = "nuscenes/drivejepa/20261105T201953-308dc5" }
-kitscenes = { run = "kitscenes/drivejepa/legacy-kitscenes_e2e_final" }
-comma2k19 = { run = "comma2k19/drivejepa/20261106T192049-391e2d" }  # three of its four views black; it reads only the front
-navsim = { run = "navsim/drivejepa/20260902T173156-7e208f", marks = "A" }
-navsim_v1 = { run = "navsim_v1/drivejepa/20260911T082329-575df6", marks = "A" }
+nuscenes = { run = "nuscenes/drivejepa/20261111T061849-382fec", note = "streamed" }
+kitscenes = { run = "kitscenes/drivejepa/20261111T054224-9f8371", note = "0.5 s warm-up" }
+comma2k19 = { run = "comma2k19/drivejepa/20261111T074533-0f26ee", note = "0.5 s warm-up" }  # three of its four views black; it reads only the front
+navsim = { run = "navsim/drivejepa/20261111T052813-8f96dd", marks = "A", note = "streamed" }
+navhard = { run = "navhard/drivejepa/20261110T165434-167fd4", marks = "A", note = "streamed" }
+navsim_v1 = { run = "navsim_v1/drivejepa/20261111T090508-ad88e6", marks = "A", note = "streamed" }
 bench2drive = { run = "bench2drive/drivejepa/pooled220-86aa45e768a29a64-1507a1", note = "2 Hz" }
-neuroncap = { run = "neuroncap/drivejepa/20261012T224707-f11ac0" }
+neuroncap = { run = "neuroncap/drivejepa/20261110T204020-036fb3" }
 alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
 hugsim = { run = "hugsim/drivejepa/fullplan-f7d8f9d4b9736ddd-b89341", note = "2 Hz" }
 
@@ -181,6 +193,7 @@ nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5", marks = "S" }
 kitscenes = { run = "kitscenes/visionpilot/20261105T191932-c71101" }
 comma2k19 = { run = "comma2k19/visionpilot/20261106T003749-c10a7f" }
 navsim = { run = "navsim/visionpilot/20260902T175642-df5291", marks = "S" }
+navhard = { run = "navhard/visionpilot/20261110T165413-30c0d8" }
 navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583", marks = "S" }
 bench2drive = { run = "bench2drive/visionpilot/pooled220-86aa45e768a29a64-9f3c17" }
 neuroncap = { run = "neuroncap/visionpilot/20260905T121810-155d36", marks = "S" }
@@ -192,6 +205,7 @@ nuscenes = { run = "nuscenes/meteor/20260914T202122-4320bb" }
 kitscenes = { run = "kitscenes/meteor/20260914T215457-ab0586" }
 comma2k19 = { run = "comma2k19/meteor/20261106T064120-226c00" }  # the road camera in 2 of its 8 slots
 navsim = { run = "navsim/meteor/20260914T234307-e56cfc", marks = "P" }
+navhard = { run = "navhard/meteor/20261110T181854-9b4014", marks = "P" }
 navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
@@ -205,10 +219,11 @@ nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e", marks = "A" }  #
 kitscenes = { run = "kitscenes/qwendrive/20260914T220841-5a91fd" }
 comma2k19 = { run = "comma2k19/qwendrive/20261106T030530-7d9fd3" }
 navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
+navhard = { run = "navhard/qwendrive/20261111T060112-5231af", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20261104T205054-df25d5", marks = "A" }
 bench2drive = { run = "bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
-alpasim = { run = "alpasim/qwendrive/20261027T215528-d231d8" }
+alpasim = { run = "alpasim/qwendrive/20261110T062329-602ee2", note = "2 Hz" }  # one call every 0.5 s, its declared planning_hz; the 1.5 s run scored 0.700
 hugsim = { run = "hugsim/qwendrive/fullplan-f7d8f9d4b9736ddd-1ddf85", note = "2 Hz" }
 
 [cells.autoe2e]
@@ -216,6 +231,7 @@ nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # c
 kitscenes = { run = "kitscenes/autoe2e/20261020T220509-dee848", marks = "A" }
 comma2k19 = { run = "comma2k19/autoe2e/20261106T073744-1b4fe1" }
 navsim = { run = "navsim/autoe2e/20261009T055926-3ceb18", marks = "A", note = "10 Hz" }
+navhard = { run = "navhard/autoe2e/20261110T192825-24d0b3", marks = "A" }
 navsim_v1 = { run = "navsim_v1/autoe2e/20261104T210206-3022fb", marks = "A", note = "10 Hz" }
 # Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time, each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
@@ -224,21 +240,43 @@ neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
 hugsim = { run = "hugsim/autoe2e/fullplan-f7d8f9d4b9736ddd-4d9640" }
 
+# nuScenes-trained checkpoints, zero-shot everywhere else. On NAVSIM the 3 s plan is held to the 4 s NAVSIM
+# scores (UNIAD_HORIZON_S / VAD_HORIZON_S), a setting model.yaml lists as ranked with a note. The NAVSIM records
+# were written again from their stored chunks (--resume, nothing scored again) after the runner stopped counting a
+# byte-identical checkpoint path as an override; the NAVSIM v1 cells replay those runs' plans (no model process).
+# Their nuScenes runs are not in results/ yet.
 [cells.uniad]
+nuscenes = { run = "nuscenes/uniad/20261109T183938-41eed0", marks = "A", note = "scene order" }
+kitscenes = { run = "kitscenes/uniad/20261109T082536-b881a6" }
+navsim = { run = "navsim/uniad/20261109T082522-c24426", marks = "P" }
+navhard = { run = "navhard/uniad/20261110T092734-19b732", marks = "P" }
+navsim_v1 = { run = "navsim_v1/uniad/20261112T130241-e02e88", marks = "P" }
+neuroncap = { run = "neuroncap/uniad/20261109T092826-5919f1", marks = "A" }  # its scenes are nuScenes val scenes
+comma2k19 = { run = "comma2k19/uniad/20261112T213250-a862cc" }  # the road camera as CAM_FRONT, its five other slots black
+alpasim = { run = "alpasim/uniad/20261110T120651-8ea842" }  # six cameras, re-rendered as nuScenes' rig
 bench2drive = { run = "bench2drive/uniad/full220-86aa45e768a29a64-fb1f0a", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
 hugsim = { run = "hugsim/uniad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
 
 [cells.vad]
+nuscenes = { run = "nuscenes/vad/20261110T000020-53cda0", marks = "A", note = "scene order" }
+kitscenes = { run = "kitscenes/vad/20261109T082536-a393ec" }
+navsim = { run = "navsim/vad/20261110T095855-0ebf09", marks = "P" }
+navhard = { run = "navhard/vad/20261110T185531-0cecc0", marks = "P" }
+navsim_v1 = { run = "navsim_v1/vad/20261112T132424-25e0e5", marks = "P" }
+neuroncap = { run = "neuroncap/vad/20261110T033544-7f435b", marks = "A" }  # its scenes are nuScenes val scenes
+comma2k19 = { run = "comma2k19/vad/20261112T213250-61c395" }  # the road camera as CAM_FRONT, its five other slots black
+alpasim = { run = "alpasim/vad/20261110T153825-72448c" }  # six cameras, re-rendered as nuScenes' rig
 bench2drive = { run = "bench2drive/vad/full220-86aa45e768a29a64-6cb75d", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
 hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
-kitscenes = { value = 1.381, source = "docs/benchmarks/kitscenes.md" }
+kitscenes = { run = "kitscenes/constant_velocity/20261112T200903-f1ac77" }
 comma2k19 = { run = "comma2k19/constant_velocity/20261106T045541-d0cdb5" }
 navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
+navhard = { run = "navhard/constant_velocity/20261110T085953-e122fd" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
-neuroncap = { value = 0, source = "docs/benchmarks/neuroncap.md", note = "by construction" }
+neuroncap = { run = "neuroncap/constant_velocity/20261112T200906-cce2d4" }
 alpasim = { run = "alpasim/constant_velocity/legacy-cv_023_20hz_30scenes" }
 bench2drive = { run = "bench2drive/constant_velocity/full220-3mps-86aa45e768a29a64-c8f3e4", note = "3 m/s" }  # routes start at rest: a fixed target
 hugsim = { run = "hugsim/constant_velocity/fullplan-f7d8f9d4b9736ddd-a8f5b7" }
