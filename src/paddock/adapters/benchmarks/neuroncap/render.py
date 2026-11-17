@@ -114,7 +114,7 @@ HOLD_S = 1.5  # the last frame stays this long, so every outcome can be read
 _SAMPLE = re.compile(r"neuroncap/(?P<scene>\d+)/(?P<scenario>[a-z]+)/run_(?P<run>\d+)")
 
 
-def showcase(runs, n: int = 4, cfg=None) -> list[dict]:
+def showcase(runs, n: int = 4) -> list[dict]:
     """The episodes to show people: hard ones, and of different kinds.
 
     First the hardest scenario of each kind -- frontal, side, stationary -- where hardest
