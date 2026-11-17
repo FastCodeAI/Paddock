@@ -86,4 +86,4 @@ capabilities:
       split: train
 
 # navhard's synthetic scenes exist only at 2 Hz, so there it reads OpenScene's 2 Hz history, not nuPlan's 10 Hz.
-benchmarks: [alpasim, bench2drive, comma2k19, hugsim, kitscenes, navsim, navhard, neuroncap, nuscenes]
+benchmarks: [alpasim, bench2drive, comma2k19, hugsim, kitscenes, navsim, navhard, neuroncap, nuplan, nuscenes]

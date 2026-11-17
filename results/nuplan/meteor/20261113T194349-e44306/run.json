@@ -1,0 +1,96 @@
+{
+  "run_id": "20261113T194349-e44306",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "meteor",
+  "mode": "open_loop",
+  "started_utc": "2026-11-13T19:43:49+00:00",
+  "duration_s": 84.0,
+  "repo_sha": "dc193a81e9959de57b751e269127ae9b67e3f300",
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 351,
+    "sequences_sha256": "05efb12a2f3eaf9e",
+    "n_expected": 351
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0",
+    "declared_env": {
+      "METEOR_FRONT_ONLY": "narrow_refpose",
+      "METEOR_ONNX": "{weights}/meteor/meteor_v157c3Z.onnx",
+      "METEOR_PROVIDERS": "cuda"
+    },
+    "model_env": {
+      "CUDA_VISIBLE_DEVICES": "1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "METEOR",
+      "sha": "dc193a81e9959de57b751e269127ae9b67e3f300",
+      "pinned_sha": "dc193a81",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "58b309a40dbae2d5b0c4523b800a78f09ace8973",
+      "dirty": false
+    },
+    "policy": {
+      "onnx": "meteor_v157c3Z.onnx",
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 4,
+      "horizon_s": 3.0,
+      "front_only": "narrow_refpose",
+      "last": {
+        "meteor_mode": 0,
+        "meteor_mode_logits": [
+          0.0030325776897370815,
+          -0.4313015341758728,
+          -0.5762202739715576
+        ],
+        "meteor_steer_rad": -0.17000262439250946,
+        "meteor_accel": 0.09320323169231415,
+        "meteor_brake_logit": -4.0998854637146,
+        "meteor_native_horizon_s": 3.0,
+        "cameras_present": [
+          "CAM_FRONT_WIDE",
+          "CAM_FRONT_LEFT",
+          "CAM_FRONT_RIGHT",
+          "CAM_BACK_WIDE",
+          "CAM_BACK_LEFT",
+          "CAM_BACK_RIGHT"
+        ],
+        "cameras_absent": [
+          "CAM_FRONT_NARROW",
+          "CAM_BACK_NARROW"
+        ],
+        "absent_rule": "donor",
+        "v0": 0.24468470913711582
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

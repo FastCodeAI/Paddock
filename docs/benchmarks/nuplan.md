@@ -8,7 +8,7 @@
 | Dataset | `nuplan` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/nuplan/`](../../src/paddock/adapters/benchmarks/nuplan/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -130,39 +130,39 @@ focal length without anything failing.
 
 ## Results
 
-Five models over the same 25 samples, `valid: false` at one camera shard. Every
-cell is the mean from one committed record under `results/nuplan/`, and each
-model has exactly one — no column mixes two runs.
+All nine models are scored on the full set of **351 scorable anchors**, one
+shared sample set. Each cell is the mean from one committed record under
+`results/nuplan/`. Each model has one ranked record; the earlier runs are marked
+superseded and kept on disk. The leaderboard's nuPlan section has the same table
+with the run ids.
 
-| n=25 | openpilot | meteor | **constant velocity** | drivejepa | visionpilot |
-|---|---:|---:|---:|---:|---:|
-| ade | **0.807** | 1.273 | 1.393 | 1.512 | 2.246 |
-| fde@1s | **0.416** | 0.483 | 0.462 | 0.568 | 1.488 |
-| fde@2s | **0.878** | 1.333 | 1.433 | 1.593 | 2.246 |
-| fde@3s | **1.539** | 2.803 | 3.199 | 3.305 | 3.589 |
-| longitudinal_mae | **0.658** | 0.831 | 1.036 | 1.429 | 1.491 |
-| lateral_mae | 0.316 | 0.778 | 0.630 | **0.299** | 1.324 |
+| model | ade ↓ | fde@1s ↓ | fde@2s ↓ | fde@3s ↓ | longitudinal_mae ↓ | lateral_mae ↓ | pdm_ep ↑ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| qwendrive | **0.293** | **0.100** | **0.317** | **0.639** | **0.247** | **0.092** | **0.976** |
+| alpamayo15 | 0.684 | 0.197 | 0.728 | 1.579 | 0.604 | 0.170 | 0.970 |
+| alpamayo2edge | 0.689 | 0.312 | 0.756 | 1.390 | 0.623 | 0.161 | 0.973 |
+| autoe2e | 0.826 | 0.270 | 0.885 | 1.855 | 0.636 | 0.355 | 0.960 |
+| openpilot | 0.922 | 0.457 | 1.021 | 1.744 | 0.853 | 0.198 | 0.937 |
+| drivejepa | 1.249 | 0.543 | 1.345 | 2.543 | 1.201 | 0.167 | 0.967 |
+| constant_velocity | 1.255 | 0.390 | 1.353 | 2.833 | 1.086 | 0.317 | 0.873 |
+| visionpilot | 1.707 | 0.815 | 1.779 | 3.298 | 1.336 | 0.676 | 0.874 |
+| meteor | 1.966 | 0.747 | 2.127 | 4.211 | 1.718 | 0.636 | 0.880 |
 
-**Read these as a 25-sample subset, not as nuPlan.** They cover **7 of the 59
-scenario types**, six of them stop-sign or traffic-light decelerations, because
-one camera shard decides which logs are servable and the balancing rules act on
-the 375-anchor manifest rather than on what a shard happens to hold. A ranking
-over near-homogeneous deceleration moments is not a ranking on nuPlan. The
-three sampling rules do their work; none of these numbers inherits it.
+Six of the other eight models beat constant velocity on ADE, Drive-JEPA by only 0.006 m.
+VisionPilot and METEOR do not. On pdm_ep constant velocity is the lowest of the
+nine, at 0.873.
 
-`constant_velocity` is a stored run like any other — declared in its
-`model.yaml` and scored through the same harness — so the floor and the rows it
-anchors are one artifact class and both regenerate from `paddock run`.
+Caveats that travel with individual rows:
 
-Two caveats that travel with individual rows:
-
-- **openpilot** was run against a v0.11.1 checkout, not the `053d9c446` that
-  `repos.yaml` pins, so its `run.json` carries `repo_sha: null`. The number is
-  real and the adapter's arity probe is a no-op at the pin, but it is not yet
-  attributable to a revision. Bumping the pin belongs in its own PR.
-- **alpamayo15** has no row here. It needs `nvidia/Cosmos-Reason2-8B`, which is
-  gated; only its config and tokenizer are read, and a substitute was used for
-  an earlier measurement that is not committed.
+- **qwendrive** leads every metric. Its planner was trained on NAVSIM and OpenScene,
+  both drawn from nuPlan's logs, with no split named, and its VLM's corpus is not
+  published. Whether these 351 anchors overlap its training logs has not been checked,
+  so read the lead as unverified until it is.
+- **alpamayo2edge** (Alpamayo 2 Edge, run 20261113T235607-4feaff) is on the same 351 anchors. Whether
+  its training data includes nuPlan logs has not been checked; if it does, this row needs a mark.
+- **openpilot** ran at its pinned commit, 555f48c5d, so its `run.json` records that sha.
+- **alpamayo15** reads only the config and tokenizer of `nvidia/Cosmos-Reason2-8B`,
+  which is gated.
 
 ## Camera shards and partial coverage
 
@@ -171,38 +171,28 @@ The nine camera zips each unpack into a directory of their own
 only knows `<log>/CAM_F0/<token>.jpg`. Both the sharded and the flattened layout
 are detected, so no site has to reshape its copy.
 
-Holding one shard of nine is normal, not an error. Anchors whose log has no
-images are **skipped**, and the run is recorded `valid: false` with the coverage
-in `notes`, so it is kept and inspectable but never averaged against a
+A site may hold fewer than nine camera shards. Anchors whose log has no images are
+**skipped**, and the run is recorded `valid: false` with the coverage in `notes`, so it is kept and inspectable but never averaged against a
 full-coverage run. `--dry-run` reports the split before anything starts.
 
 ## Reading VisionPilot's row
 
-One camera shard covers 8 logs, giving **25 scorable anchors** — the arithmetic
-behind the `valid: false` on every run above.
-
-VisionPilot is beaten by a straight line on every metric — by 1.6× on ADE and
-by 3.2× at the 1 s horizon — and that is worth three qualifications before it
-reads as a verdict on the model: the subset is small and skewed toward
-decelerations; VisionPilot's recorded strength is closed-loop NCAP rather than
+On the full 351 anchors VisionPilot is beaten by a straight line on every displacement metric —
+by 1.4× on ADE and 2.1× at the 1 s horizon — and that is worth two qualifications
+before it reads as a verdict on the model: VisionPilot's recorded strength is closed-loop NCAP rather than
 open-loop imitation; and it has no goal or command interface, so at a junction
 it goes straight — a limitation already visible on nuScenes and Bench2Drive.
 
-Its row moved between the first measurement and this one, from ADE 3.192 to
-2.246, and not because of anything in this adapter: merging `main` brought
-`VISIONPILOT_SETPOINT`, which latches the ACC set-speed at the scored
-frame instead of at the first history frame. The earlier run is deleted rather
-than kept beside the new one, so `results/nuplan/` holds one record per model
-and no reader has to know a commit message to tell which counts.
+Its earlier 25-sample row (ADE 2.246) is superseded by the full-set run in the table above. On pdm_ep it ties constant velocity, 0.874 against 0.873.
 
-Roughly 3 minutes wall-clock for the 25 samples on CPU, including model load;
-meteor does the same set in 27 s on GPU.
+Timing for the earlier 25-sample runs: roughly 3 minutes on CPU for 25 samples,
+including model load; METEOR did the same set in 27 s on GPU.
 
 ## Status
 
 **Verified**: the full path runs end to end — sample construction, selection,
 ground truth, calibration decoding, camera-path resolution, inference and
-scoring — and five models are scored on one shared sample set. The golden tests
+scoring — and all nine models are scored on one shared sample set. The golden tests
 build a synthetic log and run with no dataset, no devkit and no GPU. The
 adapter has been exercised at a second site, on a different nuPlan copy and
 split, with no devkit present.
@@ -212,35 +202,23 @@ policy falls back to a latched cruise speed and drives away from a stopped car
 — which inflates every model's error on the near-stationary samples that
 dominate this subset. Reading `speed_limit_mps` from nuPlan's maps is the fix;
 it is out of scope here because it adds a map dependency to a benchmark that
-currently reads none. Coverage is one camera shard of nine; the rest are
-~405 GB.
+currently reads none. This site now has all nine camera shards unpacked, so the
+full 351-anchor set is scored.
 
 ## Support-matrix results
 
-nuPlan has no column in the README's support matrix yet: these runs cover 25 of the
-351 anchors, and the column comes back with full runs. The per-metric results and
-their notes stay here as the record. Each note below starts with the mark it explains. Marks about a model
-rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
+nuPlan has no column in the README's support matrix yet. All nine models are
+ranked on the full 351 anchors (see [Results](#results)); the column waits on one
+check, whether Qwen-Drive was trained on these logs. The per-metric results and
+their notes stay here as the record. Each note below starts with the mark it
+explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 [What these models are](../models/comparison.md#notes-on-the-models).
 
 ### Notes on these runs
 
-◐ **Every nuPlan figure is `valid: false` and excluded from `paddock report`.**
-This site holds one of nuPlan's nine camera shards, so of the 351 scorable
-anchors in the balanced manifest only **25** have images — and those 25 fall in
-**7 of the 59 scenario types**, six of them stop-sign or traffic-light
-decelerations. The runs are recorded and comparable *with each other* (one
-shared sample set, one record per model, `sequences_sha256` pinned), but a
-ranking over near-homogeneous deceleration moments is not a ranking on nuPlan,
-and these are not comparable with a full-coverage run. The remaining shards are
-~405 GB. OpenPilot's figure additionally comes from a v0.11.1 checkout rather
-than the sha `repos.yaml` pins, so its record carries `repo_sha: null`.
-See [docs/benchmarks/nuplan.md](nuplan.md).
-
-◐◐ Alpamayo 1.5 has no nuPlan figure: it needs `nvidia/Cosmos-Reason2-8B`,
-which is gated. Only its config and tokenizer are read, and the one measurement
-made with a substitute is deliberately not committed, so there is no record to
-cite.
+◐ **All nine models are ranked on the full set** of 351 scorable anchors, one
+ranked record each. The earlier runs are superseded and kept on disk; the table in
+[Results](#results) is the ranked set.
 
 ### nuPlan
 
@@ -250,26 +228,7 @@ NAVSIM's 2 Hz OpenScene redistribution of the same source. That rate is what
 makes the dataset scorable for a model like OpenPilot, which infers ego motion
 from frame-to-frame change and declares `min_input_hz: 10.0`.
 
-**These are a 25-sample subset, not nuPlan** (see ◐). One camera shard of nine
-is present, so 25 of 351 scorable anchors have images, and they fall in 7 of 59
-scenario types. Every run below is `valid: false` and excluded from the
-leaderboard; they are comparable with each other and with nothing else.
-
-| Model | ADE ↓ (m) | FDE@1s ↓ (m) | FDE@2s ↓ (m) | FDE@3s ↓ (m) | Longitudinal MAE ↓ (m) | Lateral MAE ↓ (m) |
-|---|---:|---:|---:|---:|---:|---:|
-| OpenPilot | **0.807** | **0.416** | **0.878** | **1.539** | **0.658** | 0.316 |
-| Alpamayo 1.5 | — ◐◐ | — | — | — | — | — |
-| Drive-JEPA | 1.512 | 0.568 | 1.593 | 3.305 | 1.429 | **0.299** |
-| VisionPilot | 2.246 | 1.488 | 2.246 | 3.589 | 1.491 | 1.324 |
-| METEOR | 1.273 | 0.483 | 1.333 | 2.803 | 0.831 | 0.778 |
-| Baseline (Constant Velocity) | 1.393 | 0.462 | 1.433 | 3.199 | 1.036 | 0.630 |
-
-Two of the four models clear the constant-velocity floor: OpenPilot, which
-leads every metric but lateral error, and METEOR. Drive-JEPA and VisionPilot
-do not — expected on a subset this skewed toward decelerations, where holding
-the current speed is already close to right. `constant_velocity` is a stored
-run like any other, declared in its `model.yaml` and scored through the same
-harness, so the floor and the rows it anchors regenerate together.
+The per-model table is the one in [Results](#results).
 
 Protocol, the three sampling rules that build the balanced set, and why the
 calibration is decoded without nuplan-devkit are in
