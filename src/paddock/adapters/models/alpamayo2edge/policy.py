@@ -44,6 +44,7 @@ alpamayo2_edge.inference` would produce from the same 22 frames.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -119,6 +120,96 @@ FORCED_REASONING_IDS: dict[str, list[int]] = {
     "none": [135084],
 }
 REASONING_MODES = ("model", *FORCED_REASONING_IDS)
+
+#: The model's own plan spacing: 64 poses 0.1 s apart.
+PLAN_DT = 0.1
+#: `ALPAMAYO2_EDGE_WARM_START_STEPS`: 0 (the released model) draws every plan from fresh noise.
+#: N > 0 starts the flow from the previous plan instead, carried to now (`carry_plan`), and
+#: runs N Euler steps over the same 0 -> 1 time span. The first plan of a sequence has no
+#: previous one and is drawn as usual, with `ALPAMAYO2_EDGE_FLOW_STEPS`.
+#: A previous plan older than this is from a dropped frame or another sequence: not carried.
+WARM_START_MAX_GAP_S = 0.5
+#: How far ahead `carry` compares the new plan with the carried old one: the 3 s neuroNCAP reads.
+CARRY_COMPARE_POINTS = 30
+
+
+def carry_plan(
+    xyz: np.ndarray, rot: np.ndarray, plan_ego2world: np.ndarray, ego2world: np.ndarray, elapsed_s: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """A plan made ``elapsed_s`` ago, as the same path seen from now.
+
+    ``xyz`` (64, 3) and ``rot`` (64, 3, 3) are the model's poses at 0.1 .. 6.4 s in the ego frame
+    it planned in (``plan_ego2world``). Returns its poses at 0.1 .. 6.4 s after *now*, in the
+    current ego frame: interpolated in time from the origin through the plan, and past its last
+    pose continued at its last step's rate (one 0.1 s step, at a 10 Hz call rate). Heading is
+    carried as yaw, the only part of a rotation upstream's action encoding reads.
+    """
+    n = len(xyz)
+    times = PLAN_DT * np.arange(n + 1)
+    points = np.vstack([np.zeros(3), xyz])
+    yaw = np.unwrap(np.concatenate([[0.0], np.arctan2(rot[:, 1, 0], rot[:, 0, 0])]))
+    wanted = elapsed_s + PLAN_DT * np.arange(1, n + 1)
+    beyond = wanted > times[-1]
+
+    def along(values: np.ndarray) -> np.ndarray:
+        out = np.interp(wanted, times, values)
+        out[beyond] = values[-1] + (wanted[beyond] - times[-1]) * (values[-1] - values[-2]) / PLAN_DT
+        return out
+
+    moved = np.stack([along(points[:, i]) for i in range(3)], axis=1)
+    headings = along(yaw)
+    rel = np.linalg.inv(np.asarray(ego2world, dtype=np.float64)) @ np.asarray(plan_ego2world, np.float64)
+    c, s = np.cos(headings), np.sin(headings)
+    rz = np.zeros((n, 3, 3))
+    rz[:, 0, 0], rz[:, 0, 1], rz[:, 1, 0], rz[:, 1, 1], rz[:, 2, 2] = c, -s, s, c, 1.0
+    return moved @ rel[:3, :3].T + rel[:3, 3], np.einsum("ij,njk->nik", rel[:3, :3], rz)
+
+
+class StageTimer:
+    """Per-plan GPU time of each model stage, from ``torch.cuda.synchronize()``-bracketed hooks.
+
+    The four buckets of the compression study's ``stage_latency.py``, which this mirrors so
+    the numbers compare: the vision encoder; the language model's prefill (the call with more
+    than one token, vision included) and its decode steps; and the action expert, summed over
+    its flow steps. Off unless ``ALPAMAYO2_EDGE_STAGE_TIMING=1``: every hook synchronizes the
+    card, which costs a little time and changes no plan.
+    """
+
+    def __init__(self, torch: Any) -> None:
+        self._torch = torch
+        self.totals: dict[str, float] = {}
+        self.calls: dict[str, int] = {}
+        self._started: dict[str, float] = {}
+
+    def reset(self) -> None:
+        self.totals, self.calls = {}, {}
+
+    def _begin(self, key: str) -> None:
+        self._torch.cuda.synchronize()
+        self._started[key] = time.perf_counter()
+
+    def _end(self, key: str, bucket: str) -> None:
+        self._torch.cuda.synchronize()
+        self.totals[bucket] = self.totals.get(bucket, 0.0) + time.perf_counter() - self._started[key]
+        self.calls[bucket] = self.calls.get(bucket, 0) + 1
+
+    def attach(self, module: Any, name: str) -> None:
+        module.register_forward_pre_hook(lambda _m, _i: self._begin(name))
+        module.register_forward_hook(lambda _m, _i, _o: self._end(name, name))
+
+    def attach_prefill_vs_decode(self, module: Any) -> None:
+        """One bucket per kind of call: "prefill" for a call over more than one token (Edge
+        prefills its prompt with a direct call, before generate), "decode" for each one-token
+        step generate makes after it."""
+        kind = {"bucket": "prefill"}
+
+        def pre(_m, _args, kwargs):
+            ids = kwargs.get("input_ids")
+            kind["bucket"] = "prefill" if ids is None or ids.shape[1] > 1 else "decode"
+            self._begin("lm")
+
+        module.register_forward_pre_hook(pre, with_kwargs=True)
+        module.register_forward_hook(lambda _m, _a, _k, _o: self._end("lm", kind["bucket"]), with_kwargs=True)
 
 
 def _env_or(name: str, default):
@@ -226,6 +317,15 @@ class Alpamayo2EdgePolicy(Policy):
             raise ValueError(
                 f"ALPAMAYO2_EDGE_DROP_EXPERT_LAYERS must be comma-separated layer indices, got {drop!r}"
             ) from None
+        # A speed ablation: flow steps from the previous plan instead of noise (0 = off).
+        warm = os.environ.get("ALPAMAYO2_EDGE_WARM_START_STEPS") or "0"
+        if not warm.isdigit():
+            raise ValueError(f"ALPAMAYO2_EDGE_WARM_START_STEPS must be a whole number, got {warm!r}")
+        self.warm_steps = int(warm)
+        # Per-stage timers; tuning only (the plan is the same with them on).
+        self.stage_timing = _env_or("ALPAMAYO2_EDGE_STAGE_TIMING", 0) == 1
+        self._timer: StageTimer | None = None
+        self._x_init = None
         self.model = None
         self.reset()
 
@@ -256,13 +356,93 @@ class Alpamayo2EdgePolicy(Policy):
             drop_expert_layers(self.model.expert.expert, self.drop_expert_layers)
         if self.reasoning != "model":
             self._force_reasoning(FORCED_REASONING_IDS[self.reasoning])
+        if self.warm_steps:
+            self._install_warm_start()
+        if self.stage_timing:
+            self._timer = StageTimer(torch)
+            self._timer.attach(self.model.vlm.model.visual, "vision")
+            self._timer.attach_prefill_vs_decode(self.model.vlm.model)
+            # `model.expert` is a container whose forward is never called; each flow step
+            # calls its transformer, `model.expert.expert`.
+            self._timer.attach(self.model.expert.expert, "expert")
         _log.info(
-            "loaded Alpamayo 2 Edge from %s (flow steps %s, reasoning %s, expert layers deleted %s)",
+            "loaded Alpamayo 2 Edge from %s (flow steps %s, reasoning %s, expert layers deleted %s, "
+            "warm start %s, stage timing %s)",
             checkpoint,
             self.flow_steps or DIFFUSION_STEPS,
             self.reasoning,
             list(self.drop_expert_layers) or "none",
+            f"{self.warm_steps} step(s) from the previous plan" if self.warm_steps else "off",
+            "on" if self.stage_timing else "off",
         )
+
+    def _install_warm_start(self) -> None:
+        """Let a plan start the flow from ``self._x_init`` rather than from noise.
+
+        Upstream calls ``model.expert.diffusion.sample(...)`` with keywords only, and its
+        ``_euler`` draws the start from ``torch.randn``. When a start has been set for this plan,
+        the wrapper runs the same Euler loop (same 0 -> 1 time grid, same ``t`` shape) from it;
+        otherwise it calls upstream unchanged. Guidance is off in this checkpoint; refused if not,
+        since the loop below has no guided branch.
+        """
+        torch = self._torch
+        diffusion = self.model.expert.diffusion
+        if diffusion.use_classifier_free_guidance or diffusion.int_method != "euler":
+            raise RuntimeError("warm start reproduces only the unguided Euler sampler this checkpoint uses")
+        original = diffusion.sample
+        n_dim = len(diffusion.x_dims)
+
+        def sample(*, batch_size, step_fn, device, inference_step=None, return_all_steps=False, **kwargs):
+            x, self._x_init = self._x_init, None
+            if x is None or return_all_steps:
+                return original(
+                    batch_size=batch_size,
+                    step_fn=step_fn,
+                    device=device,
+                    inference_step=inference_step,
+                    return_all_steps=return_all_steps,
+                    **kwargs,
+                )
+            steps = inference_step or diffusion.num_inference_steps
+            x = x.to(device=device, dtype=torch.float32).expand(batch_size, *diffusion.x_dims).clone()
+            grid = torch.linspace(0.0, 1.0, steps + 1, device=device)
+            for i in range(steps):
+                t = grid[i].view(1, *[1] * n_dim).expand(batch_size, *[1] * n_dim)
+                x = x + (grid[i + 1] - grid[i]) * step_fn(x=x, t=t)
+            return x
+
+        diffusion.sample = sample
+
+    def _carried(self, now_ego2world: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+        """The previous plan carried to now (`carry_plan`), or None if there is none to carry."""
+        prev = self._prev_plan
+        if prev is None or not self.timestamps:
+            return None
+        elapsed = (self.timestamps[-1] - prev["timestamp_us"]) / 1e6
+        if not 0.0 < elapsed <= WARM_START_MAX_GAP_S:
+            return None
+        return carry_plan(prev["xyz"], prev["rot"], prev["ego2world"], now_ego2world, elapsed)
+
+    def _warm_start_action(self, inputs: dict[str, Any], carried: tuple[np.ndarray, np.ndarray]) -> Any:
+        """The carried plan in the expert's own space: upstream's ``traj_to_action`` (normalised
+        acceleration and curvature, 64 x 2) against this plan's ego history, the encoding its
+        ``action_to_traj`` inverts.
+
+        On the CPU: the encoding is a handful of small regularised least-squares solves, which
+        on the GPU are a launch per tiny kernel -- 82 ms there on a busy H200, more than the
+        flow steps the warm start saves. The action space moves its own buffers to its input's
+        device, so the numbers are the same either way.
+        """
+        torch = self._torch
+        xyz, rot = carried
+        hist_xyz = inputs["ego_history_xyz"][:, -1].float()
+        action = self.model.expert.action_space.traj_to_action(
+            hist_xyz.cpu(),
+            inputs["ego_history_rot"][:, -1].float().cpu(),
+            torch.as_tensor(xyz, dtype=torch.float32)[None],
+            torch.as_tensor(rot, dtype=torch.float32)[None],
+        )
+        return action.to(hist_xyz.device)
 
     @staticmethod
     def _force_reasoning(ids: list[int]) -> None:
@@ -305,6 +485,9 @@ class Alpamayo2EdgePolicy(Policy):
         self._present: set[str] | None = None
         self._yaws: dict[str, float] = {}
         self._last: dict[str, Any] = {}
+        # The last plan made and where from, for the warm start and the `carry` comparison.
+        # Cleared here, so a sequence never starts from another sequence's plan.
+        self._prev_plan: dict[str, Any] | None = None
 
     # -- history -----------------------------------------------------------
 
@@ -468,28 +651,52 @@ class Alpamayo2EdgePolicy(Policy):
         )
         prepared = time.perf_counter()
 
+        # The previous plan, carried to now: the warm start's starting point, and what the
+        # new plan is compared with (`carry`) whatever the setting.
+        now_ego2world = self.poses[-1]
+        carried = self._carried(now_ego2world)
+        warm = bool(self.warm_steps) and carried is not None
+        if warm:
+            with torch.inference_mode():
+                self._x_init = self._warm_start_action(inputs, carried)
+            torch.cuda.synchronize()
+        steps = self.warm_steps if warm else (self.flow_steps or DIFFUSION_STEPS)
+        encoded = time.perf_counter()
+
+        if self._timer is not None:
+            self._timer.reset()
         # Seeded per call, as the upstream CLI seeds each sample: the plan is a function
         # of the input, so a re-run reproduces it and two models see the same draw rule.
         torch.manual_seed(self.seed)
         generator = torch.Generator(device="cuda").manual_seed(self.seed)
         with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-            pred_xyz, _, _, extra = self.model.sample_trajectories_from_data(
+            pred_xyz, pred_rot, _, extra = self.model.sample_trajectories_from_data(
                 inputs,
                 top_p=TOP_P,
                 temperature=TEMPERATURE,
                 num_traj_sets=1,
                 num_traj_samples=1,
                 max_generation_length=MAX_GENERATION_LENGTH,
-                diffusion_kwargs={
-                    "inference_step": self.flow_steps or DIFFUSION_STEPS,
-                    "generator": generator,
-                },
+                diffusion_kwargs={"inference_step": steps, "generator": generator},
                 return_extra=True,
             )
         plan = pred_xyz.float().cpu().numpy()[0, 0, 0]  # (64, 3), x forward, y left
         generated = time.perf_counter()
+        self._x_init = None
         if not np.isfinite(plan).all():
             raise RuntimeError("Alpamayo 2 Edge returned a non-finite trajectory")
+        # How far the new plan's first 3 s lie from the old plan carried to now: plan-to-plan
+        # consistency, the thing a warm start changes.
+        carry_m = None
+        if carried is not None:
+            k = CARRY_COMPARE_POINTS
+            carry_m = float(np.linalg.norm(plan[:k, :2] - carried[0][:k, :2], axis=1).mean())
+        self._prev_plan = {
+            "timestamp_us": self.timestamps[-1],
+            "ego2world": np.array(now_ego2world, dtype=np.float64),
+            "xyz": plan.astype(np.float64),
+            "rot": pred_rot.float().cpu().numpy()[0, 0, 0].astype(np.float64),
+        }
 
         cot = ""
         if isinstance(extra, dict) and "cot" in extra:
@@ -497,16 +704,44 @@ class Alpamayo2EdgePolicy(Policy):
             cot = str(flat[0]) if flat.size else ""
         self._last["reasoning"] = cot[:400]
         self._n_infer = getattr(self, "_n_infer", 0) + 1
+        # `generate` is the model call alone, as before; encoding a warm start is `warm_encode`.
         _log.info(
             "infer #%d: prep %.0f ms, generate %.0f ms, nav %r, black slots %s, reach %.1f m, cot %r",
             self._n_infer,
             (prepared - started) * 1e3,
-            (generated - prepared) * 1e3,
+            (generated - encoded) * 1e3,
             self._last.get("nav_text"),
             self._last.get("black_slots"),
             float(np.linalg.norm(plan[GRID_INDICES[-1], :2])),
             cot[:160],
         )
+        stages: dict[str, Any] = {
+            "n": self._n_infer,
+            "t_us": self.timestamps[-1],
+            "prep_ms": round((prepared - started) * 1e3, 2),
+            "warm_encode_ms": round((encoded - prepared) * 1e3, 2),
+            "generate_ms": round((generated - encoded) * 1e3, 2),
+            "flow_steps": steps,
+            "warm": warm,
+            "carry_m": None if carry_m is None else round(carry_m, 4),
+        }
+        if self._timer is not None:
+            t, calls = self._timer.totals, self._timer.calls
+            vision, prefill = t.get("vision", 0.0), t.get("prefill", 0.0)
+            decode, expert = t.get("decode", 0.0), t.get("expert", 0.0)
+            stages.update(
+                vision_ms=round(vision * 1e3, 2),
+                # Vision runs inside the prefill call, so the text part is the difference.
+                prefill_ms=round((prefill - vision) * 1e3, 2),
+                decode_ms=round(decode * 1e3, 2),
+                decode_steps=calls.get("decode", 0),
+                expert_ms=round(expert * 1e3, 2),
+                expert_calls=calls.get("expert", 0),
+                # Sampling, the stop rule and cache handling between the calls, and decoding
+                # the action into poses: the model call less the four buckets.
+                other_ms=round(((generated - encoded) - prefill - decode - expert) * 1e3, 2),
+            )
+        _log.info("stages %s", json.dumps(stages))
         extras = {"reasoning": cot[:400]} if _env_or("ALPAMAYO2_EDGE_SAVE_REASONING", 0) == 1 else None
         return Trajectory(plan[GRID_INDICES, :2], dt=self.waypoint_dt, extras=extras)
 

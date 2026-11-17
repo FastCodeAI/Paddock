@@ -20,9 +20,11 @@ from paddock.adapters.models.alpamayo2edge.policy import (
     NEEDED_CAMERAS,
     NUM_HISTORY_STEPS,
     OFFSETS_S,
+    PLAN_DT,
     POLICY,
     SLOTS,
     camera_yaw_deg,
+    carry_plan,
     nearest_index,
 )
 from paddock.adapters.models.alpamayo15.camera_warp import TARGET_H, TARGET_W
@@ -286,3 +288,69 @@ def test_forced_nominal_is_the_models_own_token_sequence() -> None:
     assert FORCED_REASONING_IDS["nominal"] == [124549, 11135, 3174, 4286, 1561, 135084]
     assert FORCED_REASONING_IDS["none"] == [135084]
     assert all(ids[-1] == 135084 for ids in FORCED_REASONING_IDS.values())
+
+
+def test_warm_start_is_off_by_default_and_checked(monkeypatch) -> None:
+    monkeypatch.delenv("ALPAMAYO2_EDGE_WARM_START_STEPS", raising=False)
+    assert POLICY().warm_steps == 0
+    monkeypatch.setenv("ALPAMAYO2_EDGE_WARM_START_STEPS", "1")
+    assert POLICY().warm_steps == 1
+    monkeypatch.setenv("ALPAMAYO2_EDGE_WARM_START_STEPS", "-1")
+    with pytest.raises(ValueError, match="ALPAMAYO2_EDGE_WARM_START_STEPS"):
+        POLICY()
+
+
+def pose(x: float, y: float, yaw: float) -> np.ndarray:
+    out = np.eye(4)
+    out[:2, :2] = [[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]]
+    out[:2, 3] = x, y
+    return out
+
+
+def plan_along(speed: float, yaw_rate: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
+    """64 poses at 0.1 s of a car at constant speed and yaw rate, starting at the origin."""
+    t = PLAN_DT * np.arange(1, 65)
+    yaw = yaw_rate * t
+    if yaw_rate:
+        xyz = np.stack([speed / yaw_rate * np.sin(yaw), speed / yaw_rate * (1 - np.cos(yaw)), 0 * t], 1)
+    else:
+        xyz = np.stack([speed * t, 0 * t, 0 * t], 1)
+    return xyz, np.stack([pose(0, 0, a)[:3, :3] for a in yaw])
+
+
+def test_a_plan_carried_where_the_car_followed_it_is_the_same_plan() -> None:
+    """Straight at 10 m/s in a world frame turned 30 deg: 0.1 s later, having driven 1 m along
+    it, the plan seen from the new pose is the plan made there."""
+    xyz, rot = plan_along(10.0)
+    start = pose(5.0, -2.0, math.radians(30))
+    later = start @ pose(1.0, 0.0, 0.0)
+    moved, turned = carry_plan(xyz, rot, start, later, 0.1)
+    np.testing.assert_allclose(moved, xyz, atol=1e-9)
+    np.testing.assert_allclose(turned, rot, atol=1e-9)
+
+
+def test_a_turning_plan_is_carried_in_heading_too() -> None:
+    """On a constant-rate turn, the carried poses are the turn continued from the new pose,
+    the two past the old plan's end extrapolated along its last step."""
+    xyz, rot = plan_along(8.0, yaw_rate=0.2)
+    later = pose(*xyz[1, :2], 0.2 * 0.2)  # 0.2 s on, where the old plan put the car
+    moved, turned = carry_plan(xyz, rot, np.eye(4), later, 0.2)
+    np.testing.assert_allclose(moved[:-2], xyz[:-2], atol=1e-9)
+    np.testing.assert_allclose(turned, rot, atol=1e-9)
+    # Straight on along the last step, so off the arc by centimetres at 6.4 s.
+    np.testing.assert_allclose(moved[-2:], xyz[-2:], atol=0.1)
+
+
+def test_a_plan_carried_no_time_from_the_same_pose_is_unchanged() -> None:
+    xyz, rot = plan_along(6.0, yaw_rate=-0.1)
+    moved, turned = carry_plan(xyz, rot, pose(3, 4, 1.0), pose(3, 4, 1.0), 0.0)
+    np.testing.assert_allclose(moved, xyz, atol=1e-12)
+    np.testing.assert_allclose(turned, rot, atol=1e-12)
+
+
+def test_reset_forgets_the_previous_plan() -> None:
+    """A warm start never reaches across sequences: reset() drops the plan it would start from."""
+    policy = POLICY()
+    policy._prev_plan = {"timestamp_us": 0}
+    policy.reset()
+    assert policy._prev_plan is None

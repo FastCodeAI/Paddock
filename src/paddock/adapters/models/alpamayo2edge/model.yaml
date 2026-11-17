@@ -18,6 +18,8 @@ runtime:
     - ALPAMAYO2_EDGE_FLOW_STEPS
     - ALPAMAYO2_EDGE_REASONING
     - ALPAMAYO2_EDGE_DROP_EXPERT_LAYERS
+    - ALPAMAYO2_EDGE_WARM_START_STEPS
+    - ALPAMAYO2_EDGE_STAGE_TIMING
   env:
     # Self-contained: tokenizer, processor and the Cosmos3-Edge backbone are all in this
     # one directory (nvidia/Alpamayo2-Edge, revision f8951d095de3589b3face1dec3f4394c8ecedb38).
@@ -37,11 +39,16 @@ runtime:
     # "1,2,3,4,5,12,15,19" (each kept layer still reads its own cache layer). Like the two
     # above, any other value changes the plan, so the run is recorded valid: false.
     ALPAMAYO2_EDGE_DROP_EXPERT_LAYERS: ""
+    # Speed ablation, off by default: after a sequence's first plan, start the flow from the
+    # previous plan carried to now instead of from noise, and run this many Euler steps
+    # (policy.carry_plan). Changes the plan, so a run that sets it is recorded valid: false.
+    ALPAMAYO2_EDGE_WARM_START_STEPS: "0"
     # Read where the checkpoint loads; the checkpoint is never fetched, so a missing
     # directory fails at load rather than reaching for the network.
     HF_HUB_OFFLINE: "1"
-  # Only adds the reasoning text to each sample's extras; the plan is unchanged.
-  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING]
+  # SAVE_REASONING only adds the reasoning text to each sample's extras; STAGE_TIMING=1 only
+  # logs each plan's per-stage GPU time (policy.StageTimer). Neither changes a plan.
+  tuning_env: [ALPAMAYO2_EDGE_SAVE_REASONING, ALPAMAYO2_EDGE_STAGE_TIMING]
 
 capabilities:
   # The five source cameras the six slots are filled from: CAM_FRONT twice (the 120 deg
