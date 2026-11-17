@@ -80,7 +80,7 @@
   },
   "status": "complete",
   "valid": false,
-  "superseded_by": "",
-  "notes": "site env override may change what was measured: QWENDRIVE_CHECKPOINT (values in config.model_env)",
+  "superseded_by": "20261113T201149-e56771",
+  "notes": "site env override may change what was measured: QWENDRIVE_CHECKPOINT (values in config.model_env) Superseded by 20261113T201149-e56771: Made from a checkout with uncommitted changes; replaced by a clean run on 13 Nov.",
   "ingested_from": ""
 }

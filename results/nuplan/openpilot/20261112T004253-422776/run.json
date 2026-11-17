@@ -107,7 +107,7 @@
   },
   "status": "complete",
   "valid": false,
-  "superseded_by": "",
-  "notes": "site env override may change what was measured: CACHEDB, PADDOCK_FFMPEG, PYTHONNOUSERSITE, XDG_CACHE_HOME (values in config.model_env)",
+  "superseded_by": "20261113T215414-4e1d08",
+  "notes": "site env override may change what was measured: CACHEDB, PADDOCK_FFMPEG, PYTHONNOUSERSITE, XDG_CACHE_HOME (values in config.model_env) Superseded by 20261113T215414-4e1d08: Made from a checkout with uncommitted changes; replaced by a clean run on 13 Nov.",
   "ingested_from": ""
 }

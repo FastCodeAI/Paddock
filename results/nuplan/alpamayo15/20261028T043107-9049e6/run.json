@@ -73,7 +73,7 @@
   },
   "status": "complete",
   "valid": false,
-  "superseded_by": "",
-  "notes": "site env override may change what was measured: ALPAMAYO_COSMOS (values in config.model_env)",
+  "superseded_by": "20261113T224735-d4cf3b",
+  "notes": "site env override may change what was measured: ALPAMAYO_COSMOS (values in config.model_env) Superseded by 20261113T224735-d4cf3b: Made from a checkout with uncommitted changes; replaced by a clean run on 13 Nov.",
   "ingested_from": ""
 }
