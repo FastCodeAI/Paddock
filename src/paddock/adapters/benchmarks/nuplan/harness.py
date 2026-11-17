@@ -461,17 +461,33 @@ class NuPlanBenchmark(OpenLoopBenchmark):
     def score(self, sample: Sample, prediction: Trajectory) -> dict[str, float]:
         """Same definition as KITScenes, so the two columns mean one thing."""
         ground_truth = np.asarray(sample.ground_truth, dtype=np.float64)
-        metrics = M.displacement_errors(prediction.xy, ground_truth[:, :2], INTERVAL_S, EVAL_HORIZON_S)
+        # The recorded future is on the INTERVAL_S grid, and the metrics pair
+        # point i of each side with point i. A plan on any other spacing has to
+        # be put on that grid first, or its points are read at the wrong times.
+        plan = on_scoring_grid(prediction, len(ground_truth))
+        metrics = M.displacement_errors(plan, ground_truth[:, :2], INTERVAL_S, EVAL_HORIZON_S)
         horizon = int(round(EVAL_HORIZON_S / INTERVAL_S))
-        longitudinal, lateral = M.longitudinal_lateral(prediction.xy[:horizon], ground_truth[:horizon, :2])
+        longitudinal, lateral = M.longitudinal_lateral(plan[:horizon], ground_truth[:horizon, :2])
         metrics["longitudinal_mae"] = longitudinal
         metrics["lateral_mae"] = lateral
         # The two PDM terms a plan and its recorded future can fill; the gate
         # reads them in the same rows as NAVSIM's (`pdm:` in benchmark.yaml).
-        metrics.update(
-            pdm.plan_terms(prediction.xy[:horizon], ground_truth[:horizon, :2], prediction.xy, prediction.dt)
-        )
+        metrics.update(pdm.plan_terms(plan[:horizon], ground_truth[:horizon, :2], plan, INTERVAL_S))
         return metrics
+
+
+def on_scoring_grid(prediction: Trajectory, n: int) -> np.ndarray:
+    """The plan at the scoring grid's times, interpolated from the plan's own spacing.
+
+    A plan 0.5 s apart is returned as it is. One 0.1 s apart is sampled at 0.5 s,
+    1.0 s and so on. Points past the plan's end are dropped rather than repeated.
+    """
+    want = INTERVAL_S * np.arange(1, n + 1)
+    times = prediction.times()
+    count = int(np.count_nonzero(want <= times[-1] + 1e-9))
+    want = want[:count]
+    xy = prediction.xy
+    return np.column_stack([np.interp(want, times, xy[:, 0]), np.interp(want, times, xy[:, 1])])
 
 
 BENCHMARK = NuPlanBenchmark
