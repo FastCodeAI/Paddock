@@ -312,6 +312,26 @@ recorded none, so an older run keeps its id.
 | `launcher.py` runs a scenario end to end, including the `--observe` launch path | not run: no HUGSIM episode was driven through the harness for this change; the records here came from the campaign runner, and `--observe` (Qwen-Drive) ran only there | **unverified** |
 | The 16 left-out scenarios fail for every model | each failed the same way for three models in the campaign | **verified** |
 
+## Videos for the website
+
+`python -m tools.site.videos hugsim --out DIR` draws the website's HUGSIM videos with
+`render.py` (`showcase`, `render_sample`), the format of neuroNCAP's. Nothing is driven
+again: each episode's folder keeps HUGSIM's own render of its cameras (`video.mp4`), the
+exact plan sent each step (`agent_log.jsonl`, x right, y forward, about the front camera)
+and CAM_FRONT's intrinsics and vehicle-to-camera transform each step (`infos.pkl`).
+
+- **Which episodes.** For each source dataset (nuScenes, Waymo, PandaSet, KITTI-360), the
+  episode where the models' HD-Scores are furthest apart. The hardest episodes are ones
+  where every model hits the car ahead in the first seconds, which shows nothing about how
+  they differ. Each caption states the rule and the spread.
+- **A tile.** CAM_FRONT, the top middle view of `video.mp4`, with the plan projected onto
+  it in green, and the same plan from above in the corner: a camera 1.5 m up does not see
+  the first few metres of road, so a short plan can fall below the image. The bar gives
+  the episode's HD-Score, route completion and how it ended. One clock for every tile; an
+  episode that has ended dims on its last frame.
+- **Where.** `[benchmarks.hugsim] episodes` (`<episodes>/<model>/<dataset>_bridge/<episode>/`,
+  for episodes driven by a sweep outside `paddock run`), else the run's own folder.
+
 ## Support-matrix results
 
 The README's support matrix has a HUGSIM column: each model's HD-Score (0–1) from its run in

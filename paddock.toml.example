@@ -150,6 +150,7 @@ weights = "/path/to/weights"
 # per_episode_timeout_s = 3600                 # default
 # min_free_gb = 12                             # default; free VRAM to wait for before each HUGSIM process
 # keep_ply    = "false"                        # default; true keeps the per-run scene/ground point clouds (~76 MB)
+# episodes    = "/path/to/episodes"            # the website videos (render.py): <episodes>/<model>/<dataset>_bridge/...; default: the run's folder
 
 # [benchmarks.alpasim]
 # AlpaSim runs its services through docker compose and attaches a driver over
