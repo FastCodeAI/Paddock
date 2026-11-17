@@ -149,6 +149,7 @@ weights = "/path/to/weights"
 # expert = "/path/to/expert"                           # tools.benchmarks.bench2drive.expert summarize's output
 #                                                      # a route the stuck or over-time rule ends is a failed drive; see the docs
 # camera_rig = "paddock"                               # default; "bench2drive" / "kitscenes" make a run valid: false
+# recordings = "/path/to/runs"                         # where the website videos (render.py) find recorded drives; default: [roots] runs
 
 # [benchmarks.hugsim]                          # HUGSIM closed-loop; docs/benchmarks/hugsim.md
 # python = "/path/to/hugsim/venv/bin/python"   # HUGSIM's interpreter: imports closed_loop, omegaconf, requests

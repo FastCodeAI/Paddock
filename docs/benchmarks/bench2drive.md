@@ -124,6 +124,7 @@ routes_file = "bench2drive220.xml"                   # under repo/leaderboard/da
 # stop_on_collision  = "true"        # end a route at the first collision the leaderboard records
 # expert = "/path/to/expert"         # what `python -m tools.benchmarks.bench2drive.expert summarize` wrote
 # camera_rig = "paddock"             # or "bench2drive" / "kitscenes": see Camera rig; any other is valid: false
+# recordings = "/path/to/runs"       # where the website videos find recorded drives; default: [roots] runs
 ```
 
 Every key above is read by the adapter; nothing else is. `routes_subset` changes
@@ -442,6 +443,29 @@ python -m tools.benchmarks.bench2drive.dashboard serve --root <dir> --runs {runs
     --expert <expert> --routes-xml <repo>/leaderboard/data/bench2drive220.xml \
     [--routes 1711,1852] [--title "checkpoint, rate"] [--port 8765]
 ```
+
+### Videos for the website
+
+`python -m tools.site.videos bench2drive --out DIR` draws the website's Bench2Drive
+videos with `render.py` (`showcase`, `render_sample`), as neuroNCAP's are drawn.
+
+- **Which routes.** `showcase` reads the per-route driving scores of the runs the
+  results table shows (the 220-route column) and takes the hardest route of each of
+  Bench2Drive's abilities Overtaking, Merging and Emergency braking (lowest score
+  averaged over every model), then the route where the models disagree most (widest
+  best-to-worst gap). No scenario type is shown twice. Each caption says the rule.
+- **What a tile shows.** Each model's front camera with the plan it was following
+  drawn on (`ticks.jsonl` `plan`, projected with the route's own `rig.json`), one
+  frame every second tick (10 fps, real time), all tiles on one clock. A drive that
+  ended dims on its last frame. A plan of zeros (the model choosing to stand still)
+  is labelled "plan: stay stopped".
+- **Where the frames come from.** A ranked run keeps no frames: the 220-route
+  protocol drives with `record = "false"`. So the chosen routes are driven again with
+  `record = "true"`, by each model on the code and settings of its ranked run, into
+  `[benchmarks.bench2drive] recordings` (default `[roots] runs`); `render_sample`
+  takes the newest scored recording of the route per model. Bench2Drive does not
+  repeat a drive exactly (see Repetitions), so a tile's bar gives both scores:
+  this drive's and the ranked run's.
 
 `paddock run ... --resume <run_id>` continues a run in place: a route whose
 `results.json` holds a record for every repetition is reused as it was read
