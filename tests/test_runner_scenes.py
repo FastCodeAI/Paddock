@@ -34,11 +34,15 @@ def b2d_site(tmp_path, monkeypatch) -> SiteConfig:
         "leaderboard/leaderboard/leaderboard_evaluator.py",
         "leaderboard/leaderboard/autoagents/autonomous_agent.py",
         "scenario_runner/srunner/scenariomanager/carla_data_provider.py",
+        "scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py",
     ):
         (repo / relative).parent.mkdir(parents=True, exist_ok=True)
         (repo / relative).write_text("")
-    # The evaluator as patches/Bench2Drive/ leaves it, which preflight checks for.
+    # The evaluator and ActorFlow as patches/Bench2Drive/ leaves them, which preflight checks for.
     (repo / "leaderboard/leaderboard/leaderboard_evaluator.py").write_text("# --connect-timeout\n")
+    (repo / "scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py").write_text(
+        "def _remove_far_cars(self):\n"
+    )
     (repo / "leaderboard" / "data").mkdir()
     shutil.copy(FIXTURES / "routes_sample.xml", repo / "leaderboard" / "data" / "routes_sample.xml")
     for sub in ("repos", "runs", "weights"):

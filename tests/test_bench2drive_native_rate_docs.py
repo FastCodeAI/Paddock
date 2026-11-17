@@ -391,15 +391,20 @@ def test_readme_block_reproduces(native: dict, twenty: dict, model: str) -> None
 
 @pytest.mark.parametrize("model", sorted(CAMPAIGN))
 def test_support_matrix_publishes_the_native_score(model: str) -> None:
-    """The matrix's Bench2Drive cell for a re-driven model is its native-rate run, rate named."""
+    """The matrix's Bench2Drive cell for a re-driven model is asked at its native rate, rate named.
+    The column is the 220-route one now; the native-rate 50-route run this page is about stays a
+    valid record."""
     hz, run_id, _ = CAMPAIGN[model]
     cell = matrix_cell(model, "bench2drive")
-    assert cell.run == f"bench2drive/{model}/{run_id}", f"{model}: the support matrix reads {cell.run!r}"
+    record = json.loads((REPO_ROOT / "results" / cell.run / "run.json").read_text())
+    assert record["config"].get("infer_hz") == hz, f"{model}: the support matrix reads {cell.run!r}"
     assert (cell.qualifier, "R" in cell.marks) == (f"{hz} Hz", False), f"{model}: {cell}"
     columns, rows = load_matrix()
     rank(columns, rows)
     j = next(j for j, c in enumerate(columns) if c.key == "bench2drive")
     assert next(r for r in rows if r.key == model).cells[j].rank is not None, f"{model}: not ranked"
+    native = json.loads((REPO_ROOT / "results" / "bench2drive" / model / run_id / "run.json").read_text())
+    assert native["valid"], f"{model}: {run_id}"
 
 
 def test_readme_block_lists_exactly_the_models_that_were_re_run() -> None:
@@ -419,10 +424,17 @@ def test_readme_does_not_pool_openpilot_into_this_block() -> None:
     assert not re.search(r"\|\s*OpenPilot", block)
 
 
-def test_the_page_names_the_openpilot_run_the_matrix_ranks() -> None:
-    """The page sets aside OpenPilot's ranked run by its id: a date alone named an unranked one."""
-    run_id = matrix_cell("openpilot", "bench2drive").run.rsplit("/", 1)[-1]
-    assert run_id in DOC.read_text(), f"the page does not name {run_id}, OpenPilot's ranked Bench2Drive run"
+#: OpenPilot's 50-route run the matrix ranked when this page was written, which it sets aside by id.
+OPENPILOT_50 = "pooled50-40c29d24c37d542a-c7d2b2"
+
+
+def test_the_page_names_the_openpilot_run_the_matrix_ranked() -> None:
+    """The page sets aside OpenPilot's ranked 50-route run by its id: a date alone named an unranked one."""
+    assert OPENPILOT_50 in DOC.read_text(), f"the page does not name {OPENPILOT_50}"
+    record = json.loads(
+        (REPO_ROOT / "results" / "bench2drive" / "openpilot" / OPENPILOT_50 / "run.json").read_text()
+    )
+    assert record["valid"]
 
 
 # ---------------------------------------------------------------------------

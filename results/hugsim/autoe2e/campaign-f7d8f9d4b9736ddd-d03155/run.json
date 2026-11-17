@@ -46,8 +46,8 @@
   "hardware": {},
   "provenance": {},
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "AutoE2E v1.0 (KITScenes epoch 5), driven 22 Oct 2026 in up to four lanes sharing one scenario queue, from paddock b507811 unmodified. The adapter has changed since (#92, #97, #98, #107, #108), so a re-run on main may differ. Called every step (it declares no planning rate), all six cameras rendered. It takes no command, so it gets upstream's no-route input.",
+  "valid": false,
+  "superseded_by": "fullplan-f7d8f9d4b9736ddd-4d9640",
+  "notes": "AutoE2E v1.0 (KITScenes epoch 5), driven 22 Oct 2026 in up to four lanes sharing one scenario queue, from paddock b507811 unmodified. The adapter has changed since (#92, #97, #98, #107, #108), so a re-run on main may differ. Called every step (it declares no planning rate), all six cameras rendered. It takes no command, so it gets upstream's no-route input. Superseded by fullplan-f7d8f9d4b9736ddd-4d9640: the 22 Oct campaign's bridge sent HUGSIM only the six waypoints (3 s) of each plan that the wire's trajectory keeps, so the scorer judged a cut plan, and it ran without the IDM guard; the 8-9 Nov campaign drove the same 420 scenarios through paddock's own bridge with the whole plan (up to 4 s) and the guard.",
   "ingested_from": "hugsim-eval/autoe2e"
 }

@@ -23,6 +23,19 @@ cameras are announced by the runner on every scenario's log; the call rate follo
 and model calls. Scenarios that disagree are recorded disagreeing and the run does not rank. ``model_env`` is
 the operator's statement of how the node was configured; the campaign recorded none, and ``notes`` says so.
 
+Campaigns driven through paddock's own bridge (November 2026 on) record more, and the record keeps it:
+
+* ``idm_lead`` -- the runner announced the guard for IDM's one-point lookahead (``--fix_idm_lead``, the change
+  ``patches/HUGSIM/0003`` makes in the checkout). It changes only an episode that would otherwise crash, so a
+  scored scenario without it scored the same, and a campaign that mixes the two still ranks.
+* ``waypoints_sent`` -- how many 0.5 s waypoints of each plan HUGSIM was sent (``n_sent`` on each call's
+  line of ``agent_log.jsonl``): what the scorer judged. One value, or every value seen.
+* ``observe`` -- the model was handed every frame between its plans (``observed`` steps; ``bridge.observes``).
+  A history of every step and one at the planning rate are two inputs, so a campaign that mixes them does not
+  rank.
+
+A key is absent when no scenario recorded it, so a campaign recorded before keeps its run id.
+
 Site configuration (``paddock.toml``)::
 
     [[ingest.hugsim]]
@@ -58,6 +71,8 @@ from paddock.results.store import MetricsRecord, RunRecord, config_hash, sequenc
 #: rendered a subset of the cameras. Their presence on every scored log is how the record knows the protocol.
 CONTROLLER_NOTE = "NOTE: --fix_heading active (upstream PR #57"
 RENDER_NOTE = "NOTE: --render_cams "
+#: What it printed when it guarded IDM's one-point lookahead, the change patches/HUGSIM/0003 makes.
+IDM_NOTE = "NOTE: --fix_idm_lead active"
 
 
 def _rows(results: Path) -> list[dict[str, Any]]:
@@ -71,6 +86,25 @@ def _last_error(log: Path) -> str:
     lines = [x.strip() for x in log.read_text(errors="ignore").splitlines() if x.strip()]
     errors = [x for x in lines if "Error" in x or "error" in x.split(":")[0]]
     return (errors or lines or ["empty log"])[-1][:200]
+
+
+def plan_facts(agent_log: Path) -> tuple[set[int], bool | None]:
+    """The waypoints sent per plan, and whether the frames between plans were handed to the model.
+
+    Read from the bridge's ``agent_log.jsonl``: ``n_sent`` on each call's line (bridges before November
+    2026 wrote none), ``observed`` on a step that posted ``/observe``. The bridge observes on every step it
+    does not plan when told to, so the answer is True when every such step did, False when none did, and None
+    when the scenario had no step between plans to tell (or its bridge failed a step).
+    """
+    if not agent_log.exists():
+        return set(), None
+    rows = [json.loads(line) for line in agent_log.read_text().splitlines() if line.strip()]
+    sent = {int(r["n_sent"]) for r in rows if r.get("called") and r.get("n_sent") is not None}
+    between = [r for r in rows if not r.get("called")]
+    if not between or any("error" in r for r in rows):
+        return sent, None
+    observed = sum(bool(r.get("observed")) for r in between)
+    return sent, (True if observed == len(between) else False if observed == 0 else None)
 
 
 def call_interval(counts: list[tuple[int, int, int]]) -> int | None:
@@ -110,6 +144,9 @@ def ingest(
     attempted: dict[str, str] = {}  # scenario -> why its last attempt did not score
     excluded_seen: set[str] = set()
     controller: list[bool] = []
+    idm: list[bool] = []
+    sent: set[int] = set()
+    observed: list[bool] = []
     rendered: list[Any] = []
     counts: list[tuple[int, int, int]] = []
     finished: list[float] = []
@@ -151,6 +188,11 @@ def ingest(
             attempted.pop(scenario, None)
             text = log.read_text(errors="ignore") if log.exists() else ""
             controller.append(CONTROLLER_NOTE in text)
+            idm.append(IDM_NOTE in text)
+            points, observes = plan_facts(run_dir / "agent_log.jsonl")
+            sent |= points
+            if observes is not None:
+                observed.append(observes)
             rendered.append(row.get("render_cams"))
             counts.append((extra.get("steps", 0), extra.get("calls", 0), extra.get("bridge_errors", 0)))
             finished.append(eval_json.stat().st_mtime)
@@ -195,6 +237,17 @@ def ingest(
         "model_env": dict(model_env or {}),
         "source_layout": "results.jsonl + <dataset>_bridge/<scene>_<mode>/eval.json + logs/<scenario>.log",
     }
+    if any(idm):
+        config["idm_lead"] = (
+            "one-point lookahead guard (patches/HUGSIM/0003)"
+            if all(idm)
+            else f"one-point lookahead guard announced on {sum(idm)} of {len(idm)} scored logs"
+        )
+    if sent:
+        config["waypoints_sent"] = sent.pop() if len(sent) == 1 else sorted(sent)
+    mixed_observe = any(observed) and not all(observed)
+    if any(observed):
+        config["observe"] = True if all(observed) else f"on {sum(observed)} of {len(observed)} scenarios"
     sample_ids = [s["sample_id"] for s in samples]
     run_id = f"{run_label}-{sequence_hash(sample_ids)}-{config_hash(config)}"
 
@@ -219,6 +272,11 @@ def ingest(
         add("no single call interval fits every scenario's steps and model calls; does not rank.")
     if isinstance(cams, list):
         add(f"scenarios rendered different cameras ({cams}); does not rank.")
+    if mixed_observe:
+        add(
+            f"the frames between plans were handed to the model on {sum(observed)} of {len(observed)} "
+            "scenarios; two inputs, so this run does not rank."
+        )
     if missing:
         lost = "; ".join(f"{s} ({attempted[s]})" for s in missing)
         add(f"scenarios attempted and never scored: {lost}.")
@@ -240,7 +298,13 @@ def ingest(
         },
         config=config,
         status="complete" if not missing else "partial",
-        valid=not missing and controller_ok and n is not None and not isinstance(cams, list),
+        valid=(
+            not missing
+            and controller_ok
+            and n is not None
+            and not isinstance(cams, list)
+            and not mixed_observe
+        ),
         notes=note,
         # A relative tail only: results/ is tracked and must not name a machine's disk.
         ingested_from="; ".join("/".join(r.parts[-2:]) for r in roots),

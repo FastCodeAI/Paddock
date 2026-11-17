@@ -50,6 +50,8 @@ loop = "open"
 header = "EPDMS ↑ (0–1), navtest, stage one"
 decimals = 3
 
+# All 220 routes of bench2drive220.xml for every model (issue #158; "Bench2Drive — 220 routes" in
+# docs/benchmarks/bench2drive.md). The 50-route column it replaces covered 14 of the 44 scenario types.
 [[benchmark]]
 key = "navhard"
 name = "NAVSIM v2 hard"
@@ -61,17 +63,7 @@ decimals = 3
 key = "bench2drive"
 name = "Bench2Drive"
 loop = "closed"
-header = "driving score ↑ (0–100), 50 of 220 routes"
-decimals = 2
-
-# Every model the same way over all 220 routes but the ones set aside for every model (issue #158;
-# "The 220-route protocol" in docs/benchmarks/bench2drive.md). It fills as models are run.
-[[benchmark]]
-key = "bench2drive220"
-benchmark = "bench2drive"
-name = "Bench2Drive"  # shared with the 50-route column, drawn once across both
-loop = "closed"
-header = "driving score ↑ (0–100), 216 of 220 routes"
+header = "driving score ↑ (0–100), all 220 routes"
 decimals = 2
 
 [[benchmark]]
@@ -87,6 +79,14 @@ name = "AlpaSim"
 loop = "closed"
 header = "nuRec scene score ↑ (0–1), 30 of 913 scenes"
 decimals = 4
+# HUGSIM's 420 runnable scenarios of 436 (the release cannot run 16), the whole plan sent (up to 4 s), each model at
+# its own rate; docs/benchmarks/hugsim.md, Results. HD-Score as stored, 0-1 (the page's tables show it x100).
+[[benchmark]]
+key = "hugsim"
+name = "HUGSIM"
+loop = "closed"
+header = "HD-Score ↑ (0–1), 420 of 436 scenarios"
+decimals = 3
 
 [[model]]
 key = "openpilot"
@@ -107,7 +107,7 @@ name = "Drive-JEPA"
 [[model]]
 key = "visionpilot"
 name = "VisionPilot"
-marks = "P"  # every cell in the row; S is on each cell but comma2k19, the one re-run since the CURV_SCALE fix
+marks = "P"  # every cell in the row; S only where a cell predates the CURV_SCALE fix
 
 [[model]]
 key = "meteor"
@@ -140,10 +140,10 @@ kitscenes = { run = "kitscenes/openpilot/20261008T004723-a369d1", marks = "A" }
 comma2k19 = { run = "comma2k19/openpilot/20261106T003719-5cde54" }
 navsim = { run = "navsim/openpilot/20260911T161513-3a4c90", note = "10 Hz" }
 navsim_v1 = { run = "navsim_v1/openpilot/20260914T181009-dbcef4", note = "10 Hz" }
-bench2drive = { run = "bench2drive/openpilot/pooled50-40c29d24c37d542a-c7d2b2", marks = "P" }  # routes can end early; it ranks
-bench2drive220 = { run = "bench2drive/openpilot/full220-836dda734659a86c-2803bd", marks = "P" }
+bench2drive = { run = "bench2drive/openpilot/full220-86aa45e768a29a64-102db6", marks = "P" }  # routes can end early; it ranks
 neuroncap = { run = "neuroncap/openpilot/20260905T055713-11ac59" }
 alpasim = { run = "alpasim/openpilot/legacy-openpilot_020_30scenes" }
+hugsim = { run = "hugsim/openpilot/fullplan-f7d8f9d4b9736ddd-cac3b5", note = "4 Hz" }  # below its 10 Hz min_input_hz: HUGSIM steps at 4 Hz (hugsim.md)
 
 [cells.alpamayo15]
 nuscenes = { run = "nuscenes/alpamayo15/20260905T093547-3dd7cd", marks = "A" }  # five nuScenes-built sets on its card
@@ -152,10 +152,10 @@ comma2k19 = { run = "comma2k19/alpamayo15/20261106T005600-6c52a2" }
 navsim = { run = "navsim/alpamayo15/20260912T040211-a9562c", marks = "A", note = "10 Hz" }  # NAVSIM-Traj, NAVSIM-ReCogDrive
 navhard = { run = "navhard/alpamayo15/20261111T090014-04904f", marks = "A" }
 navsim_v1 = { run = "navsim_v1/alpamayo15/20260914T175447-89a9ca", marks = "A", note = "10 Hz" }
-bench2drive = { run = "bench2drive/alpamayo15/native50-10hz-084418258d833a9f-c4d076", note = "10 Hz" }
-bench2drive220 = { run = "bench2drive/alpamayo15/full220-836dda734659a86c-f81033", note = "10 Hz" }
+bench2drive = { run = "bench2drive/alpamayo15/full220-86aa45e768a29a64-600411", note = "10 Hz" }
 neuroncap = { run = "neuroncap/alpamayo15/20260906T034647-bc409f", marks = "A" }  # its scenes are nuScenes val scenes
 alpasim = { run = "alpasim/alpamayo15/20261029T200113-9d900c" }  # through the bridge, 30 scenes
+hugsim = { run = "hugsim/alpamayo15/fullplan-f7d8f9d4b9736ddd-7ea973" }
 
 [cells.alpamayo2edge]
 # A model built for 0.1 s frames, on OpenScene's 2 Hz: it has not been run on nuPlan's
@@ -169,7 +169,7 @@ nuscenes = { run = "nuscenes/alpamayo2edge/20261111T231928-e4e2d6", note = "2 Hz
 neuroncap = { run = "neuroncap/alpamayo2edge/20261111T231934-33adca" }
 # One recorded camera in 2 of its 6 slots, the other 4 black (ALPAMAYO2_EDGE_ABSENT_CAMERAS).
 comma2k19 = { run = "comma2k19/alpamayo2edge/20261112T012152-9b1e09" }
-bench2drive220 = { run = "bench2drive/alpamayo2edge/full220-836dda734659a86c-56db50", note = "10 Hz" }
+bench2drive = { run = "bench2drive/alpamayo2edge/full220-86aa45e768a29a64-ffe60a", note = "10 Hz" }
 # Through the bridge on its own six cameras, the real telephoto among them, 30 scenes.
 alpasim = { run = "alpasim/alpamayo2edge/20261112T220852-f6d995" }
 
@@ -183,9 +183,10 @@ comma2k19 = { run = "comma2k19/drivejepa/20261111T074533-0f26ee", note = "0.5 s 
 navsim = { run = "navsim/drivejepa/20261111T052813-8f96dd", marks = "A", note = "streamed" }
 navhard = { run = "navhard/drivejepa/20261110T165434-167fd4", marks = "A", note = "streamed" }
 navsim_v1 = { run = "navsim_v1/drivejepa/20261111T090508-ad88e6", marks = "A", note = "streamed" }
-bench2drive = { run = "bench2drive/drivejepa/native50-2hz-40c29d24c37d542a-447e23", note = "2 Hz" }
+bench2drive = { run = "bench2drive/drivejepa/pooled220-86aa45e768a29a64-1507a1", note = "2 Hz" }
 neuroncap = { run = "neuroncap/drivejepa/20261110T204020-036fb3" }
 alpasim = { run = "alpasim/drivejepa/legacy-drivejepa_014_20hz_30scenes" }
+hugsim = { run = "hugsim/drivejepa/fullplan-f7d8f9d4b9736ddd-b89341", note = "2 Hz" }
 
 [cells.visionpilot]
 nuscenes = { run = "nuscenes/visionpilot/20260905T093333-319ef5", marks = "S" }
@@ -194,9 +195,10 @@ comma2k19 = { run = "comma2k19/visionpilot/20261106T003749-c10a7f" }
 navsim = { run = "navsim/visionpilot/20260902T175642-df5291", marks = "S" }
 navhard = { run = "navhard/visionpilot/20261110T165413-30c0d8" }
 navsim_v1 = { run = "navsim_v1/visionpilot/20260911T083323-c07583", marks = "S" }
-bench2drive = { run = "bench2drive/visionpilot/pooled50-40c29d24c37d542a-d94009", marks = "S" }
+bench2drive = { run = "bench2drive/visionpilot/pooled220-86aa45e768a29a64-9f3c17" }
 neuroncap = { run = "neuroncap/visionpilot/20260905T121810-155d36", marks = "S" }
 alpasim = { run = "alpasim/visionpilot/legacy-visionpilot_v2_30scenes", marks = "S" }
+hugsim = { run = "hugsim/visionpilot/fullplan-f7d8f9d4b9736ddd-92c0b7" }
 
 [cells.meteor]
 nuscenes = { run = "nuscenes/meteor/20260914T202122-4320bb" }
@@ -207,10 +209,10 @@ navhard = { run = "navhard/meteor/20261110T181854-9b4014", marks = "P" }
 navsim_v1 = { run = "navsim_v1/meteor/20260915T005223-071c0b", marks = "P" }
 # Its declared 5 Hz, routes ended after 30 s stuck or 4x the expert's time (AutoE2E's rules), each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
-bench2drive = { run = "bench2drive/meteor/pooled50-40c29d24c37d542a-867d57", note = "5 Hz" }
-bench2drive220 = { run = "bench2drive/meteor/full220-836dda734659a86c-dda00e", note = "5 Hz" }
+bench2drive = { run = "bench2drive/meteor/full220-86aa45e768a29a64-2144df", note = "5 Hz" }
 neuroncap = { run = "neuroncap/meteor/20260915T193036-d34559" }
 alpasim = { run = "alpasim/meteor/legacy-meteor_011_published_30scenes" }
+hugsim = { run = "hugsim/meteor/fullplan-f7d8f9d4b9736ddd-241d7f" }
 
 [cells.qwendrive]
 nuscenes = { run = "nuscenes/qwendrive/20260915T190350-47479e", marks = "A" }  # VLM trained on nuScenes train
@@ -219,9 +221,10 @@ comma2k19 = { run = "comma2k19/qwendrive/20261106T030530-7d9fd3" }
 navsim = { run = "navsim/qwendrive/20260914T221802-80457c", marks = "A" }
 navhard = { run = "navhard/qwendrive/20261111T060112-5231af", marks = "A" }
 navsim_v1 = { run = "navsim_v1/qwendrive/20261104T205054-df25d5", marks = "A" }
-bench2drive = { run = "bench2drive/qwendrive/native50-2hz-084418258d833a9f-9b2bc9", note = "2 Hz" }
+bench2drive = { run = "bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127", note = "2 Hz" }
 neuroncap = { run = "neuroncap/qwendrive/20260915T023604-12d5eb", marks = "A" }  # VQA training splits hold its val scenes
 alpasim = { run = "alpasim/qwendrive/20261110T062329-602ee2", note = "2 Hz" }  # one call every 0.5 s, its declared planning_hz; the 1.5 s run scored 0.700
+hugsim = { run = "hugsim/qwendrive/fullplan-f7d8f9d4b9736ddd-1ddf85", note = "2 Hz" }
 
 [cells.autoe2e]
 nuscenes = { run = "nuscenes/autoe2e/20261023T004711-eedbe2", marks = "A" }  # camera encoder trained on nuScenes train
@@ -232,10 +235,10 @@ navhard = { run = "navhard/autoe2e/20261110T192825-24d0b3", marks = "A" }
 navsim_v1 = { run = "navsim_v1/autoe2e/20261104T210206-3022fb", marks = "A", note = "10 Hz" }
 # Its own inputs at its declared 10 Hz, routes ended after 30 s stuck or 4x the expert's time, each a
 # failed drive scored as it stood: valid, and it ranks. The README says how it was driven.
-bench2drive = { run = "bench2drive/autoe2e/pooled50-40c29d24c37d542a-cc7a9c", note = "10 Hz" }
-bench2drive220 = { run = "bench2drive/autoe2e/full220-836dda734659a86c-63902e", note = "10 Hz" }
+bench2drive = { run = "bench2drive/autoe2e/full220-86aa45e768a29a64-740c68", note = "10 Hz" }
 neuroncap = { run = "neuroncap/autoe2e/20261026T233951-743060", marks = "A" }
 alpasim = { run = "alpasim/autoe2e/20261022T045847-86b955" }
+hugsim = { run = "hugsim/autoe2e/fullplan-f7d8f9d4b9736ddd-4d9640" }
 
 # nuScenes-trained checkpoints, zero-shot everywhere else. On NAVSIM the 3 s plan is held to the 4 s NAVSIM
 # scores (UNIAD_HORIZON_S / VAD_HORIZON_S), a setting model.yaml lists as ranked with a note. The NAVSIM records
@@ -251,6 +254,8 @@ navsim_v1 = { run = "navsim_v1/uniad/20261112T130241-e02e88", marks = "P" }
 neuroncap = { run = "neuroncap/uniad/20261109T092826-5919f1", marks = "A" }  # its scenes are nuScenes val scenes
 comma2k19 = { run = "comma2k19/uniad/20261112T213250-a862cc" }  # the road camera as CAM_FRONT, its five other slots black
 alpasim = { run = "alpasim/uniad/20261110T120651-8ea842" }  # six cameras, re-rendered as nuScenes' rig
+bench2drive = { run = "bench2drive/uniad/full220-86aa45e768a29a64-fb1f0a", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
+hugsim = { run = "hugsim/uniad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
 
 [cells.vad]
 nuscenes = { run = "nuscenes/vad/20261110T000020-53cda0", marks = "A", note = "scene order" }
@@ -261,6 +266,8 @@ navsim_v1 = { run = "navsim_v1/vad/20261112T132424-25e0e5", marks = "P" }
 neuroncap = { run = "neuroncap/vad/20261110T033544-7f435b", marks = "A" }  # its scenes are nuScenes val scenes
 comma2k19 = { run = "comma2k19/vad/20261112T213250-61c395" }  # the road camera as CAM_FRONT, its five other slots black
 alpasim = { run = "alpasim/vad/20261110T153825-72448c" }  # six cameras, re-rendered as nuScenes' rig
+bench2drive = { run = "bench2drive/vad/full220-86aa45e768a29a64-6cb75d", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
+hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
@@ -269,6 +276,7 @@ comma2k19 = { run = "comma2k19/constant_velocity/20261106T045541-d0cdb5" }
 navsim = { run = "navsim/constant_velocity/20260902T175923-feba73" }
 navhard = { run = "navhard/constant_velocity/20261110T085953-e122fd" }
 navsim_v1 = { run = "navsim_v1/constant_velocity/20260911T034553-8f28ac" }
-bench2drive = { run = "bench2drive/constant_velocity/pooled50-3mps-40c29d24c37d542a-02b6ac" }
 neuroncap = { run = "neuroncap/constant_velocity/20261112T200906-cce2d4" }
 alpasim = { run = "alpasim/constant_velocity/legacy-cv_023_20hz_30scenes" }
+bench2drive = { run = "bench2drive/constant_velocity/full220-3mps-86aa45e768a29a64-c8f3e4", note = "3 m/s" }  # routes start at rest: a fixed target
+hugsim = { run = "hugsim/constant_velocity/fullplan-f7d8f9d4b9736ddd-a8f5b7" }

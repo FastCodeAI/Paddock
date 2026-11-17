@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 5 s ahead |
-| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [neuroncap](../benchmarks/neuroncap.md), [comma2k19](../benchmarks/comma2k19.md), [alpasim](../benchmarks/alpasim.md) |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [neuroncap](../benchmarks/neuroncap.md), [comma2k19](../benchmarks/comma2k19.md), [alpasim](../benchmarks/alpasim.md), [bench2drive](../benchmarks/bench2drive.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -82,7 +82,7 @@ the recorded frames, poses and CAN bus, and at each plan:
 | neuroNCAP | one 1600×900 frame per 0.1 s tick, three cameras rendered | from `ego2world` each tick | the engine's | the adapter plans every tick, as every other model here |
 | comma2k19 | 160 observations at 20 Hz per sample, one `/infer_sequence`; **one** camera, in the front view slot, the two side slots black, as in the published run (see below) | real, 8 s of 20 Hz pose; CAN speed, acceleration differenced | always STRAIGHT — the dataset ships no route | zero-shot on a rig nothing in the corpus resembles; see below |
 | AlpaSim | every 50 ms step, three f-theta cameras; frames picked 0.5 s apart, refused if off their slot | nearest 20 Hz step per 0.1 s row; forward and sideways speed, acceleration differenced with the turning term | from the route, held over three calls | the native driver's inputs; see [On AlpaSim](#on-alpasim-through-the-bridge) |
-| Bench2Drive | one frame per 20 Hz tick by default, and one per 10th tick in the native-rate campaign; the three trained views, `CAM_FRONT` / `CAM_FRONT_LEFT` / `CAM_FRONT_RIGHT` | from `ego2world` | route-derived | driven: 50 routes, DS 12.92 / RC 50.19, `results/bench2drive/qwendrive/pooled50-*`; `duration_s` averages 3457 s per route, the slowest row in that table. Re-driven at 2 Hz it scores 17.08 over the 49 routes that scored at both rates — [native-rate campaign](../benchmarks/bench2drive-native-rate.md) |
+| Bench2Drive | a plan every 0.5 s (`planning_hz: 2`) and a frame every 0.1 s between (`POST /observe`, since its `native_input_hz` is above that), so its 16-pose history is real; before Nov 2026 one frame per 20 Hz tick by default, and one per 10th tick with nothing between in the native-rate campaign; the three trained views, `CAM_FRONT` / `CAM_FRONT_LEFT` / `CAM_FRONT_RIGHT` | from `ego2world` | route-derived | driven: 50 routes, DS 12.92 / RC 50.19, `results/bench2drive/qwendrive/pooled50-*`; `duration_s` averages 3457 s per route, the slowest row in that table. Re-driven at 2 Hz it scores 17.08 over the 49 routes that scored at both rates — [native-rate campaign](../benchmarks/bench2drive-native-rate.md) |
 
 ## On AlpaSim, through the bridge
 
@@ -101,14 +101,14 @@ driver did, not the way it does for the other benchmarks:
 
 | Input | On AlpaSim |
 |---|---|
-| when the model is called | every 0.5 s (10 steps), its declared `planning_hz` 2.0, from the end of the warm-up, on a grid; between calls the bridge re-times the last plan and re-anchors it to the car. The native driver called it every 1.5 s (30 steps) |
+| when the model is called | every 1.5 s (30 steps) from the end of the warm-up, on a grid; between calls the bridge re-times the last plan and re-anchors it to the car |
 | what the node hears | every 50 ms step: warm-up frames and the steps between calls go to `/observe`. A frame cadence other than 50 ms is refused |
 | frames | the newest, and the frame nearest each of 0.5, 1.0, 1.5 s before it; a frame more than 50 ms off its slot is refused rather than stood in for |
 | ego rows | the recorded step nearest each 0.1 s slot (not interpolated), placed by the full 3-D relative pose |
 | velocity | forward and sideways speed as the simulator reports them, each row in its own frame. AlpaSim reports zero velocity and yaw rate while it replays the warm-up; the bridge replaces those from the poses when they move faster than 1 m/s, so a car really standing still keeps its zero |
 | acceleration | the change in velocity over 0.1 s plus the turning term: forward `dv_fwd/dt − ω·v_lat`, sideways `dv_lat/dt + ω·v_fwd`. The simulator also reports an acceleration; it is not used, because the native driver did not use it |
 | command | from the route AlpaSim holds, by the native three-answer rule: the point 20 m along the route, the net heading change to it and the same change median-filtered must all lie more than 3 m to one side to say LEFT or RIGHT. No route, or answers on both sides, is "unknown" (one-hot unknown, text "straight") |
-| command hold | a new command must come back on three model calls in a row before the model is told it. The hold is updated only when the model is called, as natively, so at one call every 0.5 s a turn reaches the model 1 s after the route first shows it, and a change that lasts less than three calls (1.5 s of driving) never reaches it. Natively, at 1.5 s a call, those were 3 s and 4.5 s. This is kept on purpose because it is what the native runs did; the native code's comment says 150 ms, which is not what it does |
+| command hold | a new command must come back on three model calls in a row before the model is told it. The hold is updated only when the model is called, as natively, so a turn reaches the model 3 s after the route first shows it, and a change that lasts less than three calls (4.5 s of driving) never reaches it. This is kept on purpose because it is what the native runs did; the native code's comment says 150 ms, which is not what it does |
 | noise seed | `42 + sha256(scene id)[:8] mod 1,000,000`, per scene, as natively. `QWENDRIVE_SEED` is not read on AlpaSim |
 | output | all 50 points, 0.1 s apart (the profile sets the bridge's `--waypoint-dt 0.1`, and the bridge refuses a plan spaced otherwise) |
 
@@ -133,22 +133,15 @@ Differences from the native runs that remain:
   The command hold therefore starts at the first call after the warm-up rather
   than at step 30.
 
-The run on the 30 scenes is `results/alpasim/qwendrive/20261110T062329-602ee2`:
-valid, one rollout per scene, a model call every 0.5 s, `scene_score` **0.5350**
-(progress 0.602), five at-fault collisions, 13 scenes with any collision and
-three off-road events. It ran on paddock `d81acb8`, which sets that rhythm.
-
-The same bridge calling the model every 1.5 s, the native driver's setting, scored
-0.7001 (progress 0.787, five at-fault collisions, two off-road):
-`20261027T215528-d231d8`, superseded by the 0.5 s run. Full-score scenes went
-from 17 to 8 of 30 with the faster calls. The native driver's own runs, also a
-call every 1.5 s, on the same simulator image as the 1.5 s bridge run, scored
-0.6672, three of their scenes ending on the forward-reach refusal above; with one
-rollout per scene those two are level. The native runs
+The run on the 30 scenes is `results/alpasim/qwendrive/20261027T215528-d231d8`:
+valid, one rollout per scene, `scene_score` **0.7001** (progress 0.787), five
+at-fault collisions and two off-road events. The native runs on the same
+simulator image scored 0.6672, three of their scenes ending on the forward-reach
+refusal above; with one rollout per scene the two are level. The native runs
 were made by the native driver outside paddock and are not in `results/`,
 so the 0.6672 cannot be re-checked from this repository.
 
-The 1.5 s run's `run.json` names paddock commit `a074fe5`. That is this route's
+The run's `run.json` names paddock commit `a074fe5`. That is this route's
 build commit before it was rebased onto `main`, and no branch holds it. In the
 commit that added this route to `main` (`caffc85`) the files this route changed
 differ from it only in comments, so check out that one to reproduce the run.
@@ -303,10 +296,6 @@ plan against the collision rate:
 | openpilot | 84% | −4.99 m/s | 1.00 m |
 | **qwendrive** | **86%** | **−2.81 m/s** | **1.22 m** |
 | visionpilot | 90% | −2.27 m/s | 1.91 m |
-
-The drivejepa row is its run `20261012T224707-f11ac0`, since retired for the
-momentum-aware `20261110T204020-036fb3`, which collides in 80% of the frontal
-episodes; its other two columns have not been measured on that run.
 
 Speed change is the last speed minus the first, from each episode's
 `ego_poses.json`. Drive-JEPA's row is its run after the camera fix.
