@@ -8,7 +8,7 @@
 | Dataset | `nuplan` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/nuplan/`](../../src/paddock/adapters/benchmarks/nuplan/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -130,7 +130,7 @@ focal length without anything failing.
 
 ## Results
 
-All eight models are scored on the full set of **351 scorable anchors**, one
+All nine models are scored on the full set of **351 scorable anchors**, one
 shared sample set. Each cell is the mean from one committed record under
 `results/nuplan/`. Each model has one ranked record; the earlier runs are marked
 superseded and kept on disk. The leaderboard's nuPlan section has the same table
@@ -140,6 +140,7 @@ with the run ids.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | qwendrive | **0.293** | **0.100** | **0.317** | **0.639** | **0.247** | **0.092** | **0.976** |
 | alpamayo15 | 0.684 | 0.197 | 0.728 | 1.579 | 0.604 | 0.170 | 0.970 |
+| alpamayo2edge | 0.689 | 0.312 | 0.756 | 1.390 | 0.623 | 0.161 | 0.973 |
 | autoe2e | 0.826 | 0.270 | 0.885 | 1.855 | 0.636 | 0.355 | 0.960 |
 | openpilot | 0.922 | 0.457 | 1.021 | 1.744 | 0.853 | 0.198 | 0.937 |
 | drivejepa | 1.249 | 0.543 | 1.345 | 2.543 | 1.201 | 0.167 | 0.967 |
@@ -147,9 +148,9 @@ with the run ids.
 | visionpilot | 1.707 | 0.815 | 1.779 | 3.298 | 1.336 | 0.676 | 0.874 |
 | meteor | 1.966 | 0.747 | 2.127 | 4.211 | 1.718 | 0.636 | 0.880 |
 
-Five of the eight beat constant velocity on ADE, Drive-JEPA by only 0.006 m.
+Six of the other eight models beat constant velocity on ADE, Drive-JEPA by only 0.006 m.
 VisionPilot and METEOR do not. On pdm_ep constant velocity is the lowest of the
-eight, at 0.873.
+nine, at 0.873.
 
 Caveats that travel with individual rows:
 
@@ -157,6 +158,8 @@ Caveats that travel with individual rows:
   both drawn from nuPlan's logs, with no split named, and its VLM's corpus is not
   published. Whether these 351 anchors overlap its training logs has not been checked,
   so read the lead as unverified until it is.
+- **alpamayo2edge** (Alpamayo 2 Edge, run 20261113T235607-4feaff) is on the same 351 anchors. Whether
+  its training data includes nuPlan logs has not been checked; if it does, this row needs a mark.
 - **openpilot** ran at its pinned commit, 555f48c5d, so its `run.json` records that sha.
 - **alpamayo15** reads only the config and tokenizer of `nvidia/Cosmos-Reason2-8B`,
   which is gated.
@@ -189,7 +192,7 @@ including model load; METEOR did the same set in 27 s on GPU.
 
 **Verified**: the full path runs end to end — sample construction, selection,
 ground truth, calibration decoding, camera-path resolution, inference and
-scoring — and all eight models are scored on one shared sample set. The golden tests
+scoring — and all nine models are scored on one shared sample set. The golden tests
 build a synthetic log and run with no dataset, no devkit and no GPU. The
 adapter has been exercised at a second site, on a different nuPlan copy and
 split, with no devkit present.
@@ -204,7 +207,7 @@ full 351-anchor set is scored.
 
 ## Support-matrix results
 
-nuPlan has no column in the README's support matrix yet. All eight models are
+nuPlan has no column in the README's support matrix yet. All nine models are
 ranked on the full 351 anchors (see [Results](#results)); the column waits on one
 check, whether Qwen-Drive was trained on these logs. The per-metric results and
 their notes stay here as the record. Each note below starts with the mark it
@@ -213,7 +216,7 @@ explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) a
 
 ### Notes on these runs
 
-◐ **All eight models are ranked on the full set** of 351 scorable anchors, one
+◐ **All nine models are ranked on the full set** of 351 scorable anchors, one
 ranked record each. The earlier runs are superseded and kept on disk; the table in
 [Results](#results) is the ranked set.
 

@@ -1,0 +1,164 @@
+{
+  "run_id": "20261113T235607-4feaff",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "alpamayo2edge",
+  "mode": "open_loop",
+  "started_utc": "2026-11-13T23:56:07+00:00",
+  "duration_s": 633.7,
+  "repo_sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 351,
+    "sequences_sha256": "05efb12a2f3eaf9e",
+    "n_expected": 351
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0",
+    "declared_env": {
+      "ALPAMAYO2_EDGE_ABSENT_CAMERAS": "refuse",
+      "ALPAMAYO2_EDGE_CHECKPOINT": "{weights}/Alpamayo2-Edge",
+      "ALPAMAYO2_EDGE_FRAMES": "nearest",
+      "ALPAMAYO2_EDGE_HISTORY": "hermite",
+      "ALPAMAYO2_EDGE_SAMPLES": "1",
+      "ALPAMAYO2_EDGE_SEED": "43",
+      "HF_HUB_OFFLINE": "1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo2-edge",
+      "sha": "02f55a7aeabc1a2b9f7a80445c08e40bddc89f5e",
+      "pinned_sha": "02f55a7",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "1de88f34f23677879e4bba5672c8142b3d74f9fa",
+      "dirty": false
+    },
+    "policy": {
+      "settings": {
+        "frames": "nearest",
+        "history": "hermite",
+        "samples": 1,
+        "seed": 43,
+        "nav_distance_m": null,
+        "save_reasoning": false,
+        "absent_cameras": "refuse"
+      },
+      "checkpoint": "Alpamayo2-Edge",
+      "slots": [
+        "0: CAM_FRONT_LEFT",
+        "1: CAM_FRONT",
+        "2: CAM_FRONT_RIGHT",
+        "3: CAM_BACK_LEFT",
+        "5: CAM_BACK_RIGHT",
+        "6: CAM_FRONT, 30 deg crop"
+      ],
+      "slot_geometry": {
+        "0": {
+          "bearing_deg": 55.2,
+          "hfov_deg": 61.7
+        },
+        "1": {
+          "bearing_deg": 0.2,
+          "hfov_deg": 61.7
+        },
+        "2": {
+          "bearing_deg": -55.5,
+          "hfov_deg": 61.7
+        },
+        "3": {
+          "bearing_deg": 140.9,
+          "hfov_deg": 61.7
+        },
+        "5": {
+          "bearing_deg": -141.3,
+          "hfov_deg": 61.7
+        },
+        "6": {
+          "bearing_deg": 0.2,
+          "hfov_deg": 30.0
+        }
+      },
+      "plans": 351,
+      "nominal_rationales": 71,
+      "drawn_again": 0,
+      "mean_ms": {
+        "inputs": 464.2,
+        "model": 1225.3,
+        "rest": 0.1
+      },
+      "warp_cache": {
+        "entries": 128,
+        "held": 0,
+        "hits": 126,
+        "misses": 7596
+      },
+      "last": {
+        "nav_text": "Continue straight",
+        "black_slots": [],
+        "frame_times_s": {
+          "0": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "1": [
+            -2.0,
+            -1.0,
+            -0.5,
+            -0.1,
+            0.0
+          ],
+          "2": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "3": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "5": [
+            -1.0,
+            -0.1,
+            0.0
+          ],
+          "6": [
+            -2.0,
+            -1.0,
+            -0.5,
+            -0.1,
+            0.0
+          ]
+        },
+        "history_extrapolated_s": 0.0,
+        "reasoning": "Decelerate to stop at the stop line before the intersection to comply with the stop sign and prepare to turn right to follow our route.",
+        "plan_reach_m": 13.54,
+        "seed": 43
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}
