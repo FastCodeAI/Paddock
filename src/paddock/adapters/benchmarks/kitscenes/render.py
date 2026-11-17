@@ -315,7 +315,3 @@ def _held(xy, made_at: np.ndarray, now: np.ndarray) -> np.ndarray:
 def _score(record: dict) -> str:
     value = (record.get("metrics") or {}).get(SCORE)
     return "" if value is None else f"{value:.2f} m"
-
-
-def _record(run, sample_id: str) -> dict | None:
-    return next((r for r in run.samples if r.get("sample_id") == sample_id), None)
