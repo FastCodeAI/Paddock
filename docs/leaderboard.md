@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-144 runs across 10 benchmarks.
+145 runs across 10 benchmarks.
 78 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -157,18 +157,22 @@
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | drivejepa [1] | 20261110T165434-167fd4 | 450 | 0.428 | 0.818 | 0.956 | 0.960 | 0.997 | 0.998 | 0.843 |
 | qwendrive | 20261111T060112-5231af | 450 | 0.312 | 0.763 | 0.969 | 0.880 | 0.996 | 0.998 | 0.826 |
+| openpilot [2] [3] [4] | 20261113T112649-2fe1d7 | 450 | 0.233 | 0.463 | 0.971 | 0.784 | 0.980 | 0.998 | 0.350 |
 | alpamayo15 | 20261111T090014-04904f | 450 | 0.193 | 0.507 | 0.924 | 0.664 | 0.861 | 0.998 | 0.796 |
 | visionpilot | 20261110T165413-30c0d8 | 450 | 0.192 | 0.453 | 0.921 | 0.618 | 0.871 | 0.993 | 0.786 |
-| uniad [2] | 20261110T092734-19b732 | 450 | 0.123 | 0.386 | 0.890 | 0.527 | 0.896 | 0.996 | 0.847 |
+| uniad [5] | 20261110T092734-19b732 | 450 | 0.123 | 0.386 | 0.890 | 0.527 | 0.896 | 0.996 | 0.847 |
 | constant_velocity | 20261110T085953-e122fd | 450 | 0.115 | 0.290 | 0.889 | 0.429 | 0.707 | 0.993 | 0.775 |
-| vad [3] | 20261110T185531-0cecc0 | 450 | 0.099 | 0.343 | 0.860 | 0.522 | 0.783 | 0.996 | 0.803 |
-| meteor [4] | 20261110T181854-9b4014 | 450 | 0.088 | 0.315 | 0.868 | 0.507 | 0.752 | 0.996 | 0.802 |
+| vad [6] | 20261110T185531-0cecc0 | 450 | 0.099 | 0.343 | 0.860 | 0.522 | 0.783 | 0.996 | 0.803 |
+| meteor [7] | 20261110T181854-9b4014 | 450 | 0.088 | 0.315 | 0.868 | 0.507 | 0.752 | 0.996 | 0.802 |
 | autoe2e | 20261110T192825-24d0b3 | 450 | 0.082 | 0.330 | 0.858 | 0.520 | 0.649 | 0.993 | 0.829 |
 
 - [1] drivejepa: streamed (per_log): samples fed in order to one node that keeps its state, not one at a time
-- [2] uniad: plan continued to 4.0 s by paddock; the model itself plans 3 s
-- [3] vad: plan continued to 4.0 s by paddock; the model itself plans 3 s
-- [4] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [2] openpilot: driving model run as a site-compiled CUDA build of the same graph, not on the CPU
+- [3] openpilot: tinygrad device CUDA for the driving model
+- [4] openpilot: tinygrad device CPU for the image warp
+- [5] uniad: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [6] vad: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [7] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
 
 ## navsim
 
@@ -254,9 +258,12 @@
 | vad | 20261110T000020-53cda0 | 5119 | 1.895 | 0.855 | 0.644 | 0.010 | 0.009 | 1.814 | 1.103 |
 | drivejepa [1] | 20261111T061849-382fec | 5119 | 1.995 | 0.819 | 0.613 | 0.008 | 0.010 | 1.806 | 1.077 |
 | openpilot | 20260929T174538-b479ee | 5119 | 4.029 | 1.897 | 1.403 | 0.012 | 0.011 | 4.018 | 2.442 |
-| openpilot | 20260908T110028-b71f4f | 5119 | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
+| openpilot [2] [3] [4] | 20260908T110028-b71f4f | 5119 | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
 
 - [1] drivejepa: streamed (per_scene): samples fed in order to one node that keeps its state, not one at a time
+- [2] openpilot: driving model run as a site-compiled CUDA build of the same graph, not on the CPU
+- [3] openpilot: tinygrad device CUDA for the driving model
+- [4] openpilot: tinygrad device CPU for the image warp
 
 ## Excluded runs
 
