@@ -8,6 +8,7 @@ point 4 (0.5 s) was scored against the recorded point 4 (2.5 s).
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from paddock.adapters.benchmarks.nuplan.harness import INTERVAL_S, on_scoring_grid
 from paddock.policy.protocol import Trajectory
@@ -39,3 +40,15 @@ def test_a_plan_shorter_than_the_horizon_is_trimmed_not_padded():
     grid = on_scoring_grid(_straight(INTERVAL_S, 4), 8)  # ends at 2.0 s
 
     assert grid.shape == (4, 2)
+
+
+def test_score_puts_a_fine_plan_on_the_grid_before_comparing():
+    from types import SimpleNamespace
+
+    from paddock.adapters.benchmarks.nuplan.harness import NuPlanBenchmark
+
+    ground_truth = _straight(INTERVAL_S, 8).xy
+    metrics = NuPlanBenchmark.score(None, SimpleNamespace(ground_truth=ground_truth), _straight(0.1, 64))
+    assert metrics["ade"] == pytest.approx(0.0, abs=1e-9)
+    assert metrics["fde@1s"] == pytest.approx(0.0, abs=1e-9)
+    assert metrics["fde@3s"] == pytest.approx(0.0, abs=1e-9)
