@@ -164,9 +164,8 @@ the pinned sha), and 52 of them are also `navtrain` logs. So Drive-JEPA's planne
 was fine-tuned on those drives, and its encoder was pre-trained on all of OpenScene
 `trainval`, which holds them too. The other 10 are `navtest` logs. Which of the 25
 scored anchors fall in the 52 is not known on this machine: the anchor list lives on
-the site that ran the benchmark. nuPlan has no column in the support matrix yet and
-every run is stored `valid: false`, so no rank depends on this. When full runs bring the
-column back, Drive-JEPA's cell there needs the A.
+the site that ran the benchmark. nuPlan has no column in the support matrix yet, so no README
+figure depends on this. When the column comes back, Drive-JEPA's cell there needs the A.
 
 ### Qwen-Drive 1.0 × navsim
 
