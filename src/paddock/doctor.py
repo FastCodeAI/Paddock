@@ -24,7 +24,7 @@ from paddock.runtime import env as env_builder
 from paddock.runtime import gpu
 
 # The errors that mean "no interpreter here". exists() swallowed these and nothing else.
-_MISSING_ERRNOS = frozenset({errno.ENOENT, errno.ENOTDIR, errno.ELOOP, errno.EBADF})
+_MISSING_ERRNOS = frozenset({errno.ENOENT, errno.ENOTDIR, errno.ELOOP})
 
 
 def interpreter_present(interpreter: Path) -> bool:
@@ -353,6 +353,17 @@ def run(model_filter: str | None = None) -> Report:
                 f"interpreter not reachable by this account: {interpreter}",
                 f"`readlink -f {interpreter}` names where it really is; give this account "
                 "read access there (docs/queue.md, setup step 3)",
+            )
+            continue
+        except OSError as exc:
+            # Any other failure to stat the interpreter. Named for its model, so one bad
+            # path cannot abort the whole check.
+            report.add(
+                "models",
+                name,
+                Status.FAIL,
+                f"could not check interpreter {interpreter}: {exc}",
+                "the error above is from the filesystem, not from the model; fix the path or its mount",
             )
             continue
         if present:

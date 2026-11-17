@@ -34,13 +34,18 @@ def test_a_symlink_loop_is_missing_not_a_crash(tmp_path: Path) -> None:
     assert interpreter_present(tmp_path / "a") is False
 
 
-def test_a_permission_error_reaches_the_caller(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def denied(self: Path, **_: object) -> None:
-        raise PermissionError(errno.EACCES, "denied", str(self))
-
-    monkeypatch.setattr(Path, "stat", denied)
-    with pytest.raises(PermissionError):
-        interpreter_present(tmp_path / "python")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_a_permission_error_reaches_the_caller(tmp_path: Path) -> None:
+    # A real EACCES: the interpreter sits in a folder this account may not enter.
+    locked = tmp_path / "locked"
+    (locked / "env").mkdir(parents=True)
+    (locked / "env" / "python").write_text("")
+    locked.chmod(0)
+    try:
+        with pytest.raises(PermissionError):
+            interpreter_present(locked / "env" / "python")
+    finally:
+        locked.chmod(0o755)
 
 
 def test_an_unexpected_os_error_is_raised_not_called_missing(
