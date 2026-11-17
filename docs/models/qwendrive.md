@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT` |
 | Plan | waypoints, 0.5 s apart, 5 s ahead |
-| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [neuroncap](../benchmarks/neuroncap.md), [comma2k19](../benchmarks/comma2k19.md), [alpasim](../benchmarks/alpasim.md), [bench2drive](../benchmarks/bench2drive.md), [hugsim](../benchmarks/hugsim.md) |
+| Paddock can run it on | [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [neuroncap](../benchmarks/neuroncap.md), [comma2k19](../benchmarks/comma2k19.md), [alpasim](../benchmarks/alpasim.md), [bench2drive](../benchmarks/bench2drive.md), [hugsim](../benchmarks/hugsim.md), [nuplan](../benchmarks/nuplan.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->

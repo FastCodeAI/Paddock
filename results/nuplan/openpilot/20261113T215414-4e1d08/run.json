@@ -1,0 +1,112 @@
+{
+  "run_id": "20261113T215414-4e1d08",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-11-13T21:54:14+00:00",
+  "duration_s": 834.5,
+  "repo_sha": "555f48c5d28709f039b79f3f6105e51305edd4b5",
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 351,
+    "sequences_sha256": "05efb12a2f3eaf9e",
+    "n_expected": 351
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_OP_ROAD",
+      "CAM_OP_WIDE",
+      "CAM_FRONT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0",
+    "declared_env": {
+      "CACHEDB": "{runs}/openpilot/tinygrad_cache.db",
+      "DEV": "CPU:LLVM",
+      "KITSCENES_ROOTS": "{data.kitscenes.tiers}",
+      "PADDOCK_OPENPILOT_BACKEND": "auto",
+      "PADDOCK_OPENPILOT_MODEL": "small",
+      "PADDOCK_OPENPILOT_NATIVE_LONG": "1",
+      "PYTHONNOUSERSITE": "1",
+      "XDG_CACHE_HOME": "{runs}/openpilot/xdg_cache"
+    },
+    "model_env": {
+      "LD_LIBRARY_PATH": "<site path:203e593c>:<site path:d980a8e8>"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "openpilot",
+      "sha": "555f48c5d28709f039b79f3f6105e51305edd4b5",
+      "pinned_sha": "555f48c5d",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "6e4c11f687cc131b40a01eb4b6ca016a56bb30de",
+      "dirty": false
+    },
+    "policy": {
+      "run_takes_prepare_only": false,
+      "backend": "onnx",
+      "model": "small",
+      "desire_mode": "off",
+      "height_scale": 1.0,
+      "pitch_deg": 0.0,
+      "fov_deg": 0.0,
+      "source_size": [
+        1920,
+        1080
+      ],
+      "resample_mode": "native",
+      "source_hfov_deg": 63.71,
+      "source_vfov_deg": 38.53,
+      "margin_deg": {
+        "img": {
+          "horizontal": 32.31,
+          "vertical": 22.63
+        },
+        "big_img": {
+          "horizontal": 5.01,
+          "vertical": 7.23
+        }
+      },
+      "rpy_deg": [
+        0.0472,
+        2.3743,
+        0.1917
+      ],
+      "frames_seen": 49,
+      "feature_buffer_frames": 130,
+      "onnx": {
+        "supercombo": "openpilot/selfdrive/modeld/models/driving_supercombo.onnx"
+      },
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "model_checkpoint": "6a7d09ad-bcc9-43bc-916d-29287e60cee2/200/a27b3122-733e-4a65-938b-acfebebbe5e8/100",
+      "warp_in_bounds": {
+        "img": 1.0,
+        "big_img": 0.96875
+      },
+      "warmup_frames": 96,
+      "model_ticks": 98,
+      "warmed_up": true,
+      "desiredCurvature": 0.0001627922058105467,
+      "desiredAcceleration": -0.11239336625732166
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

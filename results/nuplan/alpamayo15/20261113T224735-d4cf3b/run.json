@@ -1,0 +1,78 @@
+{
+  "run_id": "20261113T224735-d4cf3b",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "alpamayo15",
+  "mode": "open_loop",
+  "started_utc": "2026-11-13T22:47:35+00:00",
+  "duration_s": 395.4,
+  "repo_sha": "7a8f1c781a826f09be53e1e211f26e947ec18019",
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 351,
+    "sequences_sha256": "05efb12a2f3eaf9e",
+    "n_expected": 351
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0",
+    "declared_env": {
+      "ALPAMAYO_CHECKPOINT": "{weights}/Alpamayo-1.5-10B",
+      "ALPAMAYO_COSMOS": "{weights}/Cosmos-Reason2-8B",
+      "ALPAMAYO_NAV": "1",
+      "KITSCENES_REPO": "{repos}/kitscenes",
+      "KITSCENES_ROOT": "{data.kitscenes.parent}",
+      "KITSCENES_SAMPLE_LIST": "{data.navsim.exp}/inference/kitscenes_e2e_final.pkl",
+      "PADDOCK_WEIGHTS": "{weights}"
+    },
+    "model_env": {
+      "CUDA_VISIBLE_DEVICES": "1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "alpamayo1.5",
+      "sha": "7a8f1c781a826f09be53e1e211f26e947ec18019",
+      "pinned_sha": "7a8f1c7",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "9dd754bdbdac783d75f0225741b3b2678160de7c",
+      "dirty": false
+    },
+    "policy": {
+      "num_traj_samples": 1,
+      "temperature": 0.6,
+      "top_p": 0.98,
+      "nav": true,
+      "nav_text": "Continue straight",
+      "camera_slots": [
+        "0:CAM_FRONT_LEFT:fill",
+        "1:CAM_FRONT:fill",
+        "2:CAM_FRONT_RIGHT:fill",
+        "6:CAM_FRONT:zoom"
+      ],
+      "history_frames": 16,
+      "expected_dt_s": 0.1,
+      "request_dt_s": 0.1,
+      "reasoning": "Keep lane since the roadway is clear and there is no lead vehicle ahead"
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

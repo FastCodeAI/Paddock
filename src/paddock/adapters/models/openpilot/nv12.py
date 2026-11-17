@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from functools import lru_cache
 
 import numpy as np
@@ -25,6 +26,11 @@ def _ffmpeg() -> str:
     explicit = os.environ.get("PADDOCK_FFMPEG")
     if explicit:
         return explicit
+    # The node runs in the venv that holds ffmpeg, so its own bin dir is the
+    # openpilot venv on any site, with no path to configure.
+    in_venv = os.path.join(os.path.dirname(sys.executable), "ffmpeg")
+    if os.path.exists(in_venv):
+        return in_venv
     repo = os.environ.get("PADDOCK_REPO")
     if repo:
         candidate = os.path.join(repo, ".venv", "bin", "ffmpeg")

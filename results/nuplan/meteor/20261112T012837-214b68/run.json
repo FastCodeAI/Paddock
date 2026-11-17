@@ -1,0 +1,92 @@
+{
+  "run_id": "20261112T012837-214b68",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "meteor",
+  "mode": "open_loop",
+  "started_utc": "2026-11-12T01:28:37+00:00",
+  "duration_s": 995.7,
+  "repo_sha": "dc193a81e9959de57b751e269127ae9b67e3f300",
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 351,
+    "sequences_sha256": "05efb12a2f3eaf9e",
+    "n_expected": 351
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0",
+    "declared_env": {
+      "METEOR_ONNX": "{weights}meteor_v157c3Z.onnx",
+      "METEOR_PROVIDERS": "cuda"
+    },
+    "model_env": {
+      "CUDA_VISIBLE_DEVICES": "1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "METEOR",
+      "sha": "dc193a81e9959de57b751e269127ae9b67e3f300",
+      "pinned_sha": "dc193a81",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "9671b4996435d238f85937e4ddba30a903831043",
+      "dirty": true
+    },
+    "policy": {
+      "onnx": "meteor_v157c3Z.onnx",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 4,
+      "horizon_s": 3.0,
+      "last": {
+        "meteor_mode": 0,
+        "meteor_mode_logits": [
+          0.0032051904127001762,
+          -0.43121808767318726,
+          -0.5754682421684265
+        ],
+        "meteor_steer_rad": -0.17053519189357758,
+        "meteor_accel": 0.0933837890625,
+        "meteor_brake_logit": -4.102587699890137,
+        "meteor_native_horizon_s": 3.0,
+        "cameras_present": [
+          "CAM_FRONT_WIDE",
+          "CAM_FRONT_LEFT",
+          "CAM_FRONT_RIGHT",
+          "CAM_BACK_WIDE",
+          "CAM_BACK_LEFT",
+          "CAM_BACK_RIGHT"
+        ],
+        "cameras_absent": [
+          "CAM_FRONT_NARROW",
+          "CAM_BACK_NARROW"
+        ],
+        "v0": 0.24468470913711582
+      }
+    }
+  },
+  "status": "complete",
+  "valid": false,
+  "superseded_by": "20261113T194349-e44306",
+  "notes": "Superseded by 20261113T194349-e44306: Re-run from a clean checkout; same settings.",
+  "ingested_from": ""
+}

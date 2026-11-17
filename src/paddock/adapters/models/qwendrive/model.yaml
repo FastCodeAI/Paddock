@@ -141,4 +141,4 @@ score_notes:
 ranked_with_note: [QWENDRIVE_VIEWS]
 
 # navhard's synthetic scenes exist only at 2 Hz, so there its ego history is 2 Hz, not nuPlan's 10 Hz.
-benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, navhard, neuroncap, comma2k19, alpasim, bench2drive, hugsim]
+benchmarks: [kitscenes, nuscenes, navsim, navsim_v1, navhard, neuroncap, comma2k19, alpasim, bench2drive, hugsim, nuplan]

@@ -6,12 +6,20 @@ runtime:
   kind: uv
   python: "3.12"
   venv: "{repo}/.venv"
-  pythonpath: ["{repo}"]
+  # The submodules hold opendbc, msgq, rednose and tinygrad at the pin; the venv does
+  # not install them, so their checkouts go on the path (opendbc is imported by the node).
+  pythonpath: ["{repo}", "{repo}/opendbc_repo", "{repo}/msgq_repo", "{repo}/rednose_repo", "{repo}/tinygrad_repo"]
   cwd: "{repo}"
   env:
-    # ffmpeg from openpilot's own venv, so the RGB -> NV12 conversion matches
-    # the binary the recorded runs used.
-    PADDOCK_FFMPEG: "{repo}/.venv/bin/ffmpeg"
+    # The NV12 conversion finds ffmpeg in the node's own venv (nv12.py), so no path
+    # is set here: a path into one site's venv would make every other site invalid.
+    # The venv's own site-packages are read before the user's ~/.local, the same
+    # reason drivejepa declares it.
+    PYTHONNOUSERSITE: "1"
+    # tinygrad's compiled-kernel cache, and the cache directory for everything else
+    # that uses XDG. Under the run root, not $HOME, which is not writable everywhere.
+    CACHEDB: "{runs}/openpilot/tinygrad_cache.db"
+    XDG_CACHE_HOME: "{runs}/openpilot/xdg_cache"
     # Colon-separated search path, fastest tier first.
     KITSCENES_ROOTS: "{data.kitscenes.tiers}"
     # tinygrad picks its device at import, and on a box with an NVIDIA card
