@@ -24,8 +24,10 @@
     }
   },
   "hardware": {},
+  "provenance": {},
   "status": "complete",
-  "valid": true,
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261111T173725-c793ce",
+  "notes": "Superseded by 20261111T173725-c793ce: Re-run on 11 Nov 2026 at the pinned e93eceaa with CURV_SCALE 0.21 (the September 2026 fix) on the declared CPU provider; this run used 1.0.",
   "ingested_from": ""
 }

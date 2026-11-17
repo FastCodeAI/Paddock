@@ -1,0 +1,70 @@
+{
+  "run_id": "20261110T165434-167fd4",
+  "site": "uvother-fastcode-shakaal",
+  "benchmark": "navhard",
+  "model": "drivejepa",
+  "mode": "open_loop",
+  "started_utc": "2026-11-12T12:55:33+00:00",
+  "duration_s": 418.3,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navhard",
+    "split": "navhard_two_stage",
+    "n_samples": 450,
+    "sequences_sha256": "3af39efa412cc8df",
+    "n_failed": 0,
+    "n_unscored": 0
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK"
+    ],
+    "split": "navhard_two_stage",
+    "agent": "paddock_navhard_proxy",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "streamed": "per_log",
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "declared_env": {
+      "DRIVEJEPA_CHECKPOINT": "{data.navsim.exp}/Drive-JEPA-cache/drive_jepa_perception_based_agent_vitl_v2.ckpt",
+      "DRIVEJEPA_IMAGE_GEOMETRY": "openscene",
+      "DRIVEJEPA_MOMENTUM": "on",
+      "DRIVE_JEPA_MSDA": "auto",
+      "NAVSIM_DEVKIT_ROOT": "{repo}/navsim_v2",
+      "NAVSIM_EXP_ROOT": "{data.navsim.exp}",
+      "NUPLAN_MAPS_ROOT": "{data.navsim}/maps",
+      "NUPLAN_MAP_VERSION": "nuplan-maps-v1.0",
+      "OPENSCENE_DATA_ROOT": "{data.navsim}",
+      "PYTHONNOUSERSITE": "1"
+    },
+    "model_env": {
+      "DRIVEJEPA_CHECKPOINT": "<site path:a90f1310>"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "Drive-JEPA",
+      "sha": null,
+      "pinned_sha": "e21f474"
+    },
+    "paddock": {
+      "sha": "4c970f60b936a7e5c3e7d8efcbd35a1e200bda4d",
+      "dirty": false
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "streamed (PADDOCK_NAVHARD_STREAMED): stage-one frames planned in time order per log, each naming its log so the node could keep its own previous plan; synthetic stage-two scenes planned as in a standard run. Upstream's navhard protocol hands no agent a previous plan. Counts in by_group.streamed",
+  "ingested_from": ""
+}

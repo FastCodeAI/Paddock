@@ -19,7 +19,7 @@
   "provenance": {},
   "status": "complete",
   "valid": false,
-  "superseded_by": "20261012T224707-f11ac0",
-  "notes": "Superseded by 20261012T224707-f11ac0: a small early run of 15 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one.",
+  "superseded_by": "20261110T204020-036fb3",
+  "notes": "Superseded by 20261012T224707-f11ac0: a small early run of 15 episodes; the full 200-episode run replaces it, and docs/benchmarks/neuroncap.md still quotes this one. Superseded by 20261110T204020-036fb3: The row it pointed at, 20261012T224707-f11ac0, is retired too: Drive-JEPA's rows are its momentum-aware model now, so this one points at that run.",
   "ingested_from": "neuroncap/outputs/runs5"
 }

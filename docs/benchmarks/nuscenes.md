@@ -16,11 +16,12 @@
 
 The nuScenes planning protocol that UniAD, VAD and their successors report: on
 every val keyframe, plan 3 s ahead from the real past and compare with what the
-human drove. Zero-shot for every model here except three, which carry A in the
+human drove. Zero-shot for every model here except five, which carry A in the
 support matrix: Qwen-Drive's VLM trained on nuScenes train and on VQA sets that
 hold val scenes, Alpamayo 1.5's model card lists five nuScenes-built training sets
-(splits not given), and AutoE2E's frozen camera encoder was trained on nuScenes
-train. See docs/models/comparison.md.
+(splits not given), AutoE2E's frozen camera encoder was trained on nuScenes
+train, and UniAD and VAD are their released nuScenes checkpoints, trained on
+nuScenes train. See docs/models/comparison.md.
 
 **Scoring only some samples.** `PADDOCK_NUSCENES_SAMPLES=<id>,<id>,...` (ids as
 `nuscenes/val/<scene>/<index>`) scores those samples and no others. Such a run is
@@ -48,11 +49,12 @@ gate's nuScenes subset runs this way (docs/gate.md). The list is recorded in
   the 4-way `command` and as `nav_maneuver` / `nav_distance_m`, which Alpamayo
   turns into its instruction text. UniAD and VAD get their own repos' rules (below).
 * **Metrics** (per sample, aggregated by the runner):
-  `l2_{1,2,3}s`, `l2_avg` — L2 at exactly that horizon (VAD style) and their
-  mean; `l2_uniad_{1,2,3}s`, `l2_uniad_avg` — mean over every 0.5 s step up to
-  the horizon (UniAD style; lower than the point value whenever error grows with
-  the horizon, as it usually does, the convention published tables
-  use); `col_*` likewise for collision, where the ego footprint (UniAD's
+  `l2_{1,2,3}s`, `l2_avg` — L2 at exactly that horizon and their mean (the
+  convention of UniAD's paper); `l2_uniad_{1,2,3}s`, `l2_uniad_avg` — mean over
+  every 0.5 s step up to the horizon (the ST-P3/VAD convention, which VAD,
+  SparseDrive and most later tables use; the `uniad` in the key is a historical
+  name, not UniAD's convention; lower than the point value whenever error grows
+  with the horizon, as it usually does); `col_*` likewise for collision, where the ego footprint (UniAD's
   4.084 × 1.85 m, heading from the plan's direction of travel) is tested
   against every annotated box of the future keyframe in the current ego frame
   (separating-axis test); `ade_3s`. Primary metric: `l2_avg`.
@@ -201,6 +203,51 @@ for the 5119), Alpamayo 2.5 s/sample (~3.5 h). Results:
 `results/nuscenes/<model>/<run>/metrics.json`; per-sample plans and ground truth
 in the run's `samples.jsonl` under the runs root.
 
+## Streamed mode: Drive-JEPA's momentum
+
+Off by default. Every sample goes to the node through `/infer_sequence`, which
+resets it, so Drive-JEPA's momentum-aware selection -- declared on in its
+`model.yaml` for every benchmark -- never has a previous plan here and every
+pick is on the plain score. **No Drive-JEPA nuScenes number made before this
+mode had momentum act**: the 05 Sep 2026 row predates the stage, and a run
+since declares it on and records `fed: 0` in `provenance.policy.momentum_counts`.
+
+`PADDOCK_NUSCENES_STREAMED=1` makes momentum act, the way upstream's own
+sequential evaluation loop does: each keyframe is handed the plan the node chose
+for the scene's previous keyframe.
+
+* Each request also carries a `stream` (`protocol.StreamFrame`): the scene's
+  name, the scored keyframe's own timestamp and its global pose (`ego2world`,
+  x, y, heading). The observations are byte-for-byte those of a standard run.
+* The runner plans on **one node, one sample at a time, in index order**
+  (scene by scene, keyframe by keyframe), whatever the node count, so a
+  keyframe's predecessor has been planned, on the same node, before it is sent.
+* The node keeps its own previous plan per scene and feeds it only when it is
+  0.45-0.55 s old -- Drive-JEPA's rule, unchanged. nuScenes keyframes are not
+  exactly 0.5 s apart, so not every keyframe is fed. Of the 5,119 samples, 150
+  open their scene (no predecessor) and 4,969 have their predecessor scored;
+  4,485 of those are 0.45-0.55 s after it, 243 are 0.4 s and 241 0.6-0.7 s
+  after it, and those are not fed. **Expected: 4,485 fed of 5,119.**
+* No warm-up is planned (contrast KITScenes and comma2k19, whose keyframes
+  are seconds apart).
+
+What the run records: `config.streamed = "per_scene"` (absent from a standard
+run, so a standard run's id and `--resume` check are unchanged, and a run cannot
+be resumed across modes); a note naming the mode; per sample in
+`samples.jsonl`, `extra.stream` and `extra.momentum_fed` (the node's own word,
+from its `drivejepa_pick`); and in `metrics.json`, `by_group.streamed` with the
+counts (`samples`, `streamed`, `momentum_fed`, `momentum_reported`), beside the
+per-scene rows. A resumed run restarts the node, so the first keyframe after
+each restart finds no plan and is recorded not fed; the counts are over what was
+recorded, not over what was expected.
+
+Every other model ignores the stream (the base `Policy.infer_sequence_streamed`
+drops it) and plans exactly as in a standard run, one node at a time.
+
+Drive-JEPA's support-matrix row is this mode's run, `20261111T061849-382fec`:
+4,485 of 5,119 fed, the expected count. It replaces `20261105T201953-308dc5`
+(momentum on, 0 fed).
+
 ## Openpilot camera history and GPU inference
 
 Openpilot uses real approximately 12 Hz CAM_FRONT exposures between keyframes.
@@ -297,6 +344,9 @@ regenerate with the tracked code.
 | Alpamayo 1.5 (nav text) | 0.51 / 1.35 / 2.60 | 1.49 | 0.79 | 1.58 / 1.03 |
 | VisionPilot | 1.03 / 2.21 / 3.84 | 2.36 | 1.44 | 3.82 / 3.35 |
 
+VisionPilot's row here predates the `CURV_SCALE` fix; re-run on 11 Nov 2026 its point L2 avg is
+1.612 m (the table of recorded results below).
+
 Caveat: the first keyframe of each scene has one pose of history. Alpamayo,
 which differences its history for speed, plans badly there (L2 avg 9.47 m on
 those 150 keyframes vs 1.23 m with a full 2 s); Drive-JEPA and VisionPilot are
@@ -307,8 +357,11 @@ camera-frame fix of 13 Oct 2026: the adapter placed the cameras relative to
 LIDAR_TOP, which nuScenes yaws −90°, so none of the model's image samples landed in
 the front image and it planned from ego status alone. The re-run with the fix
 (`20261105T201953-308dc5`, 5 Nov 2026) sees the camera and scores worse: cumulative
-L2 1.328 against 0.912, point L2 2.344 against 1.882. The support-matrix table
-below uses the re-run.
+L2 1.328 against 0.912, point L2 2.344 against 1.882. Momentum was declared on in
+that re-run and never acted (0 of 5,119 plans were handed a previous plan). It is
+retired in turn by the momentum-aware run `20261111T061849-382fec` (streamed per
+scene, below; 4,485 of 5,119 keyframes fed): cumulative L2 1.128, point L2 1.995.
+The support-matrix table below uses that run.
 
 Overlays for every scored keyframe (camera with the human future and each
 model's plan, BEV with annotated boxes, per-scene videos) are on the NAS:
@@ -321,9 +374,9 @@ Every metric `benchmark.yaml` declares. All are lower is better except the two
 
 | metric | meaning |
 |---|---|
-| `l2_1s`, `l2_2s`, `l2_3s` | L2 to the human pose at exactly that horizon, m (VAD convention) |
+| `l2_1s`, `l2_2s`, `l2_3s` | L2 to the human pose at exactly that horizon, m (UniAD paper's convention) |
 | `l2_avg` | mean of `l2_1s`, `l2_2s`, `l2_3s`; the primary metric, m |
-| `l2_uniad_1s`, `l2_uniad_2s`, `l2_uniad_3s` | L2 averaged over every 0.5 s step up to that horizon, m (UniAD convention) |
+| `l2_uniad_1s`, `l2_uniad_2s`, `l2_uniad_3s` | L2 averaged over every 0.5 s step up to that horizon, m (ST-P3/VAD convention; `uniad` in the key is a historical name) |
 | `l2_uniad_avg` | mean of the three cumulative L2 values, m |
 | `col_1s`, `col_2s`, `col_3s` | collision at exactly that horizon, fraction of samples (point) |
 | `col_avg` | mean of `col_1s`, `col_2s`, `col_3s` |
@@ -374,16 +427,17 @@ is the mean of cumulative L2 through 1, 2 and 3 seconds, not ADE at 3 seconds.
 OpenPilot uses real approximately 12 Hz front-camera history; scoring stays at
 2 Hz. See the nuScenes table below for point L2, cumulative L2 and ADE.
 
-△ nuScenes val, open loop, zero-shot (none of these models was trained on
-nuScenes): the average L2 over 0-3 s on the official 150-scene val split (5119
-keyframes), UniAD/VAD protocol, `--bench nuscenes` -- the cumulative (per-step)
-average, comparable to published tables (the `l2_avg` in `docs/leaderboard.md`
-is the point value at 1/2/3 s). OpenPilot now uses real approximately 12 Hz
+△ nuScenes val, open loop: the average L2 over 0-3 s on the official 150-scene
+val split (5119 keyframes), `--bench nuscenes`. Zero-shot except the five cells
+marked A (Qwen-Drive, Alpamayo 1.5, AutoE2E, UniAD, VAD; see the top of this
+page). The column is the cumulative (per-step) average, the ST-P3/VAD convention
+most published tables use; UniAD's paper reports the point value at 1/2/3 s,
+which is the `l2_avg` in `docs/leaderboard.md`. OpenPilot now uses real approximately 12 Hz
 front-camera history while retaining the same 2 Hz scoring anchors; its completed
 GPU run is detailed below. VisionPilot's plan here is its acceleration/steering
 integrated to a path, as in NAVSIM, so unlike KITScenes it does yield an L2.
 Alpamayo's figure is inflated by the first keyframe of each scene, where it has
-no history to difference (9.5 m there vs 1.2 m elsewhere). A constant-velocity baseline scores 0.64 here (point-avg L2 1.29), **better than every learned model except Qwen-Drive 1.0 (0.450)** — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
+no history to difference (9.5 m there vs 1.2 m elsewhere). A constant-velocity baseline scores 0.641 here (point-avg L2 1.288); **only Qwen-Drive 1.0 (0.450) and Alpamayo 2 Edge (0.630) are below it**, and on point-avg L2 also UniAD (1.166) — nuScenes ego motion is largely straight, so open-loop L2 rewards a straight line; read these numbers with that in mind.
 
 ### nuScenes
 
@@ -396,11 +450,13 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | OpenPilot | 1.925 | 4.054 | 6.194 | 4.057 | 2.477 | 3.535 | 2.624 |
 | Alpamayo 1.5 | 0.509 | 1.351 | 2.602 | 1.487 | 0.787 | 1.249 | 1.582 |
 | Alpamayo 2 Edge | 0.455 | 1.058 | 1.870 | 1.128 | 0.630 | 0.957 | 0.920 |
-| Drive-JEPA | 0.957 | 2.158 | 3.917 | 2.344 | 1.328 | 1.996 | 1.628 |
-| VisionPilot | 1.031 | 2.213 | 3.837 | 2.360 | 1.441 | 2.058 | 3.816 |
+| Drive-JEPA ⟲ | 0.819 | 1.806 | 3.358 | 1.995 | 1.128 | 1.694 | 1.244 |
+| VisionPilot | 0.748 | 1.463 | 2.625 | 1.612 | 1.029 | 1.419 | 2.579 |
 | METEOR | 0.616 | 1.683 | 3.356 | 1.885 | 0.977 | 1.570 | 6.152 ◇ |
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
 | AutoE2E ⧗ | 0.553 | 1.444 | 2.697 | 1.565 | 0.839 | 1.319 | 1.862 |
+| UniAD ⊡ | 0.533 | 1.075 | 1.891 | 1.166 | 0.706 | 1.008 | 1.869 |
+| VAD ⊡ | 0.855 | 1.814 | 3.017 | 1.895 | 1.127 | 1.634 | 2.064 |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
@@ -416,16 +472,28 @@ input is built.
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
 starting weights were trained on nuScenes train, not val.
 
+⊡ UniAD (run `20261109T183938-41eed0`) and VAD (run `20261110T000020-53cda0`), both valid, n = 5,119,
+are fed as their own test loops ran the val set: each scene one episode, keyframe by keyframe
+(`sequence = "scene"`), with the inputs their own converters give a keyframe (`inputs`). See
+[Scene order](#scene-order-uniad-vad) and [The datasets' own inputs](#the-datasets-own-inputs-uniad-vad).
+Both were trained on nuScenes train, so these are their own benchmark, not zero-shot.
+
+⟲ Drive-JEPA (run `20261111T061849-382fec`, valid) is momentum-aware: streamed per
+scene, each keyframe handed the node's own plan for the scene's previous keyframe
+when that is 0.45-0.55 s earlier (4,485 of 5,119). It replaces
+`20261105T201953-308dc5` (point L2 2.344, cumulative 1.328), in which momentum never
+acted. See [Streamed mode](#streamed-mode-drive-jepas-momentum).
+
 **Constant velocity was the lowest L2 on this recorded split until Qwen-Drive,
-which is below it on every column**, collision included, and is the first model
-here to beat the baseline outright rather than on one metric. That is worth
-reading with the split's shape in mind: nuScenes val is 20-second urban clips
-scored open-loop against what the log did, so a model that predicts the recorded
-future well scores well whether or not it would drive. The same model places
-fourth of five on neuroNCAP, which stages the collisions this split never
-contains. nuScenes is also not in its declared training data (NAVSIM `navtrain`,
-Waymo E2E, NVIDIA PhysicalAI), so unlike its NAVSIM columns this one is
-zero-shot.
+which is below it on every column**, collision included, and is the only model
+here to beat the baseline outright. Alpamayo 2 Edge is below it on every column
+except L2 at 1 s (0.455 against 0.372). That is worth reading with the split's
+shape in mind: nuScenes val is 20-second urban clips scored open-loop against
+what the log did, so a model that predicts the recorded future well scores well
+whether or not it would drive. Qwen-Drive places eighth of the ten learned models
+on neuroNCAP (2.49), which stages the collisions this split never contains. Its
+nuScenes cell carries A: its VLM was trained on nuScenes train and on VQA sets
+that hold val scenes (see the top of this page).
 
 [OpenPilot full metrics](../../results/nuscenes/openpilot/20260908T110028-b71f4f/metrics.json).
 Older model results predate the geometry and navigation corrections made when

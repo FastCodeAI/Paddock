@@ -1,0 +1,87 @@
+{
+  "run_id": "20261111T074533-0f26ee",
+  "site": "fastcode-navvrat-dj-momentum",
+  "benchmark": "comma2k19",
+  "model": "drivejepa",
+  "mode": "open_loop",
+  "started_utc": "2026-11-11T07:45:33+00:00",
+  "duration_s": 9557.6,
+  "repo_sha": null,
+  "dataset": {
+    "name": "comma2k19",
+    "n_samples": 10165,
+    "sequences_sha256": "293a225a0b5cbaff",
+    "n_expected": 10165
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK"
+    ],
+    "history_frames": 160,
+    "keyframes_per_segment": 5,
+    "eval_horizon_s": 3.0,
+    "interval_s": 0.5,
+    "gt_horizon_s": 10.0,
+    "input_hz": 20.0,
+    "calibration": "route-pooled, calibrationd formula on recorded pose",
+    "ground_truth_frame": "car (recorded future rotated by the route calibration)",
+    "stride": 1,
+    "history_span_s": 7.95,
+    "ego_history_frame": "car (window poses rotated by the route calibration)",
+    "streamed": "warmup_0.5s",
+    "declared_env": {
+      "DRIVEJEPA_CHECKPOINT": "{data.navsim.exp}drive_jepa_perception_based_agent_vitl_v2.ckpt",
+      "DRIVEJEPA_IMAGE_GEOMETRY": "openscene",
+      "DRIVEJEPA_MOMENTUM": "on",
+      "DRIVE_JEPA_MSDA": "auto",
+      "NAVSIM_DEVKIT_ROOT": "{repo}/navsim_v2",
+      "NAVSIM_EXP_ROOT": "{data.navsim.exp}",
+      "NUPLAN_MAPS_ROOT": "{data.navsim}/maps",
+      "NUPLAN_MAP_VERSION": "nuplan-maps-v1.0",
+      "OPENSCENE_DATA_ROOT": "{data.navsim}",
+      "PYTHONNOUSERSITE": "1"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "Drive-JEPA",
+      "sha": null,
+      "pinned_sha": "e21f474"
+    },
+    "paddock": {
+      "sha": "79ce4e0732e1139f9d0b8a14dacdbb0a76cf1049",
+      "dirty": false
+    },
+    "policy": {
+      "image_geometry": "openscene",
+      "camera_frame": "ego",
+      "momentum": "on",
+      "momentum_counts": {
+        "replans": 10166,
+        "fed": 5083,
+        "no_previous": 5083,
+        "out_of_window": 0,
+        "picks_changed": 357
+      },
+      "frames_recorded": 128,
+      "history_span_s": 1.5,
+      "history_target_s": 1.5,
+      "blank_views": [
+        "CAM_BACK",
+        "CAM_FRONT_LEFT",
+        "CAM_FRONT_RIGHT"
+      ],
+      "accel_source": "speed_slope"
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "streamed with a warm-up (PADDOCK_COMMA2K19_STREAMED): before each scored request the same node planned the window's frame 0.5 s before the keyframe from the window up to it, and that plan -- discarded, never scored -- was the previous plan the scored request could be handed. A Paddock choice: upstream Drive-JEPA never plans a frame only to feed it, and the open-loop protocol hands no model a previous plan. Counts in by_group.streamed",
+  "ingested_from": ""
+}

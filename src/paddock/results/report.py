@@ -99,11 +99,19 @@ def score_notes(run: RunRecord, models: dict[str, ModelSpec]) -> list[str]:
     an override, as in `runner._env_override_reasons`: a run that restates
     `QWENDRIVE_VIEWS=ring` is the model as trained.
     """
+    # A streamed run feeds its samples in order to one node that keeps its state (Drive-JEPA's momentum
+    # then acts), where the benchmark's own protocol scores each sample on its own: ranked, another protocol.
+    streamed = run.config.get("streamed")
+    protocol = (
+        [f"streamed ({streamed}): samples fed in order to one node that keeps its state, not one at a time"]
+        if streamed
+        else []
+    )
     spec = models.get(run.model)
     if spec is None:
-        return []
+        return protocol
     env = run.config.get("model_env") or {}
-    return [
+    return protocol + [
         text.replace("{value}", str(env[key]))
         for key, text in spec.score_notes.items()
         if key in env and env[key] != spec.runtime.env.get(key)

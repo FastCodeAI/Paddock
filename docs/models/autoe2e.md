@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT`, `CAM_FRONT_LEFT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK`, `CAM_BACK_RIGHT` |
 | Plan | controls, 0.5 s apart, 6.4 s ahead |
-| Paddock can run it on | [alpasim](../benchmarks/alpasim.md), [bench2drive](../benchmarks/bench2drive.md), [comma2k19](../benchmarks/comma2k19.md), [hugsim](../benchmarks/hugsim.md), [kitscenes](../benchmarks/kitscenes.md), [navsim](../benchmarks/navsim.md), [neuroncap](../benchmarks/neuroncap.md), [nuplan](../benchmarks/nuplan.md), [nuscenes](../benchmarks/nuscenes.md) |
+| Paddock can run it on | [alpasim](../benchmarks/alpasim.md), [bench2drive](../benchmarks/bench2drive.md), [comma2k19](../benchmarks/comma2k19.md), [hugsim](../benchmarks/hugsim.md), [kitscenes](../benchmarks/kitscenes.md), [navsim](../benchmarks/navsim.md), [navhard](../benchmarks/navhard.md), [neuroncap](../benchmarks/neuroncap.md), [nuplan](../benchmarks/nuplan.md), [nuscenes](../benchmarks/nuscenes.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -570,10 +570,13 @@ Earlier runs, each `valid: false`:
   rows pool are the steady row's record.
 
 **Bench2Drive, all 220 routes, valid**
-(`results/bench2drive/autoe2e/full220-836dda734659a86c-63902e`, 7-8 Nov 2026, the
-220-route protocol): the same inputs, rate and early stop as the 50-route row, up
-to three attempts a route, the four routes set aside for every model left out.
-**14.36** mean driving score over 216 routes (median 13.05), RC 27.80%, infraction
+(`results/bench2drive/autoe2e/full220-86aa45e768a29a64-740c68`, the 220-route protocol: the
+same inputs, rate and early stop as the 50-route row, up to three attempts a route):
+**14.29** mean driving score, RC 27.72%. It pools the 216 routes driven at
+`a100-gpu-vm-002` on 7-8 Nov 2026 (`full220-836dda734659a86c-63902e`, superseded by it)
+with routes 3800, 11715, 23695 and 24071, set aside there and driven here on 12 Nov under
+patch 0003. Over those 216 routes:
+**14.36** mean driving score (median 13.05), RC 27.80%, infraction
 penalty 0.55, a collision on 172 routes; the 30 s rule ended 177 and the over-time
 rule 12. It
 moves off on every route and completes none. The tables, and Bench2Drive's own

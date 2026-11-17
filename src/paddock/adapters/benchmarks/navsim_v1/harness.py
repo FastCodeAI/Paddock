@@ -48,6 +48,13 @@ class NavsimV1Benchmark(NavsimBenchmark):
     VOCABULARY = navsim_ingest.PDMS
     DOC = "docs/benchmarks/navsim_v1.md"
     DEVKIT_MAJOR = "1"
+    #: PADDOCK_NAVSIM_STREAMED is refused here: v1's scorer plans in set order, not
+    #: per log in time order. A streamed run's v1 number is its plans replayed.
+    NO_STREAMED_MODE = (
+        "the v1 scorer (run_pdm_score.py) plans in set order, not each log in time order. Score a "
+        "streamed navsim run's own plans instead: python -m paddock.adapters.benchmarks.navsim.nodeless "
+        "--bench navsim_v1 --replay navsim/<model>/<run_id>"
+    )
 
 
 #: Paddock looks for this name when loading an adapter

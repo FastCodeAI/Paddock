@@ -1,0 +1,70 @@
+{
+  "run_id": "20261113T112649-2fe1d7",
+  "site": "uvother-fastcode-shakaal",
+  "benchmark": "navhard",
+  "model": "openpilot",
+  "mode": "open_loop",
+  "started_utc": "2026-11-13T13:47:48+00:00",
+  "duration_s": 13.8,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navhard",
+    "split": "navhard_two_stage",
+    "n_samples": 450,
+    "sequences_sha256": "3af39efa412cc8df",
+    "n_failed": 0,
+    "n_unscored": 0
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_OP_ROAD",
+      "CAM_OP_WIDE",
+      "CAM_FRONT"
+    ],
+    "split": "navhard_two_stage",
+    "agent": "paddock_navhard_proxy",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "below_min_input_hz": 10.0,
+    "declared_env": {
+      "DEV": "CPU:LLVM",
+      "KITSCENES_ROOTS": "{data.kitscenes.tiers}",
+      "PADDOCK_FFMPEG": "{repo}/.venv/bin/ffmpeg",
+      "PADDOCK_OPENPILOT_BACKEND": "auto",
+      "PADDOCK_OPENPILOT_MODEL": "small",
+      "PADDOCK_OPENPILOT_NATIVE_LONG": "1"
+    },
+    "model_env": {
+      "PADDOCK_OPENPILOT_CUDA_MODEL": "<site path:6cc5a444>",
+      "NVRTC_PATH": "<site path:f05035f2>",
+      "OMP_NUM_THREADS": "2",
+      "MKL_NUM_THREADS": "2",
+      "DEV": "CUDA",
+      "WARP_DEV": "CPU"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "openpilot",
+      "sha": null,
+      "pinned_sha": "555f48c5d"
+    },
+    "paddock": {
+      "sha": "cfbd482ca886d46a5851189c7a23642c5ed7366e",
+      "dirty": false
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

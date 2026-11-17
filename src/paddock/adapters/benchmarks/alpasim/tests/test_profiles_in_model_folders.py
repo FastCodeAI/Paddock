@@ -84,7 +84,8 @@ BEFORE = {
             "camera_cross_right_120fov=CAM_FRONT_RIGHT",
             "--named-cameras-only",
             "--replan-every-us",
-            "1500000",
+            # Native 2 Hz (planning_hz 2.0), user's request 09 Nov; the native driver asked every 1.5 s.
+            "500000",
             "--frame-interval-us",
             "50000",
             "--force-gt-us",

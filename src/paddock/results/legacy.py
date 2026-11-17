@@ -26,6 +26,8 @@ alongside everything else machine-shaped:
     runs   = "/path/to/paddock-runs/bench2drive/drivejepa"
     label  = "pooled50"
     routes = ["1711", "1852"]        # optional, or "all" (the routes file); default: every route found
+    tracked = ["bench2drive/drivejepa/full220-..."]   # optional: records in results/ whose
+                                     # upstream_scores.json supplies the routes not under `runs`
     [[ingest.hugsim]]                # likewise one block per run
     model  = "drivejepa"
     runs   = "/path/to/hugsim-eval/dj_released"
@@ -75,6 +77,29 @@ def _bench2drive_routes(cfg: SiteConfig, entry: dict) -> list[str] | None:
     if not path.exists():
         raise ConfigError(f'[[ingest.bench2drive]] routes = "all": routes file not found: {path}')
     return [rid for rid, _, _ in parse_routes(path)]
+
+
+def _bench2drive_tracked(entry: dict) -> list[Path]:
+    """An `[[ingest.bench2drive]]` entry's `tracked`: record directories in the results store.
+
+    Named as `results/` holds them, `bench2drive/<model>/<run_id>`, so the entry names what a
+    record is and the store says where it lives -- a tracked record is the same on every site.
+    """
+    tracked = entry.get("tracked") or []
+    if not isinstance(tracked, list):
+        # A bare string would be iterated one character at a time, as `routes` once was.
+        raise ConfigError(
+            f'[[ingest.bench2drive]] tracked is a list of "bench2drive/<model>/<run_id>", got {tracked!r}'
+        )
+    out = []
+    for name in tracked:
+        parts = str(name).strip("/").split("/")
+        if len(parts) != 3 or parts[0] != "bench2drive" or not all(parts):
+            raise ConfigError(
+                f'[[ingest.bench2drive]] tracked names a record "bench2drive/<model>/<run_id>", got {name!r}'
+            )
+        out.append(store.RESULTS_ROOT.joinpath(*parts))
+    return out
 
 
 def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
@@ -169,25 +194,32 @@ def ingest_all(cfg: SiteConfig, dry_run: bool = False) -> tuple[int, list[str]]:
             "(double brackets), one block per model or speed band"
         )
     for entry in entries:
-        for key in ("model", "runs"):
+        # `runs` may be left out of a pool whose every route is a tracked record's.
+        for key in ("model",) if entry.get("tracked") else ("model", "runs"):
             if key not in entry:
                 raise ConfigError(f"[[ingest.bench2drive]] entry is missing {key!r}: {entry}")
-        runs = entry["runs"]
+        runs = entry.get("runs") or []
         roots = [Path(r) for r in (runs if isinstance(runs, list) else [runs])]
+        tracked = _bench2drive_tracked(entry)
         if all(r.exists() for r in roots):
-            collected += bench2drive.ingest(
-                roots,
-                model=entry["model"],
-                site=cfg.site,
-                routes=_bench2drive_routes(cfg, entry),
-                run_label=entry.get("label", "pooled"),
-                notes=entry.get("notes", ""),
-                model_env=entry.get("model_env"),
-                ranked=bool(entry.get("ranked", False)),
-                setups={
-                    label: [str(r) for r in group] for label, group in (entry.get("setups") or {}).items()
-                },
-            )
+            try:
+                collected += bench2drive.ingest(
+                    roots,
+                    model=entry["model"],
+                    site=cfg.site,
+                    routes=_bench2drive_routes(cfg, entry),
+                    run_label=entry.get("label", "pooled"),
+                    notes=entry.get("notes", ""),
+                    model_env=entry.get("model_env"),
+                    ranked=bool(entry.get("ranked", False)),
+                    setups={
+                        label: [str(r) for r in group] for label, group in (entry.get("setups") or {}).items()
+                    },
+                    tracked=tracked,
+                )
+            except bench2drive.TrackedRefused as exc:
+                # Refused, never skipped: a pool without the record's routes is not the pool asked for.
+                raise ConfigError(f"[[ingest.bench2drive]] {entry['model']}: {exc}") from exc
         else:
             skipped.append(f"bench2drive.{entry.get('model', '?')} runs do not exist: {runs}")
 

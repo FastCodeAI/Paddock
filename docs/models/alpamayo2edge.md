@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.12 |
 | Cameras | `CAM_FRONT_LEFT`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_LEFT`, `CAM_BACK_RIGHT`, `CAM_FRONT_TELE` |
 | Plan | waypoints, 0.1 s apart, 6.4 s ahead |
-| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md), [alpasim](../benchmarks/alpasim.md) |
+| Paddock can run it on | [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [neuroncap](../benchmarks/neuroncap.md), [alpasim](../benchmarks/alpasim.md), [hugsim](../benchmarks/hugsim.md) |
 | Size, licence, training data | [comparison.md](comparison.md) |
 
 <!-- /summary -->
@@ -371,10 +371,10 @@ nuPlan data is claimed.
   800-pixel front view, which the vendor's processor then reads at 576×320.
 - **CARLA is not what Edge was trained on.** Its training drives are real camera
   video; Bench2Drive's frames are rendered.
-- **Closed loop on Bench2Drive and neuroNCAP only.** Both drive Edge's own points at
-  0.5, 1.0, … 3.0 s: neuroNCAP's engine from the wire's `trajectory` field
-  (`Trajectory.to_wire`), Bench2Drive's client from the whole plan. Edge has not been
-  run on HUGSIM, so `benchmarks` does not list it.
+- **Closed loop on Bench2Drive, neuroNCAP and HUGSIM.** Bench2Drive and neuroNCAP drive
+  Edge's own points at 0.5, 1.0, … 3.0 s: neuroNCAP's engine from the wire's `trajectory`
+  field (`Trajectory.to_wire`), Bench2Drive's client from the whole plan. HUGSIM's bridge
+  reads the whole plan too and sends its first 4 s as 8 waypoints 0.5 s apart.
 
 ## Results
 
@@ -420,6 +420,29 @@ What the plans look like, from the run's plan dump and node logs:
   rationale in the rest.
 - **Two plans were drawn again**, the two the first run lost, both at seed 44.
 
+### navhard
+
+NAVSIM v2.2's two-stage protocol on `navhard_two_stage`
+([navhard.md](../benchmarks/navhard.md#results)): all 450 stage-one frames scored,
+none failed, on OpenScene's 2 Hz frames, the only rate navhard's synthetic follow-ups
+exist at. It ran as one node on the site's shared RTX PRO 6000 in 3.5 h.
+
+| Benchmark | Score | stage one | stage two | Run |
+|---|---:|---:|---:|---|
+| navhard | **0.180** EPDMS | 0.501 | 0.340 | `navhard/alpamayo2edge/20261113T111924-f36c51` |
+
+**The frames are the ones the other rows used.** The record carries
+`sequences_sha256: 3af39efa412cc8df`, as all nine earlier navhard records do, and its
+per-frame mean (0.179572) equals the devkit's combined row
+(`by_group.source_aggregates.paddock_check`).
+
+Alpamayo 1.5 scores 0.193 on the same frames (0.507 and 0.366 by stage), so Edge sits
+just below it, fifth of ten. What pulls the score down, from the record's sub-metrics:
+drivable-area compliance (0.636 in stage one, 0.647 in stage two), lane keeping in
+stage two (0.479) and two-frame extended comfort (0.409 and 0.444). Traffic-light
+compliance (0.996) and no at-fault collisions in stage one (0.912) are high. EPDMS is a
+per-frame product, so its median frame scores 0.
+
 ### KITScenes
 
 All 223 keyframes of the list every KITScenes row uses, at its recorded 10 Hz, so each
@@ -433,7 +456,7 @@ frame is the one at the time Edge asks for and no pose history is extrapolated. 
 
 The first is the support-matrix cell. It is given the route the way Alpamayo 1.5's
 cell (`legacy-full-nav`, 1.002 m) is: a turn on 39 of the 223 keyframes, from the
-recorded future ([kitscenes.md](../benchmarks/kitscenes.md#the-eight-rows-and-where-each-came-from)
+recorded future ([kitscenes.md](../benchmarks/kitscenes.md#the-rows-and-where-each-came-from)
 says how that column was made here). The second shows what the route is worth. The 184
 keyframes told to go straight give identical plans in both runs; on the 39 turns ADE
 moves from 1.068 to 1.012 m, a paired bootstrap 95% interval of −0.172 to +0.014 m.
@@ -493,6 +516,29 @@ the site's two H200s, 5.6 hours. No plan was drawn again. That commit is on the 
 branch's, except that its harness imported the same 0.5 s stride rule from
 `policy/protocol.py`, which there also changes what a closed-loop simulator is sent.
 
+### HUGSIM
+
+All 420 scenarios ([hugsim.md](../benchmarks/hugsim.md#results)), command only, asked
+every 0.25 s step (Edge declares 10 Hz, HUGSIM steps at 4 Hz), the first 4 s of each plan
+sent. Scores ×100.
+
+| Benchmark | HD-Score | PDMS | Route completion | NC | DAC | TTC | Comfort | Run |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| HUGSIM | **31.2** | 53.1 | 45.3 | 63.5 | 88.7 | 57.4 | 92.1 | `hugsim/alpamayo2edge/20261114T172855-b502b3` |
+
+Third of eleven, below Drive-JEPA (37.1) and Qwen-Drive (34.8), above UniAD (26.1), the
+constant-velocity floor (24.2) and Alpamayo 1.5 (23.8). By source dataset: PandaSet 47.0,
+nuScenes 36.7, Waymo 32.3, KITTI-360 10.2. By difficulty: easy 47.1, medium 37.4, hard
+24.9, extreme 16.1. 25.2 % of episodes completed, 42.1 % hit a vehicle, 24.8 % hit
+scenery, 7.9 % left the route, none ran to the step cap.
+
+Driven 14-15 Nov 2026 by `paddock run` on one node of the site's shared RTX PRO 6000:
+15,643 plans, no bridge error. It was cut off after 284 scenarios and finished with
+`--resume`. Every camera was rendered, though the record lists Edge's five; why, and why
+the scores do not depend on it, is in [hugsim.md](../benchmarks/hugsim.md#results). Building
+the inputs, not the model, set the pace on PandaSet: 9-14 s per plan to resize the frames
+on the shared CPU, against about 1 s in the model.
+
 ### neuroNCAP
 
 The full official set: 20 scenario–scene pairs over 14 scenes, 10 runs each, 200 runs. The
@@ -507,7 +553,7 @@ is the scenario's command, so a turn has no distance ("Turn right").
 | 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54 % | `neuroncap/alpamayo2edge/20261111T231934-33adca` |
 
 Fifth of the eight model rows on the full set: below Drive-JEPA (4.13), Alpamayo 1.5 (3.73), OpenPilot
-(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.58). Side impacts are
+(3.60) and AutoE2E (3.16), above METEOR (2.64), Qwen-Drive 1.0 (2.49) and VisionPilot (1.49). Side impacts are
 its weak column: 38 of 50 side runs collided, every run in `side-0103` and `side-0921`. It
 avoided every collision in four pairs: `stationary-0106`, `stationary-0108`, `side-0108` and
 `frontal-0346`.
@@ -558,18 +604,28 @@ NFS share, so the AlpaSim checkout, the scene cache and the run directory were o
 
 ### Bench2Drive
 
-Every route of `bench2drive220.xml` but the four set aside for every model, driven
-under the [220-route protocol](../benchmarks/bench2drive.md#the-220-route-protocol):
-asked at its declared 10 Hz, routes ended after 30 s without progress or at four times
-the expert's time, up to three attempts a route.
+Every route of `bench2drive220.xml`, driven under the
+[220-route protocol](../benchmarks/bench2drive.md#the-220-route-protocol): asked at its
+declared 10 Hz, routes ended after 30 s without progress or at four times the expert's
+time, up to three attempts a route. 216 routes were driven on two A100s; the four that
+site set aside for every model (3800, 11715, 23695, 24071) were driven here later under
+patch 0003, from the same commit (`f873bc2`), and pooled with them.
 
 | Routes | Driving score ↑ | Route completion ↑ | Infraction penalty ↑ | Run | How |
 |---|---:|---:|---:|---|---|
-| 216 of 220 | **13.74** | 38.84 % | 0.481 | `bench2drive/alpamayo2edge/full220-836dda734659a86c-56db50` | 4 workers on each of two A100s, 11.6 h |
+| 220 of 220 | **13.87** | 38.78 % | 0.483 | `bench2drive/alpamayo2edge/full220-86aa45e768a29a64-ffe60a` | 216 routes: 4 workers on each of two A100s, 11.6 h; 4 routes: one RTX PRO 6000 Blackwell, 1 h |
 
-It ranks fourth of the five models in that column, just below AutoE2E (14.36), and
-behind openpilot (43.42) and Alpamayo 1.5 (37.66). The tables, and Bench2Drive's own
-scores for the record, are in [bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
+It replaces the 216-route record `full220-836dda734659a86c-56db50` (13.74). It ranks
+tenth of the eleven models in that column, just below AutoE2E (14.29) and above METEOR
+(1.89). The tables, and Bench2Drive's own scores for the 216 routes, are in
+[bench2drive.md](../benchmarks/bench2drive.md#bench2drive--220-routes).
+
+- **The four routes driven here** scored 16.55 (3800), 41.46 (11715), 21.11 (23695)
+  and 4.77 (24071). The 30 s rule ended three of them and the over-time rule 11715;
+  23695 and 24071 have a collision. Each scored on its first attempt, and patch 0003
+  acted on 11715, 23695 and 24071.
+
+The rest of this part is over the 216 routes driven on the A100s.
 
 - **It completes 16 routes, and none is a success.** Each of the 16 has an
   infraction, and 142 of the 216 routes have a collision.
