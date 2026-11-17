@@ -33,8 +33,8 @@ Per-benchmark tables and notes: [nuScenes](docs/benchmarks/nuscenes.md#support-m
 [NAVSIM v1](docs/benchmarks/navsim_v1.md#support-matrix-results) ·
 [Bench2Drive](docs/benchmarks/bench2drive.md#support-matrix-results) ·
 [neuroNCAP](docs/benchmarks/neuroncap.md#support-matrix-results) ·
-[AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results).
-[HUGSIM](docs/benchmarks/hugsim.md) has no column yet: two of these models have driven it.
+[AlpaSim](docs/benchmarks/alpasim.md#support-matrix-results) ·
+[HUGSIM](docs/benchmarks/hugsim.md#support-matrix-results).
 [nuPlan](docs/benchmarks/nuplan.md) has no column yet: its runs so far cover 25 of 351 anchors.
 
 <details>

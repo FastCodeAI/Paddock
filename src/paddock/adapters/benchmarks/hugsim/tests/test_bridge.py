@@ -86,6 +86,28 @@ def test_hugsim_is_sent_the_models_own_horizon(rig: bridge.Rig) -> None:
     assert ten.n == bridge.N_MAX  # cut at 4 s
 
 
+def test_the_horizon_is_counted_in_time_not_rows(rig: bridge.Rig) -> None:
+    """A plan 0.1 s apart holds a 0.5 s waypoint every fifth row: 3 s of it is six, never eight."""
+    T = np.eye(3)
+    three_s = bridge.HeldPlan(0.0, T, [[0.2 * k, 0.0] for k in range(1, 31)], 0.1)
+    four_s = bridge.HeldPlan(0.0, T, [[0.2 * k, 0.0] for k in range(1, 41)], 0.1)
+    assert three_s.n == 6 and four_s.n == 8
+
+
+def test_the_whole_plan_is_read_not_the_six_the_wire_keeps_for_neuroncap() -> None:
+    """Drive-JEPA plans 4 s: `trajectory` holds its first six waypoints, `plan` all eight. HUGSIM scores the
+    plan it is sent, so it must be sent all eight (22 Oct campaign: every model was sent six)."""
+    eight = [[float(k), 0.0, 0.0] for k in range(1, 9)]
+    reply = {"trajectory": [w[:2] for w in eight[:6]], "plan": {"waypoints": eight, "dt": 0.5}}
+    traj, dt = bridge.plan_of(reply)
+    assert traj.shape == (8, 2) and dt == 0.5
+    traj, dt = bridge.plan_of({"trajectory": [w[:2] for w in eight[:6]], "dt": 0.5})
+    assert traj.shape == (6, 2), "a node without `plan` still drives, on what it sent"
+    dense = {"waypoints": [[0.1 * k, 0.0] for k in range(1, 41)], "dt": 0.1}
+    traj, dt = bridge.plan_of({"trajectory": [[1.0, 0.0]] * 6, "plan": dense})
+    assert traj.shape == (40, 2) and dt == 0.1
+
+
 def test_a_straight_plan_goes_straight_ahead_in_hugsim_axes(rig: bridge.Rig) -> None:
     """HUGSIM's plan axes are (x right, y forward): a straight plan is x = 0, y increasing."""
     T = np.eye(3)
@@ -103,3 +125,14 @@ def test_hugsim_commands_are_paddock_commands() -> None:
 @pytest.mark.parametrize(("hz", "every"), [(None, 1), (0.0, 1), (4.0, 1), (2.0, 2), (1.0, 4), (10.0, 1)])
 def test_call_interval_follows_the_models_rate(hz: float | None, every: int) -> None:
     assert bridge.infer_every(hz) == every
+
+
+def test_a_model_asked_slower_than_its_history_observes_every_step_between() -> None:
+    """Qwen-Drive: asked every second step (2 Hz), its history built on 0.1 s; it is handed every frame HUGSIM
+    renders. Drive-JEPA (no input rate) and a model asked every step (4 Hz, the fastest there is) are not."""
+    assert bridge.observes(10.0, 2) and not bridge.observes(None, 2) and not bridge.observes(10.0, 1)
+    assert not bridge.observes(2.0, 2), "a history at the planning rate needs nothing between"
+    asked = [bridge.step_action(s, s > 0, 2, True) for s in range(6)]
+    assert asked == ["infer", "observe", "infer", "observe", "infer", "observe"]
+    assert [bridge.step_action(s, s > 0, 2, False) for s in range(4)] == ["infer", None, "infer", None]
+    assert bridge.step_action(3, False, 2, True) == "infer", "no plan yet: ask for one"

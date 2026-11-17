@@ -112,4 +112,4 @@ ranked_with_note: [METEOR_HORIZON_S]
 # navsim needs METEOR_HORIZON_S=4.0 (see above) or every sample fails in
 # to_navsim_poses with "model plans 3.00 s".
 # comma2k19 is one phone camera: see METEOR_FRONT_ONLY above.
-benchmarks: [kitscenes, nuscenes, neuroncap, navsim, bench2drive, nuplan, comma2k19]
+benchmarks: [kitscenes, nuscenes, neuroncap, navsim, bench2drive, nuplan, comma2k19, hugsim]
