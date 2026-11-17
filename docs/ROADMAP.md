@@ -75,7 +75,14 @@ Report bugs and ask for models or benchmarks in GitHub issues.
   docs/benchmarks/bench2drive.md); driving the six again with the early stop, or the
   five without it, would put every cell under one protocol (issue #158).
 - nuPlan back in the support matrix, once full runs replace the 25-anchor ones.
-- HUGSIM driven through paddock's own harness; today its runs are imported.
+- HUGSIM driven through paddock's own harness for every model. Alpamayo 2 Edge's run
+  was (#224); the other models' runs are imported.
+- HUGSIM's harness loading `hugsim_env` from its own checkout. It puts the checkout's
+  root on the path, not its `sim/` folder, so an interpreter with `hugsim_env`
+  installed elsewhere loads that copy: on Alpamayo 2 Edge's run (#224) an unpatched
+  one, which rendered every camera while `config.render_cams` records the five asked
+  for. No score depends on it. Put `<repo>/sim` on the path, or have preflight refuse
+  a `hugsim_env` that loads from outside `repo`.
 - Models listed in `repos.yaml` but not yet evaluated: Alpamayo 2.
 - A NAVSIM preflight that refuses a model whose plan is shorter than 4 s when no pairing sets its horizon
   key (METEOR, UniAD, VAD). Today every token is refused at scoring time;

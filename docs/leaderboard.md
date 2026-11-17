@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-146 runs across 10 benchmarks.
+147 runs across 10 benchmarks.
 78 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -109,6 +109,7 @@
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | drivejepa | fullplan-f7d8f9d4b9736ddd-b89341 | 420 | 0.371 | 0.621 | 47.182 | 0.703 | 0.960 | 0.650 | 0.873 |
 | qwendrive | fullplan-f7d8f9d4b9736ddd-1ddf85 | 420 | 0.348 | 0.523 | 46.659 | 0.617 | 0.927 | 0.552 | 0.928 |
+| alpamayo2edge | 20261114T172855-b502b3 | 420 | 0.312 | 0.531 | 45.347 | 0.635 | 0.887 | 0.573 | 0.921 |
 | uniad | fullplan-f7d8f9d4b9736ddd-9d698c | 420 | 0.261 | 0.350 | 45.720 | 0.543 | 0.910 | 0.379 | 0.475 |
 | constant_velocity | fullplan-f7d8f9d4b9736ddd-a8f5b7 | 420 | 0.242 | 0.656 | 28.578 | 0.729 | 0.930 | 0.686 | 1.000 |
 | alpamayo15 | fullplan-f7d8f9d4b9736ddd-7ea973 | 420 | 0.238 | 0.546 | 35.709 | 0.708 | 0.895 | 0.652 | 0.635 |
