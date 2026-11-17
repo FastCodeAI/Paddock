@@ -85,7 +85,8 @@ capabilities:
   # Front and telephoto frames after the vendor's resize; the other four are 416x224.
   input_size: [576, 320]
   # Six slots: Edge's training rig is 120 deg cross and front cameras, 70 deg rear
-  # side cameras and a 30 deg telephoto, which policy.py crops out of CAM_FRONT.
+  # side cameras and a 30 deg telephoto, which policy.py crops out of CAM_FRONT --
+  # except on AlpaSim, which renders the real telephoto (alpasim.yaml).
   camera_views: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK_RIGHT, CAM_FRONT_TELE]
   # Five frames for the front and telephoto cameras and three for the others
   # (-1, -0.1, 0 s). No single rate spaces them, so the card gives the front
@@ -126,5 +127,6 @@ score_notes:
 ranked_with_note: [ALPAMAYO2_EDGE_ABSENT_CAMERAS]
 
 # One key: two `benchmarks:` lines keep only the last.
-# comma2k19 needs ALPAMAYO2_EDGE_ABSENT_CAMERAS=black (see above).
-benchmarks: [navsim, navsim_v1, bench2drive, kitscenes, nuscenes, comma2k19, neuroncap, nuplan]
+# comma2k19 needs ALPAMAYO2_EDGE_ABSENT_CAMERAS=black (see above). AlpaSim's
+# settings, its six cameras among them, are in alpasim.yaml beside this file.
+benchmarks: [navsim, navsim_v1, bench2drive, kitscenes, nuscenes, comma2k19, neuroncap, alpasim, nuplan]
