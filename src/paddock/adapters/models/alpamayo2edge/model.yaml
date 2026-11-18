@@ -19,6 +19,8 @@ runtime:
     - ALPAMAYO2_EDGE_REASONING
     - ALPAMAYO2_EDGE_DROP_EXPERT_LAYERS
     - ALPAMAYO2_EDGE_WARM_START_STEPS
+    - ALPAMAYO2_EDGE_WARM_START_T
+    - ALPAMAYO2_EDGE_WARM_START_MIX
     - ALPAMAYO2_EDGE_STAGE_TIMING
   env:
     # Self-contained: tokenizer, processor and the Cosmos3-Edge backbone are all in this
@@ -43,6 +45,10 @@ runtime:
     # previous plan carried to now instead of from noise, and run this many Euler steps
     # (policy.carry_plan). Changes the plan, so a run that sets it is recorded valid: false.
     ALPAMAYO2_EDGE_WARM_START_STEPS: "0"
+    # Where on the flow's 0 -> 1 time line the warm start begins, and whether the previous plan
+    # is mixed with noise to match that time (1) or handed over as it is (0).
+    ALPAMAYO2_EDGE_WARM_START_T: "0"
+    ALPAMAYO2_EDGE_WARM_START_MIX: "0"
     # Read where the checkpoint loads; the checkpoint is never fetched, so a missing
     # directory fails at load rather than reaching for the network.
     HF_HUB_OFFLINE: "1"

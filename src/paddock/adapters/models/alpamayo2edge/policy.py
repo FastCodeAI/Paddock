@@ -322,6 +322,13 @@ class Alpamayo2EdgePolicy(Policy):
         if not warm.isdigit():
             raise ValueError(f"ALPAMAYO2_EDGE_WARM_START_STEPS must be a whole number, got {warm!r}")
         self.warm_steps = int(warm)
+        # Where a warm start begins on the flow's 0 -> 1 time line, and whether the previous plan
+        # is mixed with noise to match it (t * plan + (1 - t) * noise, what training saw at t) or
+        # handed over as it is with only the time label changed.
+        self.warm_t = float(os.environ.get("ALPAMAYO2_EDGE_WARM_START_T") or 0.0)
+        if not 0.0 <= self.warm_t < 1.0:
+            raise ValueError(f"ALPAMAYO2_EDGE_WARM_START_T must be in [0, 1), got {self.warm_t}")
+        self.warm_mix = _env_or("ALPAMAYO2_EDGE_WARM_START_MIX", 0) == 1
         # Per-stage timers; tuning only (the plan is the same with them on).
         self.stage_timing = _env_or("ALPAMAYO2_EDGE_STAGE_TIMING", 0) == 1
         self._timer: StageTimer | None = None
@@ -372,7 +379,12 @@ class Alpamayo2EdgePolicy(Policy):
             self.flow_steps or DIFFUSION_STEPS,
             self.reasoning,
             list(self.drop_expert_layers) or "none",
-            f"{self.warm_steps} step(s) from the previous plan" if self.warm_steps else "off",
+            (
+                f"{self.warm_steps} step(s) from t={self.warm_t:g}, previous plan "
+                + ("mixed with noise" if self.warm_mix else "as it is")
+            )
+            if self.warm_steps
+            else "off",
             "on" if self.stage_timing else "off",
         )
 
@@ -404,8 +416,14 @@ class Alpamayo2EdgePolicy(Policy):
                     **kwargs,
                 )
             steps = inference_step or diffusion.num_inference_steps
+            start = self.warm_t
             x = x.to(device=device, dtype=torch.float32).expand(batch_size, *diffusion.x_dims).clone()
-            grid = torch.linspace(0.0, 1.0, steps + 1, device=device)
+            if self.warm_mix:
+                # The draw upstream's _euler makes, so a mix at t = 0 is the stock plan exactly.
+                generator = kwargs.get("generator")
+                noise = torch.randn(batch_size, *diffusion.x_dims, device=device, generator=generator)
+                x = start * x + (1.0 - start) * noise
+            grid = torch.linspace(start, 1.0, steps + 1, device=device)
             for i in range(steps):
                 t = grid[i].view(1, *[1] * n_dim).expand(batch_size, *[1] * n_dim)
                 x = x + (grid[i + 1] - grid[i]) * step_fn(x=x, t=t)

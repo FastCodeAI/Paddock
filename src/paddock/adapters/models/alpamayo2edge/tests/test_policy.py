@@ -300,6 +300,20 @@ def test_warm_start_is_off_by_default_and_checked(monkeypatch) -> None:
         POLICY()
 
 
+def test_warm_start_time_and_mix_default_to_the_plan_as_it_is_from_zero(monkeypatch) -> None:
+    monkeypatch.delenv("ALPAMAYO2_EDGE_WARM_START_T", raising=False)
+    monkeypatch.delenv("ALPAMAYO2_EDGE_WARM_START_MIX", raising=False)
+    policy = POLICY()
+    assert policy.warm_t == 0.0 and policy.warm_mix is False
+    monkeypatch.setenv("ALPAMAYO2_EDGE_WARM_START_T", "0.3")
+    monkeypatch.setenv("ALPAMAYO2_EDGE_WARM_START_MIX", "1")
+    policy = POLICY()
+    assert policy.warm_t == 0.3 and policy.warm_mix is True
+    monkeypatch.setenv("ALPAMAYO2_EDGE_WARM_START_T", "1.0")
+    with pytest.raises(ValueError, match="ALPAMAYO2_EDGE_WARM_START_T"):
+        POLICY()
+
+
 def pose(x: float, y: float, yaw: float) -> np.ndarray:
     out = np.eye(4)
     out[:2, :2] = [[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]]
