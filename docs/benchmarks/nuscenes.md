@@ -412,6 +412,29 @@ golden fixture from those scorers here. Establishing that would need one recorde
 (plan, future, boxes) case scored by the original code to diff against; until
 then the equivalence claim rests on the transcription, not on a measured match.
 
+## Watching a scene, every model's plan on it
+
+`paddock render --bench nuscenes --sample nuscenes/val/scene-0103/12` draws the
+scene that keyframe is in as a video: every scored keyframe in order, two a
+second as recorded, each the front camera with every run's plan for it and the
+recorded path (blue) drawn on the road. Beside it are the same lines from above,
+with each run's error on that keyframe (`render_sample` in
+[render.py](../../src/paddock/adapters/benchmarks/nuscenes/render.py), drawn by
+`viz/moment.py`). It reads only what the runs keep, the plan and the score in
+each record, and needs ffmpeg, from `PADDOCK_FFMPEG` or the PATH.
+
+The website's nuScenes videos come from `python -m tools.site.videos nuscenes
+--out DIR`, over the runs the results table shows. Which scenes is decided by
+`showcase` in the same file, never by hand: the hardest left turn, right turn and
+moment driving straight on (the largest error averaged over the models), then the
+keyframe where the models' errors spread most (standard deviation), one per
+scene. The kind is the command the models were given. A keyframe in a scene's
+first 2 s is not picked: the models have less than their usual past there, and
+AutoE2E's error on a scene's first keyframe averages 5.9 m against 0.7 m from the
+fifth on. The table's floor, constant velocity, is drawn but not counted. Only
+keyframes every run scored are considered; ties go to the harder keyframe, then
+the lower id.
+
 ## Support-matrix results
 
 The per-metric results behind this benchmark's column in the

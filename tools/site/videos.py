@@ -20,15 +20,22 @@ model so that a video is always a comparison:
     def showcase(runs, n=4) -> list[dict]          # [{"sample", "title", "caption"}]
     def render_sample(runs, sample_id, out_dir, cfg) -> list[Path]   # an .mp4, and a .jpg poster
 
-neuroNCAP's (adapters/benchmarks/neuroncap/render.py) is the worked example. A
-model whose per-sample records are not on this machine is left out of the
-videos, and each caption says so.
+neuroNCAP's (adapters/benchmarks/neuroncap/render.py) is the worked example;
+nuScenes', KITScenes' and NAVSIM's draw one camera view through `viz.moment`.
+`showcase` may also take `cfg=`, for a benchmark that reads more than the
+records to pick (NAVSIM reads its plan dumps). Each run carries `floor`, true
+for the table's floor row, so a benchmark can leave it out of the picking.
+
+A model whose per-sample records are not on this machine is left out of the
+videos, and each caption says so. So is one the benchmark's optional
+`drawable(run, cfg) -> bool` turns down: a NAVSIM run that kept no plan dumps.
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib
+import inspect
 import json
 import sys
 from dataclasses import dataclass
@@ -45,14 +52,15 @@ class Named(LoadedRun):
     """A run drawn under the name the results table gives its model ("Alpamayo 1.5", not "alpamayo15")."""
 
     display: str = ""
+    floor: bool = False  # the table's floor row, constant velocity
 
     @property
     def label(self) -> str:
         return self.display or self.model
 
 
-def table_runs(benchmark: str) -> list[tuple[str, str, str]]:
-    """(model, name on the page, run id) for each row of the table with a run on `benchmark`."""
+def table_runs(benchmark: str) -> list[tuple[str, str, str, bool]]:
+    """(model, name on the page, run id, is the floor) for each row of the table with a run on `benchmark`."""
     columns, rows = rf.load_matrix()
     wanted = [j for j, c in enumerate(columns) if (c.benchmark or c.key) == benchmark]
     if not wanted:
@@ -66,7 +74,7 @@ def table_runs(benchmark: str) -> list[tuple[str, str, str]]:
         cell = next((row.cells[j] for j in wanted if row.cells[j].run), None)
         if cell:
             _, model, run_id = cell.run.split("/")
-            out.append((model, row.name, run_id))
+            out.append((model, row.name, run_id, row.is_floor))
     return out
 
 
@@ -103,21 +111,23 @@ def main(argv: list[str] | None = None) -> int:
 
     chosen = table_runs(args.benchmark)
     loaded = {(r.model, r.run_id): r for r in load_runs(cfg, args.benchmark, run_ids=[c[2] for c in chosen])}
+    drawable = getattr(module, "drawable", lambda run, cfg: True)
     runs, missing = [], []
-    for model, name, run_id in chosen:  # the table's row order, so tiles read as the table does
+    for model, name, run_id, floor in chosen:  # the table's row order, so tiles read as the table does
         run = loaded.get((model, run_id))
-        if run is not None and run.samples:
-            runs.append(Named(**vars(run), display=name))
+        if run is not None and run.samples and drawable(run, cfg):
+            runs.append(Named(**vars(run), display=name, floor=floor))
         else:
             missing.append(name)
     if not runs:
-        raise SystemExit(f"none of the table's {args.benchmark} runs has per-sample records under {cfg.runs}")
+        raise SystemExit(f"none of the table's {args.benchmark} runs has anything to draw under {cfg.runs}")
     if missing:
-        print(f"left out, no per-sample records under {cfg.runs}: {', '.join(missing)}", file=sys.stderr)
+        print(f"left out, nothing to draw under {cfg.runs}: {', '.join(missing)}", file=sys.stderr)
 
     out = args.out / args.benchmark
     entries = []
-    for pick in module.showcase(runs, args.n):
+    extra = {"cfg": cfg} if "cfg" in inspect.signature(module.showcase).parameters else {}
+    for pick in module.showcase(runs, args.n, **extra):
         written = module.render_sample(runs, pick["sample"], out, cfg)
         mp4 = next(p for p in written if p.suffix == ".mp4")
         poster = next((p for p in written if p.suffix == ".jpg"), None)

@@ -37,6 +37,7 @@ from paddock.adapters.benchmarks.neuroncap import nuscenes_subset, pdm_terms
 from paddock.benchmark import ClosedLoopBenchmark, Episode
 from paddock.metrics import pdm
 from paddock.policy.protocol import grid_stride
+from paddock.viz import video
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios_10hz"
 WAYPOINT_DT = 0.5
@@ -129,12 +130,12 @@ def resolve_ffmpeg(setting: str | None) -> str | None:
     and the `tools/benchmarks/neuroncap/` scripts (which have no harness
     instance to call a method on) both call this rather than keeping their own
     copies, after one of those copies silently dropped the `PADDOCK_FFMPEG`
-    branch.
+    branch. The last two steps are `viz.video.find_ffmpeg`, which the open-loop
+    benchmarks' videos use too.
     """
-    for candidate in (setting, os.environ.get("PADDOCK_FFMPEG")):
-        if candidate and Path(candidate).exists():
-            return candidate
-    return shutil.which("ffmpeg")
+    if setting and Path(setting).exists():
+        return setting
+    return video.find_ffmpeg()
 
 
 def _lidar_sample_data(path: Path) -> dict[str, str]:
