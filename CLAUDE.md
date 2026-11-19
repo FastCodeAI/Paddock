@@ -126,8 +126,8 @@ renderer stays up across models.
 **Results** ([results/](src/paddock/results/)): `results/<bench>/<model>/<run_id>/{run,metrics}.json`
 is tracked (kilobytes, reviewable in a diff); per-sample records and artifacts go
 to `{roots.runs}` outside the repo. `run_id` is `<UTC timestamp>-<short config hash>`.
-`_validity()` in [runner.py](src/paddock/runner.py) decides `valid` when a run
-is written — a subset, an overriding env (unless the model lists it in
+`_validity()` in [runner.py](src/paddock/runner.py) decides `valid` for every
+run paddock measures itself — a subset, an overriding env (unless the model lists it in
 `ranked_with_note`), or a failure makes a run
 `valid: false` with the reason in `notes`, and `paddock report` excludes it.
 The one later change is `paddock supersede`, which retires an older run in
