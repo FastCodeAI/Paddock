@@ -67,10 +67,9 @@ site's roots) and check the flags, file layouts and output schema against it.
 Track which is which as you go — the review has to state it explicitly, and it is
 the one thing you cannot reconstruct afterwards.
 
-Consider dispatching parallel subagents for the independent dimensions (contract
-restatement, preflight coverage, scorer failure handling, config keys, docs
-agreement) when the diff is large, then verify each finding yourself before it
-reaches the review. An unverified subagent finding is a lead, not a result.
+If you hand any part of the review to a subagent, verify each of its findings
+yourself before it reaches the review. An unverified subagent finding is a lead,
+not a result.
 
 ## 4. Write the review
 

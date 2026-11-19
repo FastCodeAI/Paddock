@@ -112,7 +112,8 @@ models and benchmarks are found by walking `adapters/models/*/model.yaml` and
 file and one new directory — never `src/paddock/` outside the new adapter** — plus
 its docs page and a README row, which `make check` requires. If
 you cannot, that is a framework bug worth raising rather than working around.
-Copy from the `_template/` directory in each.
+Start with `paddock new model NAME` (or `benchmark`): it copies `_template/`
+and renames it in all five places a hand copy has to.
 
 **Runtime** ([runtime/](src/paddock/runtime/)): `env.py` builds the per-model
 environment (`PASSTHROUGH` is the one definition of what a subprocess inherits),
@@ -125,11 +126,14 @@ renderer stays up across models.
 **Results** ([results/](src/paddock/results/)): `results/<bench>/<model>/<run_id>/{run,metrics}.json`
 is tracked (kilobytes, reviewable in a diff); per-sample records and artifacts go
 to `{roots.runs}` outside the repo. `run_id` is `<UTC timestamp>-<short config hash>`.
-`_validity()` in [runner.py](src/paddock/runner.py) is the single place that
-decides `valid` — a subset, an overriding env (unless the model lists it in
+`_validity()` in [runner.py](src/paddock/runner.py) decides `valid` for every
+run paddock measures itself — a subset, an overriding env (unless the model lists it in
 `ranked_with_note`), or a failure makes a run
 `valid: false` with the reason in `notes`, and `paddock report` excludes it.
-**Never hand-edit a metrics or run file; regenerate it** so provenance stays true.
+The one later change is `paddock supersede`, which retires an older run in
+favour of a newer one and records why.
+**Never hand-edit a metrics or run file**: regenerate the run, or supersede it,
+so provenance stays true.
 
 **Rendering is benchmark-scoped, not model-scoped** — debugging means putting
 models side by side, and a model cannot draw that. `viz/` knows neither models

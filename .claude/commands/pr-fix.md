@@ -105,7 +105,9 @@ have to be checked by hand, because `make check` goes green either way:
 - **Never hand-edit `results/**/metrics.json` or `run.json`** to make a number
   agree with the text. Regenerate the run, so its provenance stays true. If a
   finding says a row should not be ranked, the mechanism is
-  `invalid_reasons()` — not editing `valid` in the file, and not `--include-invalid`.
+  `invalid_reasons()` when the run itself is wrong, or `paddock supersede` when
+  a later run replaces it — not editing `valid` in the file, and not
+  `--include-invalid`.
 - **Do not edit `src/paddock/` to fix an adapter problem.** If a finding can only
   be fixed by changing the core, that is the framework gap
   [CONTRIBUTING.md](../../CONTRIBUTING.md) asks you to raise. Say so in the reply
