@@ -4,16 +4,16 @@ All but one of these pin the book the node keeps -- which plan is handed back,
 when none is -- against a stand-in for upstream's functions, and run in
 paddock's own environment.
 
-The exception is `test_the_recorded_drive_is_reproduced_pick_for_pick`, which
+The exception is `test_the_replay_is_reproduced_pick_for_pick`, which
 runs the real thing: `momentum.Upstream` and the vendored `calibrate_score`
-over one drive's recorded menus. Those need nuPlan and the vendored NAVSIM, so it skips
+over one made-up drive's menus. Those need nuPlan and the vendored NAVSIM, so it skips
 under `make check` and has to be run with Drive-JEPA's interpreter:
 
     <drive-jepa env>/bin/python -m pytest \
         src/paddock/adapters/models/drivejepa/tests/test_momentum.py -rs
 
 with ``<Drive-JEPA>/navsim_v2`` on ``PYTHONPATH`` and ``CUDA_VISIBLE_DEVICES=""``
-(it needs no GPU). The recording is described in ``fixtures/README.md``.
+(it needs no GPU). The replay is described in ``fixtures/README.md``.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from paddock.adapters.models.drivejepa import momentum
 from paddock.adapters.models.drivejepa.policy import POLICY
 from paddock.policy.protocol import CANBUS_ACCEL, CANBUS_VELOCITY, Command, Observation
 
-RECORDED_DRIVE = Path(__file__).parent / "fixtures" / "momentum_replay_2e1ce314.npz"
+REPLAY = Path(__file__).parent / "fixtures" / "momentum_replay_made_up.npz"
 
 
 class _FakeUpstream:
@@ -237,15 +237,15 @@ def test_policy_reset_forgets_the_previous_plan(monkeypatch) -> None:
     assert _fed(_replan(policy.momentum, 0.5)) is None
 
 
-def test_the_recorded_drive_is_one_the_bookkeeping_can_replay() -> None:
-    """The recording's shape, checked where nuPlan is absent.
+def test_the_replay_is_one_the_bookkeeping_can_replay() -> None:
+    """The replay's shape, checked where nuPlan is absent.
 
-    Twenty-seven replans 0.5 s apart, 32 proposals each. The first had no
-    previous plan, so the driver's pick there is the raw argmax of the learned
-    score -- sigmoid of the last logit, drive_jepa_model.py:85 -- and its
-    recorded score is that score untouched.
+    Twenty-seven replans 0.5 s apart, 32 proposals each. The first has no
+    previous plan, so the pick there is the raw argmax of the learned score --
+    sigmoid of the last logit, drive_jepa_model.py:85 -- and its stored score
+    is that score untouched.
     """
-    drive = np.load(RECORDED_DRIVE)
+    drive = np.load(REPLAY)
     assert drive["proposals"].shape == (27, 32, 8, 3) and drive["pred_logit"].shape == (27, 32, 6)
     assert set(np.diff(drive["time_us"]).tolist()) == {500_000}
     learned = 1.0 / (1.0 + np.exp(-drive["pred_logit"][0, :, -1].astype(np.float64)))
@@ -253,15 +253,15 @@ def test_the_recorded_drive_is_one_the_bookkeeping_can_replay() -> None:
     np.testing.assert_allclose(drive["calibrated"][0], learned, atol=1e-6)
 
 
-def test_the_recorded_drive_is_reproduced_pick_for_pick() -> None:
-    """Upstream's own stage, fed by this bookkeeping, picks what the recorded driver picked.
+def test_the_replay_is_reproduced_pick_for_pick() -> None:
+    """Upstream's own stage, fed by this bookkeeping, picks what upstream's own loop picked.
 
-    The recording is 27 consecutive menus replayed through the AlpaSim driver
-    that first carried the stage; its picks were produced by the vendored
-    `calibrate_score` and reproduced by a standalone script that shares no code
-    with either adapter (fixtures/README.md). The agent is canned -- drive_jepa_model.py:85-91
-    on the recorded proposals and logits -- so this covers `Momentum`,
-    `Upstream` and the stage, and not the forward pass that produced the menus.
+    The replay is 27 made-up menus. Its picks were produced by the vendored
+    `calibrate_score` inside a loop that follows upstream's evaluation loop and
+    shares no code with this adapter (fixtures/make_momentum_replay.py). The
+    agent is canned -- drive_jepa_model.py:85-91 on the stored proposals and
+    logits -- so this covers `Momentum`, `Upstream` and the stage, and not a
+    forward pass.
     """
     pytest.importorskip("nuplan", reason="needs Drive-JEPA's environment (nuPlan)")
     model = pytest.importorskip(
@@ -271,7 +271,7 @@ def test_the_recorded_drive_is_reproduced_pick_for_pick() -> None:
     import torch
     from nuplan.planning.simulation.trajectory.trajectory_sampling import TrajectorySampling
 
-    drive = np.load(RECORDED_DRIVE)
+    drive = np.load(REPLAY)
     # drive_jepa_perception_based_agent.yaml: eight poses at 0.5 s.
     book = momentum.Momentum(momentum.Upstream(TrajectorySampling(time_horizon=4, interval_length=0.5)))
     changed = 0
@@ -291,4 +291,4 @@ def test_the_recorded_drive_is_reproduced_pick_for_pick() -> None:
         book.remember(proposals[0, pick].numpy(), ego_state, time_us, changed=pick != plain)
 
     assert book.counts["fed"] == 26, "every replan after the first had a 0.5 s-old plan"
-    assert changed == 19, "the stage must be doing something on this drive, not agreeing by default"
+    assert changed == 13, "the stage must be doing something on this drive, not agreeing by default"

@@ -37,8 +37,9 @@ from paddock.results.store import sequence_hash
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SUMMARY = FIXTURES / "results_summary_two_scenes.json"
-CLEAN = "clipgt-01d503d4-449b-46fc-8d78-9085e70d3554"
-OFFROAD = "clipgt-02e075b9-fd24-426b-971b-7cfcb2074cc9"
+#: The fixture's made-up outcomes, one per scene: which scene passes is invented too.
+CLEAN = "clipgt-02e075b9-fd24-426b-971b-7cfcb2074cc9"
+OFFROAD = "clipgt-01d503d4-449b-46fc-8d78-9085e70d3554"
 
 
 def _site(tmp_path: Path, monkeypatch, **settings: str) -> SiteConfig:
@@ -79,12 +80,12 @@ def test_parse_summary_reproduces_the_recorded_score() -> None:
 def test_a_zeroed_scene_keeps_the_progress_that_earned_nothing() -> None:
     """The hard-failure rule zeroes the scene, not the progress underneath it.
 
-    Losing that distinction would make a policy that drove 99% of a scene and
+    Losing that distinction would make a policy that drove 96% of a scene and
     then left the road indistinguishable from one that never moved.
     """
     metrics = parse_summary(SUMMARY, OFFROAD)
     assert metrics["scene_score"] == 0.0
-    assert metrics["progress"] == pytest.approx(0.9878, abs=1e-4)
+    assert metrics["progress"] == pytest.approx(0.96, abs=1e-4)
     assert metrics["offroad"] == 1.0
 
 
@@ -179,7 +180,8 @@ def test_an_unknown_scene_is_not_scored(tmp_path: Path) -> None:
 
 def test_a_rollout_without_a_score_is_not_scored(tmp_path: Path) -> None:
     body = json.loads(SUMMARY.read_text())
-    body["rollouts"] = [dict(body["rollouts"][0], score=None, status="failed")]
+    clean = next(r for r in body["rollouts"] if r["clipgt_id"] == CLEAN)
+    body["rollouts"] = [dict(clean, score=None, status="failed")]
     path = tmp_path / "s.json"
     path.write_text(json.dumps(body))
     with pytest.raises(NotScored, match="no score"):
@@ -251,7 +253,7 @@ def test_a_clip_is_the_same_sample_whichever_set_drove_it(tmp_path: Path, monkey
     thirty = _samples(_benchmark(tmp_path, monkeypatch, scene_set="public_2601_30scenes"), tmp_path)
     assert [s["split"] for s in ten] == ["pilot10"] * 10
     assert {s["sample_id"] for s in ten} < {s["sample_id"] for s in thirty}
-    assert ten[0]["sample_id"] == f"alpasim/{CLEAN}"
+    assert ten[0]["sample_id"] == f"alpasim/{load_scene_set(DEFAULT_SCENE_SET)[0]}"
     want = sequence_hash([f"alpasim/{scene}" for scene in load_scene_set("public_2601_30scenes")])
     assert sequence_hash([s["sample_id"] for s in thirty]) == want
 
