@@ -89,6 +89,7 @@ CAMERA_VIEW = {
     "CAM_FRONT": ("front", 0, 60),
     "CAM_OP_ROAD": ("front", 0, 60),
     "CAM_OP_WIDE": ("front wide", 0, 120),
+    "CAM_SIMLINGO": ("front wide", 0, 110),
     "CAM_FRONT_LEFT": ("front left", 55, 60),
     "CAM_FRONT_RIGHT": ("front right", -55, 60),
     "CAM_BACK": ("back", 180, 100),
