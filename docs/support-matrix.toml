@@ -128,6 +128,7 @@ name = "UniAD"
 [[model]]
 key = "vad"
 name = "VAD"
+marks = "S"  # every cell: made before the released weights' normalisation (docs/models/vad.md)
 
 [[model]]
 key = "constant_velocity"

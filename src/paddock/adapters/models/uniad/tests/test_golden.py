@@ -3,8 +3,8 @@
 Exact, for the inputs paddock's wire can carry: every camera placed with the frame's one ego pose, and the
 quaternion sign the source sends (or paddock's continuous rule when it sends none). Two departures from the
 original path are measured in each fixture and not asserted (docs/models/uniad.md, vad.md): each camera's own
-ego pose (up to 0.23 m at 3 s for uniad, 0.04 m for vad), and the stored quaternion sign against paddock's
-rule (up to 0.50 m and 0.71 m).
+ego pose (up to 0.23 m at 3 s for uniad, 0.58 m for vad), and the stored quaternion sign against paddock's
+rule (up to 0.50 m and 0.37 m).
 
 The claim pinned: fed through paddock -- an Observation of image paths, calibration, the LIDAR_TOP ego pose
 and the CAN-bus values, the adapter's own `infer` -- each model makes the plan its original tools make from

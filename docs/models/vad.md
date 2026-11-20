@@ -44,8 +44,9 @@ points at the same env.
 
 ## What is VAD's own
 
-- **Normalisation**: the config's `img_norm_cfg`, torchvision-style (mean 123.675, 116.28, 103.53; std 58.395,
-  57.12, 57.375; `to_rgb=True`). The frames go in BGR, as `mmcv.imread` reads them, and the config converts.
+- **Normalisation**: the one the released weights were trained with, caffe-style (mean 103.530, 116.280,
+  123.675; std 1; `to_rgb=False`). The frames go in BGR, as `mmcv.imread` reads them, and stay BGR. This is
+  not the config's: see [the normalisation](#the-normalisation-and-every-vad-result-before-20-nov-2026) below.
   Then the test pipeline scales every camera by 0.8 to 1280×720, `lidar2img` with them, and pads to 32.
 - **Command**: `ego_fut_cmd`, an integer one-hot of [right, left, straight] (`vad_nuscenes_converter.py`);
   FOLLOW_REFERENCE is straight. It selects one of the three plans: `ego_fut_preds[command].cumsum()`, as VAD's
@@ -58,13 +59,49 @@ points at the same env.
 - **Ground truth the forward reads**: VAD's `forward_test` scores its own detections, motion and plan, and
   indexes ground truth to do it. The adapter hands it no boxes and a future marked invalid; the metrics work on
   a copy of the predictions.
-- **The first plan** of an episode has no previous BEV grid. On scene-0103 it comes out nearly stationary
-  (2 m in 3 s at 8.4 m/s) on VAD's own path as on paddock's; the next one, 0.5 s later, is normal.
+- **The first plan** of an episode has no previous BEV grid. On scene-0103 it comes out short (7.5 m in 3 s
+  at 8.4 m/s) on VAD's own path as on paddock's; the next one, 0.5 s later, is normal.
 
 **HUGSIM's client** (`hyzhou404/VAD_SIM`) is not used: it never calls `model.eval()`, so dropout stays on and
-a plan is a draw; it normalises with the caffe mean, R/B-swapped and without dividing by the std, so the model
-reads inputs about 58 times its training scale; and it sets `use_can_bus=False`. The adapter feeds the config's
-own normalisation, in eval mode, with the CAN bus on.
+a plan is a draw; it normalises HUGSIM's RGB renders with the caffe mean meant for BGR, so red and blue are
+swapped; and it sets `use_can_bus=False`. Its normalisation's scale is right: the caffe values, with no division
+by a std, are the ones the released weights were trained with (an earlier version of this page said the
+opposite, wrongly). The adapter feeds BGR with those values, in eval mode, with the CAN bus on.
+
+## The normalisation, and every VAD result before 20 Nov 2026
+
+The config the adapter loads, `VAD_base_stage_2.py` at `1688c4b`, holds torchvision's `img_norm_cfg` (mean
+123.675, 116.28, 103.53; std 58.395, 57.12, 57.375; `to_rgb=True`). The released checkpoint was not trained with
+it. VAD's own docs at the same sha (`docs/train_eval.md`, "Reproduce results with pre-trained weights") say to
+evaluate the released weights with
+
+```python
+img_norm_cfg = dict(
+    mean=[103.530, 116.280, 123.675], std=[1.0, 1.0, 1.0], to_rgb=False)
+```
+
+"this is the original setting when we train the model", changed in the configs later on the advice of
+[hustvl/VAD issue #9](https://github.com/hustvl/VAD/issues/9): "If you use the new `img_norm_cfg` config, you
+will get wrong metric results and visualizations." So the adapter changes the config before it builds the
+pipeline (`VADPolicy._configure`, `with_normalisation` in [`policy.py`](../../src/paddock/adapters/models/vad/policy.py)):
+every `NormalizeMultiviewImage` step of the test pipeline gets the values above. Fed the config's values
+instead, the model reads red and blue swapped and about 1/58 of its training scale. `model.yaml` declares the
+choice as `VAD_IMG_NORM: "released"`, so it is in every run's id: a run with the fix never shares a config hash
+with one from before it: `--resume` refuses to continue one as the other, and a Bench2Drive pool of both
+records the two envs and does not rank. `VAD_IMG_NORM=config`
+feeds the config's values, as every run before the fix did.
+
+**Every VAD result paddock made before this fix (20 Nov 2026) used the config's normalisation, so every one is
+wrong in that way**, on every benchmark: the stored runs under `results/<bench>/vad/` (nuScenes, KITScenes,
+comma2k19, NAVSIM v1, NAVSIM v2, navhard, neuroNCAP, AlpaSim, Bench2Drive, HUGSIM), and the VAD cells of the
+support matrix that name them, which the README marks **S** (stale). Re-running them gives numbers for the model
+as it was trained. On the golden keyframes the change moves VAD's plan by up to 5.5 m at 3 s on four scene-0103
+keyframes, and over scene-0103 and scene-0916 its 3 s point by a median 3.65 m (max 8.85 m) and 2.81 m (max
+7.03 m), with every other input the same. (The golden test's own measure, the largest x or y difference over
+the six waypoints, gives medians 3.5 m and 2.4 m, maxima 8.2 m and 5.3 m.) Bench2DriveZoo's VAD checkpoint is a
+different model, trained with Bench2DriveZoo's own config (which holds torchvision's values); its adapter is not
+on main (it is on the unmerged `models/uniad-vad-b2d-keep` branch), and this change would not reach it:
+`VADB2DPolicy` there subclasses `B2DPlannerPolicy`, not `VADPolicy`.
 
 ## Benchmarks
 
@@ -80,15 +117,20 @@ calibration, as for UniAD ([uniad.md](uniad.md)).
 ## Verification
 
 Golden test, as for UniAD (`tests/fixtures/golden_vad.json`, written from VAD's own converter, dataset and
-`test_pipeline`): **0.000 m maximum difference** on four scene-0103 keyframes, for the stored and the canonical
-quaternion, and an exact repeat after reset (9 Nov 2026). The quaternion's sign moves VAD's 3 s waypoint by up
-to 0.66 m; placing each camera at its own ego pose, by 0.03 m. On nuScenes VAD declares `inputs: {nuscenes:
+`test_pipeline`, with the `img_norm_cfg` VAD's docs give for the released weights): **0.000 m maximum
+difference** on four scene-0103 keyframes, for the stored and the canonical quaternion, and an exact repeat
+after reset (20 Nov 2026; the fixture of 9 Nov was made with the config's normalisation, and the adapter as it
+was then misses this one by 5.5 m). The quaternion's sign moves VAD's 3 s waypoint by up to 0.37 m; placing
+each camera at its own ego pose, by 0.58 m (at the first keyframe, which has no previous grid; 0.13 m at
+most after). On nuScenes VAD declares `inputs: {nuscenes:
 vad}`, so the harness sends those as VAD's dataset has them (docs/benchmarks/nuscenes.md, "The datasets' own
 inputs"): on scene-0103 and scene-0916 every input the adapter hands its pipeline is the dataset's within
 1e-9, the command exactly (`test_scene_golden.py`, in `make check`), and over all 6,019 val keyframes against
 VAD's converter `lidar2img` is within 1.3e-12 and every command the same (10 Nov 2026). In scene order, VAD's
 own evaluation of every keyframe of both scenes (converter, `VADCustomNuScenesDataset`, dataloader, test loop)
-and the harness's scene-order request, sent as the runner sends it, agree: **0.000 m** at every keyframe sent (10 Nov 2026). Node: 0.29-0.30 s per `/infer` (0.64 s first),
+and the harness's scene-order request, sent as the runner sends it, agree: **0.000 m** at every keyframe sent
+(20 Nov 2026, both fixtures written again with the released weights' normalisation; their recorded inputs are
+unchanged). Node: 0.29-0.30 s per `/infer` (0.64 s first),
 about 3.7 GB of GPU memory.
 
 A step on nuScenes (six 1600×900 JPEGs, the card shared; medians, ms) spends more on preparing than on the

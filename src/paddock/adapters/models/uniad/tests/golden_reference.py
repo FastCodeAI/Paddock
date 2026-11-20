@@ -10,6 +10,9 @@ what the model was given and what it planned. Nothing here imports the adapter.
 The inputs are four consecutive nuScenes val keyframes of scene-0103 (the phase-1 sample: six cameras,
 calibration, ego poses) and the scene's CAN-bus ``pose`` messages.
 
+VAD's config is read with the one change VAD's own docs make for evaluating its released weights
+(`released_weights_normalisation`): their caffe ``img_norm_cfg``, not the config's torchvision one.
+
 Each model is run under named *variants*: what the adapter must reproduce exactly, and two that measure an
 input paddock's wire cannot carry (recorded, not asserted):
 
@@ -53,6 +56,13 @@ NUSC_CAMERAS = [
 ]
 #: Command fed: nuScenes 2 = FORWARD (the scene drives straight).
 NUSC_COMMAND = 2
+#: Where VAD's docs prescribe the released weights' normalisation, at the pinned sha.
+VAD_NORM_SOURCE = (
+    "hustvl/VAD docs/train_eval.md, 'Reproduce results with pre-trained weights' (the configs' later "
+    "img_norm_cfg, hustvl/VAD issue #9, gives wrong results with these weights)"
+)
+#: The ``img_norm_cfg`` that section gives: the caffe one the released VAD weights were trained with.
+VAD_RELEASED_IMG_NORM = {"mean": [103.530, 116.280, 123.675], "std": [1.0, 1.0, 1.0], "to_rgb": False}
 
 
 def sha256(path: str) -> str:
@@ -70,6 +80,40 @@ def git_head(path: str) -> str:
         ).stdout.strip()
     except OSError:
         return ""
+
+
+def released_weights_normalisation(cfg) -> dict:
+    """Change VAD's ``img_norm_cfg`` as its docs say to for the released weights; what was changed.
+
+    mmcv spreads ``img_norm_cfg`` into the pipelines' steps as it reads the config, so on the test path
+    editing the line the docs name is setting every step built from it: each ``NormalizeMultiviewImage`` of
+    ``data.test.pipeline``, nested or not. Each must hold the config's values, or it was not built from
+    ``img_norm_cfg`` and this is not the edit the docs describe.
+    """
+    keys = ("mean", "std", "to_rgb")
+    was = {key: copy.deepcopy(cfg.img_norm_cfg[key]) for key in keys}
+    steps = 0
+
+    def walk(pipeline) -> None:
+        nonlocal steps
+        for step in pipeline:
+            if step["type"] == "NormalizeMultiviewImage":
+                if {key: step[key] for key in keys} != was:
+                    raise ValueError(f"{dict(step)} was not built from img_norm_cfg {was}")
+                step.update(copy.deepcopy(VAD_RELEASED_IMG_NORM))
+                steps += 1
+            walk(step.get("transforms", []))
+
+    walk(cfg.data.test.pipeline)
+    if not steps:
+        raise ValueError("no NormalizeMultiviewImage in data.test.pipeline")
+    cfg.img_norm_cfg = copy.deepcopy(VAD_RELEASED_IMG_NORM)
+    return {
+        "config": was,
+        "used": copy.deepcopy(VAD_RELEASED_IMG_NORM),
+        "steps": steps,
+        "source": VAD_NORM_SOURCE,
+    }
 
 
 def converter_can_bus(messages: list[dict], sample_timestamp: int) -> np.ndarray:
@@ -291,15 +335,19 @@ def one_gpu(batch):
     return batch
 
 
-def run_nuscenes(args, meta: dict, messages: list[dict]) -> dict:
+def run_nuscenes(args, meta: dict, messages: list[dict]) -> tuple[dict, dict | None]:
+    """Each variant's frames: what the model was given and planned; and VAD's normalisation change."""
     import torch
     from mmcv import Config
     from mmcv.parallel import collate
     from mmcv.runner import load_checkpoint
 
     cfg = Config.fromfile(args.config)
+    normalisation = None
     if args.model == "uniad":
         cfg.model.motion_head.anchor_info_path = args.anchors
+    else:
+        normalisation = released_weights_normalisation(cfg)
     plugin = ".".join(Path(cfg.plugin_dir).parts)
     importlib.import_module(plugin)
     from mmdet.datasets.pipelines import Compose, to_tensor
@@ -393,7 +441,7 @@ def run_nuscenes(args, meta: dict, messages: list[dict]) -> dict:
             frames.append(seen)
             print(f"{name} frame {i}: last waypoint {np.round(plan[-1], 3).tolist()}", flush=True)
         out[name] = {"frames": frames}
-    return out
+    return out, normalisation
 
 
 def observation_inputs(meta: dict, messages: list[dict]) -> list[dict]:
@@ -449,7 +497,7 @@ def main() -> None:
 
     meta = json.load(open(args.meta))
     messages = sorted(json.load(open(args.can_bus)), key=lambda m: m["utime"])
-    variants = run_nuscenes(args, meta, messages)
+    variants, normalisation = run_nuscenes(args, meta, messages)
     import mmcv
 
     fixture = {
@@ -470,6 +518,7 @@ def main() -> None:
             "python": sys.version.split()[0],
             "device": torch.cuda.get_device_name(0),
             "command": NUSC_COMMAND,
+            **({"img_norm_cfg": normalisation} if normalisation else {}),
         },
         "observations": observation_inputs(meta, messages),
         "variants": variants,
