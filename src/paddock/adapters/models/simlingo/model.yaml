@@ -58,7 +58,9 @@ capabilities:
     - dataset: simlingo-carla
 
 # NAVSIM and navhard score 4 s, so their runs set SIMLINGO_HORIZON_S=4.0 (the plan padded with
-# its last position from 2.5 s). The score_notes line and ranked_with_note entry for it come with
-# the first stored run that sets it (both are checked against stored runs).
+# its last position from 2.5 s). A fixed need to run there at all, so it stays ranked, with this line.
+score_notes:
+  SIMLINGO_HORIZON_S: "plan padded from the model's 2.5 s to {value} s by paddock with its last position"
+ranked_with_note: [SIMLINGO_HORIZON_S]
 
 benchmarks: [bench2drive, kitscenes, nuscenes, comma2k19, navsim, navsim_v1, navhard]

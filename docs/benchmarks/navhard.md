@@ -119,7 +119,7 @@ maps, checked by size and sha256.
 
 ## Results
 
-All ten runs are the full split, 450 stage-one frames, all 450 scored, and carry
+All twelve runs are the full split, 450 stage-one frames, all 450 scored, and carry
 `sequences_sha256: 3af39efa412cc8df`, so they are the same frames. In each, the
 per-frame mean matches the devkit's combined row (`by_group.source_aggregates.paddock_check`).
 NC is no at-fault collisions and DAC drivable-area compliance.
@@ -132,6 +132,7 @@ NC is no at-fault collisions and DAC drivable-area compliance.
 | Alpamayo 1.5 | 0.1928 | 0.507 | 0.366 | 0.924 | 0.664 | 0.841 | 0.650 | `20261111T090014-04904f` | true |
 | VisionPilot ∗ | 0.1921 | 0.453 | 0.390 | 0.921 | 0.618 | 0.847 | 0.672 | `20261110T165413-30c0d8` | true |
 | Alpamayo 2 Edge | 0.1796 | 0.501 | 0.340 | 0.912 | 0.636 | 0.808 | 0.647 | `20261113T111924-f36c51` | true |
+| SimLingo ⊕ | 0.1280 | 0.406 | 0.300 | 0.929 | 0.698 | 0.842 | 0.623 | `20261118T193738-0d9b9a` | true |
 | UniAD ⊟ | 0.1234 | 0.386 | 0.300 | 0.890 | 0.527 | 0.806 | 0.535 | `20261110T092734-19b732` | true |
 | Baseline (Constant Velocity) | 0.1148 | 0.290 | 0.342 | 0.889 | 0.429 | 0.832 | 0.591 | `20261110T085953-e122fd` | true |
 | VAD ⊟ | 0.0990 | 0.343 | 0.250 | 0.860 | 0.522 | 0.769 | 0.491 | `20261110T185531-0cecc0` | true |
@@ -182,6 +183,13 @@ newest real frame at or before that slot's time, labelled with the time it was
 taken, and rebuilds the 0.1 s pose history from the 2 Hz poses
 ([docs/models/alpamayo2edge.md](../models/alpamayo2edge.md#navhard)). Its NAVSIM
 cells are on the same 2 Hz frames.
+
+⊕ **SimLingo plans 2.5 s, and is padded with its last position to the 4 s scored**
+(`SIMLINGO_HORIZON_S = 4.0`, which its model.yaml lists as ranked with a note, as METEOR's
+horizon is). Trained only in CARLA, it sees real footage here: CAM_FRONT placed at its true
+scale in its 110 deg frame, the rest black, and the command as its own sentence
+([docs/models/simlingo.md](../models/simlingo.md#navhard)). The padding reads as a stop at
+2.5 s, and comfort is its weakest term (history comfort 0.249 and 0.232 by stage).
 
 The constant-velocity row is paddock's own agent, run with no model process.
 Neither it nor any row here is comparable with navtest EPDMS or with published
