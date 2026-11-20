@@ -64,6 +64,11 @@ ASSIGNED: dict[str, str] = {
     # ground truth and 8 from every model at once.
     "uniad": "#900000",
     "vad": "#70d0a0",
+    # The hash gave simlingo #8c564b, wajepa's brown. A blue-violet, picked by the same
+    # measure from a grid of candidates: 12.6 from its nearest model or ground truth
+    # under any colour blindness (alpamayo2edge, the floor), 9.6:1 on a white chart
+    # surface and 2.0:1 on a dark one.
+    "simlingo": "#4411cc",
 }
 
 #: Drawn from for models with no assigned colour.
