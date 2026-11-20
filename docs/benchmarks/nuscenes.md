@@ -148,7 +148,8 @@ with its own state handling -- and paddock's harness builds the same scenes from
 model's own dataset inputs ("The datasets' own inputs", above), and sends them in scene order as the runner does, to `/infer_each`:
 at every keyframe sent (34 of scene-0103's 40 and 35 of scene-0916's 41: scene order feeds a scene up to
 its last scored keyframe) the plan is the repo's own loop's, a maximum difference of 0.000 m for UniAD and for
-VAD (10 Nov 2026, RTX PRO 6000, the card shared). The unit tests (`tests/test_scene_order.py`, and
+VAD (10 Nov 2026, RTX PRO 6000, the card shared; VAD again on 20 Nov 2026, its references written again with the
+normalisation its released weights were trained with, docs/models/vad.md). The unit tests (`tests/test_scene_order.py`, and
 `test_a_model_with_no_temporal_state_scores_the_same_in_scene_order_as_in_windows` in
 `tests/test_runner_scenes.py`) pin the scored set, the order, resumes and limits, the refusals, and that a
 model without temporal state scores the same in either order.
@@ -170,7 +171,9 @@ scene order was within 1.26 m of UniAD's own loop (median 0.27 m) and windows wi
 for VAD 2.22 m (median 0.93 m) and 3.49 m (median 1.46 m). One input at a time, the quaternion's sign was
 most of it (median 0.29 m UniAD, 0.89 m VAD; max 1.44 / 2.06 m), the cameras' own ego poses next (0.12 /
 0.04 m) and the CAN-bus message least (0.05 / 0.06 m); scene-0103 has no keyframe where the commands
-differ. Those runs are not comparable with runs made since, which record `inputs` in their config.
+differ. Those runs are not comparable with runs made since, which record `inputs` in their config. VAD's
+figures in this paragraph were measured with the config's image normalisation, which every VAD run before
+20 Nov 2026 used and which its released weights were not trained with (docs/models/vad.md).
 
 ## Site setup
 

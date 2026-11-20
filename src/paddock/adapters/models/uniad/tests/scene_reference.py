@@ -33,6 +33,10 @@ What it does instead of the original, and why none of it reaches a plan:
 * One GPU without a process group, so the batch is moved as ``MMDataParallel.scatter`` would move it
   (mmcv 1.7.2's own fails under torch 2.x; ``bev_planners.to_one_gpu``).
 
+VAD's config is read with the one change VAD's own docs make for evaluating its released weights: their
+caffe ``img_norm_cfg``, not the config's torchvision one
+(``golden_reference.released_weights_normalisation``).
+
 Recorded per keyframe, in the loader's order: the info record's inputs (sample token, timestamp, the lidar's
 ego pose and mount, each camera's file, intrinsics and ``sensor2lidar``, the converter's CAN bus, the
 dataset's command), what the dataset then handed the model (``dataset_can_bus``, ``dataset_lidar2img``, and
@@ -268,8 +272,13 @@ def main() -> None:
     info_file = infos / f"{prefix}_infos_temporal_val.pkl"
 
     cfg = Config.fromfile(args.config)
+    img_norm_cfg = None
     if args.model == "uniad":
         cfg.model.motion_head.anchor_info_path = args.anchors
+    else:
+        from paddock.adapters.models.uniad.tests.golden_reference import released_weights_normalisation
+
+        img_norm_cfg = released_weights_normalisation(cfg)
     importlib.import_module(".".join(Path(cfg.plugin_dir).parts))
     without_the_map(args.model)
     from mmdet3d.datasets import build_dataset
@@ -405,6 +414,7 @@ def main() -> None:
             "mmcv": mmcv.__version__,
             "python": sys.version.split()[0],
             "device": torch.cuda.get_device_name(0),
+            **({"img_norm_cfg": img_norm_cfg} if img_norm_cfg else {}),
         },
         "frames": inputs,
         "variants": variants,

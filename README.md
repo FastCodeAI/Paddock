@@ -68,7 +68,10 @@ it differs.
   once the car has stood 3 s with no lead.
 - **S — stale; a re-run will change it.** A VisionPilot figure marked S
   predates the `CURV_SCALE` fix; the others were re-run since, and AlpaSim's
-  driver never had the bug.
+  driver never had the bug. VAD's whole row is marked S: every VAD figure was
+  made before 20 Nov 2026 with the wrong image normalisation, not the one its
+  released weights were trained with
+  ([vad.md](docs/models/vad.md#the-normalisation-and-every-vad-result-before-20-nov-2026)).
 - **V — stored `valid: false`, so not ranked.** No cell carries it now. UniAD's and VAD's
   NAVSIM cells hold their 3 s plan to NAVSIM's 4 s by a site setting (`UNIAD_HORIZON_S`,
   `VAD_HORIZON_S`), which their `model.yaml` lists as ranked with a note, as METEOR's is.
