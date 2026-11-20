@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-156 runs across 11 benchmarks.
+157 runs across 11 benchmarks.
 90 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -208,15 +208,17 @@
 | alpamayo15 | 20260914T175447-89a9ca | 12146 | 0.753 | 0.957 | 0.856 | 0.690 | 0.896 | 0.991 | 0.927 |
 | alpamayo2edge | 20261111T070439-f19e8f | 12146 | 0.699 | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 |
 | alpamayo15 | 20260911T044805-0aea35 | 12146 | 0.676 | 0.941 | 0.788 | 0.604 | 0.878 | 0.979 | 0.885 |
+| simlingo [2] | 20261119T164227-0ba221 | 12146 | 0.558 | 0.899 | 0.833 | 0.507 | 0.831 | 0.439 | 0.933 |
 | autoe2e | 20261104T210206-3022fb | 12146 | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
 | uniad | 20261112T130241-e02e88 | 12146 | 0.532 | 0.826 | 0.729 | 0.525 | 0.692 | 0.963 | 0.914 |
 | vad | 20261112T132424-25e0e5 | 12146 | 0.473 | 0.813 | 0.722 | 0.451 | 0.682 | 0.958 | 0.843 |
 | visionpilot | 20261111T194001-cc5073 | 12146 | 0.472 | 0.756 | 0.802 | 0.442 | 0.605 | 0.997 | 0.902 |
-| meteor [2] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
+| meteor [3] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | constant_velocity | 20260911T034553-8f28ac | 12146 | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
 - [1] drivejepa: streamed (per_log): samples fed in order to one node that keeps its state, not one at a time
-- [2] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [2] simlingo: plan padded from the model's 2.5 s to 4.0 s by paddock with its last position
+- [3] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
 
 ## neuroncap
 

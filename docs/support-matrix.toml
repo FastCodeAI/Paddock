@@ -288,7 +288,7 @@ hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" } 
 # --
 # comma2k19: added by its own results PR
 # --
-# navsim_v1: added by its own results PR
+navsim_v1 = { run = "navsim_v1/simlingo/20261119T164227-0ba221", marks = "P" }
 # --
 # navhard: added by its own results PR
 # --

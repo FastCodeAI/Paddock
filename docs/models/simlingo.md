@@ -97,7 +97,11 @@ Not in this pull request.
 
 ### NAVSIM v1
 
-Not in this pull request.
+All 12,146 navtest scenes (`navsim_v1/simlingo/20261119T164227-0ba221`), `valid: true`: **PDMS 0.558**,
+sixth of twelve, well above the constant-velocity floor (0.207). Its own run, not a replay of NAVSIM
+v2 plans as other rows are: it has no NAVSIM v2 run. Its plan is padded from 2.5 s to the 4 s scored
+(`SIMLINGO_HORIZON_S = 4.0`). Collisions and drivable area hold up (0.899, 0.833); comfort (0.439)
+and ego progress (0.507) are its weakest terms, as a plan that stops at 2.5 s scores.
 
 ### Bench2Drive
 
