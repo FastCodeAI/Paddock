@@ -89,7 +89,11 @@ Not in this pull request.
 
 ### comma2k19
 
-Not in this pull request.
+All 10,165 keyframes (`comma2k19/simlingo/20261119T140738-46b00e`), `valid: true`: **ADE@3s 19.320 m**
+(median 21.478), eleventh of twelve, ahead of METEOR only. Its plans are far too short for highway
+speed: 29.2 m on average against 65.9 m driven, so nearly all the error is along the path
+(across it, 1.310 m). The road camera is placed in SimLingo's 110 deg frame; its 2.5 s plan is
+padded to the 3 s scored.
 
 ### navhard
 

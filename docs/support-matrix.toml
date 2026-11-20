@@ -286,7 +286,7 @@ hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" } 
 # --
 # kitscenes: added by its own results PR
 # --
-# comma2k19: added by its own results PR
+comma2k19 = { run = "comma2k19/simlingo/20261119T140738-46b00e", marks = "P" }
 # --
 # navsim_v1: added by its own results PR
 # --
