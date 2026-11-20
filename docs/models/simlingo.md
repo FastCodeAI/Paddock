@@ -85,7 +85,12 @@ Not in this pull request.
 
 ### nuScenes
 
-Not in this pull request.
+All 5,119 val keyframes (`nuscenes/simlingo/20261119T044710-ba2294`), `valid: true`: **cumulative L2
+2.659 m** (the matrix's column), point L2 1.828 / 4.958 / 6.627 m at 1 / 2 / 3 s, point collision
+rate 4.62 %. Last of the twelve models, behind the constant-velocity floor (0.641). The camera is
+CAM_FRONT placed in SimLingo's 110 deg frame; each keyframe's command (left, right or straight)
+reaches it as its command sentence. The error grows with the horizon, so it is mostly speed:
+SimLingo has only seen CARLA, and its 2.5 s plan is padded to the 3 s scored.
 
 ### comma2k19
 

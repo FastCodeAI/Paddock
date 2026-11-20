@@ -480,7 +480,16 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | AutoE2E ⧗ | 0.553 | 1.444 | 2.697 | 1.565 | 0.839 | 1.319 | 1.862 |
 | UniAD ⊡ | 0.533 | 1.075 | 1.891 | 1.166 | 0.706 | 1.008 | 1.869 |
 | VAD ⊡ | 0.855 | 1.814 | 3.017 | 1.895 | 1.127 | 1.634 | 2.064 |
+| SimLingo | 1.828 | 4.958 | 6.627 | 4.471 | 2.659 | 4.002 | 4.620 |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
+
+**SimLingo is trained only in CARLA, and this is its first real camera footage** (`20261119T044710-ba2294`).
+Cumulative L2 2.659 m, last of the twelve, behind the constant-velocity floor (0.641) and
+OpenPilot (2.477); the error grows with the horizon (1.828 m at 1 s, 6.627 m at 3 s), so it is
+mostly speed. Its 2.5 s plan is padded with its last position to the 3 s scored (the P mark).
+Its camera is CAM_FRONT placed at its true angular scale in SimLingo's 110 deg frame, the rest
+black, and each keyframe's command reaches it as its command sentence
+([docs/models/simlingo.md](../models/simlingo.md#nuscenes)).
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision

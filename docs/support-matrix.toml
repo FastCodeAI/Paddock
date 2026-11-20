@@ -282,7 +282,7 @@ hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" } 
 # Trained only in CARLA, so every cell here is zero-shot on real camera footage. Without
 # CAM_SIMLINGO, a dataset's CAM_FRONT is placed at its true scale in SimLingo's 110 deg frame.
 # --
-# nuscenes: added by its own results PR
+nuscenes = { run = "nuscenes/simlingo/20261119T044710-ba2294", marks = "P" }
 # --
 # kitscenes: added by its own results PR
 # --
