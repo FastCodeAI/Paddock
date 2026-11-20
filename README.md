@@ -62,7 +62,8 @@ it differs.
 - **P — grades a pipeline built around the model.** VisionPilot has no
   trajectory output, so paddock builds one from its lane and speed outputs.
   METEOR, UniAD and VAD plan 3 s and NAVSIM scores 4 s, so the last second is
-  extrapolated.
+  extrapolated. SimLingo plans 2.5 s, so on every benchmark its plan is padded
+  with its last position to the 3 s or 4 s scored.
   OpenPilot on Bench2Drive drives through openpilot's own longitudinal planner
   and its driver-resume nudge, which stands in for a driver pressing resume
   once the car has stood 3 s with no lead.
