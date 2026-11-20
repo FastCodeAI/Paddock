@@ -81,7 +81,12 @@ is asked on every 20 Hz tick, so Bench2Drive runs at about 0.02x real time.
 
 ### KITScenes
 
-Not in this pull request.
+All 223 keyframes (`kitscenes/simlingo/20261118T192528-539c66`), `valid: true`: **ADE 4.233 m**,
+FDE at 3 s 7.254 m; 3.712 m of error along the path and 1.290 m across it. Last of the twelve
+models, behind the constant-velocity floor (1.381). The camera is CAM_FRONT placed in SimLingo's
+110 deg frame; the route is the default `command_source = "straight"`, so every keyframe is told
+"Command: follow the road.". Most of the error is speed: SimLingo has only seen CARLA, and its
+2.5 s plan is padded to the 3 s scored.
 
 ### nuScenes
 

@@ -69,6 +69,7 @@ A run over any other list carries a different `sequences_sha256` in its
 | autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
 | uniad | `20261109T082536-b881a6` | 223 | 2.073 | a paddock run; the six ring cameras, UniAD 1.0 base nuScenes checkpoint |
 | vad | `20261109T082536-a393ec` | 223 | 2.374 | a paddock run; the six ring cameras, VAD-Base nuScenes checkpoint |
+| simlingo | `20261118T192528-539c66` | 223 | 4.233 | a paddock run; CAM_FRONT placed at its true scale in SimLingo's 110 deg frame, the route as its command sentence (the default `command_source = "straight"`: "follow the road"); see below |
 
 All ten carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
@@ -641,4 +642,12 @@ nuScenes checkpoints, zero-shot here, given all six ring cameras.
 | AutoE2E | 0.847 ⊞ | 1.903 ⊞ |
 | UniAD | 2.073 | 3.845 |
 | VAD | 2.374 | 4.562 |
+| SimLingo | 4.233 | 7.254 |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
+
+**SimLingo is trained only in CARLA, and this is its first real camera footage** (`20261118T192528-539c66`).
+It is last of the twelve here, behind the constant-velocity floor (1.381): ADE 4.233, of which
+3.712 m along the path and 1.290 m across it, so most of the error is speed. Its 2.5 s plan is
+padded with its last position to the 3 s scored (the P mark), which shows here as speed error
+too. Its camera is CAM_FRONT placed at its true angular scale in SimLingo's 110 deg frame, the
+rest black ([docs/models/simlingo.md](../models/simlingo.md#kitscenes)).
