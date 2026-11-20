@@ -85,16 +85,23 @@ img_norm_cfg = dict(
 will get wrong metric results and visualizations." So the adapter changes the config before it builds the
 pipeline (`VADPolicy._configure`, `with_normalisation` in [`policy.py`](../../src/paddock/adapters/models/vad/policy.py)):
 every `NormalizeMultiviewImage` step of the test pipeline gets the values above. Fed the config's values
-instead, the model reads red and blue swapped and about 1/58 of its training scale.
+instead, the model reads red and blue swapped and about 1/58 of its training scale. `model.yaml` declares the
+choice as `VAD_IMG_NORM: "released"`, so it is in every run's id: a run with the fix never shares a config hash
+with one from before it: `--resume` refuses to continue one as the other, and a Bench2Drive pool of both
+records the two envs and does not rank. `VAD_IMG_NORM=config`
+feeds the config's values, as every run before the fix did.
 
 **Every VAD result paddock made before this fix (20 Nov 2026) used the config's normalisation, so every one is
 wrong in that way**, on every benchmark: the stored runs under `results/<bench>/vad/` (nuScenes, KITScenes,
 comma2k19, NAVSIM v1, NAVSIM v2, navhard, neuroNCAP, AlpaSim, Bench2Drive, HUGSIM), and the VAD cells of the
 support matrix that name them, which the README marks **S** (stale). Re-running them gives numbers for the model
 as it was trained. On the golden keyframes the change moves VAD's plan by up to 5.5 m at 3 s on four scene-0103
-keyframes, and by a median 3.5 m (max 8.2 m) over scene-0103 and 2.4 m (max 5.3 m) over scene-0916, with every
-other input the same. Bench2DriveZoo's VAD checkpoint is a different model, trained with Bench2DriveZoo's own
-config (which holds torchvision's values); nothing here changes how it is fed.
+keyframes, and over scene-0103 and scene-0916 its 3 s point by a median 3.65 m (max 8.85 m) and 2.81 m (max
+7.03 m), with every other input the same. (The golden test's own measure, the largest x or y difference over
+the six waypoints, gives medians 3.5 m and 2.4 m, maxima 8.2 m and 5.3 m.) Bench2DriveZoo's VAD checkpoint is a
+different model, trained with Bench2DriveZoo's own config (which holds torchvision's values); its adapter is not
+on main (it is on the unmerged `models/uniad-vad-b2d-keep` branch), and this change would not reach it:
+`VADB2DPolicy` there subclasses `B2DPlannerPolicy`, not `VADPolicy`.
 
 ## Benchmarks
 

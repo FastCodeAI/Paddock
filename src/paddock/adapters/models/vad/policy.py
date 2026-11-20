@@ -37,6 +37,7 @@ copy of the predictions, which reach the plan untouched.
 from __future__ import annotations
 
 import copy
+import os
 from typing import Any
 
 import numpy as np
@@ -51,6 +52,12 @@ from paddock.adapters.models.uniad import bev_planners as bp
 RELEASED_IMG_NORM = {"mean": [103.530, 116.280, 123.675], "std": [1.0, 1.0, 1.0], "to_rgb": False}
 #: The pipeline step that applies ``img_norm_cfg`` (``projects/mmdet3d_plugin/datasets/pipelines``).
 NORMALIZE_STEP = "NormalizeMultiviewImage"
+#: Which ``img_norm_cfg`` the released weights are fed, declared in model.yaml so a run's id says it:
+#: "released" (`RELEASED_IMG_NORM`), or "config", the config's own values, which every VAD run before 20 Nov
+#: 2026 used. Without the key a fixed run would share the config hash of those runs: ``--resume`` would
+#: continue one as the other, and Bench2Drive's pooling would rank a pool of both.
+IMG_NORM_ENV = "VAD_IMG_NORM"
+IMG_NORMS = ("released", "config")
 
 
 class VADPolicy(bp.Mmdet3dPlannerPolicy):
@@ -71,12 +78,18 @@ class VADPolicy(bp.Mmdet3dPlannerPolicy):
     collect_keys = ["img", "ego_fut_cmd"]
 
     def _configure(self, cfg) -> None:
-        """The released weights' normalisation in place of the config's (`RELEASED_IMG_NORM`).
+        """The released weights' normalisation in place of the config's (`RELEASED_IMG_NORM`), unless
+        `IMG_NORM_ENV` says "config".
 
         The config spreads ``img_norm_cfg`` into its pipelines' steps when it is read, so changing it as
         VAD's docs say means changing those steps; ``img_norm_cfg`` itself is set too, for anything that
         reads it from the config.
         """
+        norm = os.environ.get(IMG_NORM_ENV, "released").strip()
+        if norm not in IMG_NORMS:
+            raise ValueError(f"{IMG_NORM_ENV}={norm!r}: expected one of {', '.join(IMG_NORMS)}")
+        if norm == "config":
+            return
         cfg.data.test.pipeline = with_normalisation(cfg.data.test.pipeline, RELEASED_IMG_NORM)
         cfg.img_norm_cfg = copy.deepcopy(RELEASED_IMG_NORM)
 

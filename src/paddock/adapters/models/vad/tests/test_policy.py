@@ -92,8 +92,15 @@ def test_a_pipeline_with_no_normalise_step_is_refused() -> None:
         vad.with_normalisation(_without_normalise(_test_pipeline()), vad.RELEASED_IMG_NORM)
 
 
-def test_the_policy_sets_the_released_weights_normalisation_on_the_config_it_builds_from() -> None:
+@pytest.mark.parametrize("setting", [None, "released"])
+def test_the_policy_sets_the_released_weights_normalisation_on_the_config_it_builds_from(
+    setting: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """``Mmdet3dPlannerPolicy._build`` calls ``_configure`` before it builds the model and the pipeline."""
+    if setting is None:
+        monkeypatch.delenv(vad.IMG_NORM_ENV, raising=False)
+    else:
+        monkeypatch.setenv(vad.IMG_NORM_ENV, setting)
     cfg = SimpleNamespace(
         img_norm_cfg=copy.deepcopy(CONFIG),
         data=SimpleNamespace(test=SimpleNamespace(pipeline=_test_pipeline(nested_normalise=True))),
@@ -105,6 +112,40 @@ def test_the_policy_sets_the_released_weights_normalisation_on_the_config_it_bui
     for step in steps:
         assert step == {"type": "NormalizeMultiviewImage", **CAFFE}
     assert _without_normalise(cfg.data.test.pipeline) == _without_normalise(_test_pipeline(True))
+
+
+def test_the_config_setting_feeds_the_configs_own_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    """VAD_IMG_NORM=config is every VAD run before 20 Nov 2026: the config left as it reads."""
+    monkeypatch.setenv(vad.IMG_NORM_ENV, "config")
+    pipeline = _test_pipeline(nested_normalise=True)
+    cfg = SimpleNamespace(
+        img_norm_cfg=copy.deepcopy(CONFIG), data=SimpleNamespace(test=SimpleNamespace(pipeline=pipeline))
+    )
+    POLICY()._configure(cfg)
+    assert cfg.img_norm_cfg == CONFIG
+    assert cfg.data.test.pipeline == _test_pipeline(nested_normalise=True)
+
+
+def test_an_unknown_normalisation_setting_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(vad.IMG_NORM_ENV, "caffe")
+    cfg = SimpleNamespace(
+        img_norm_cfg=copy.deepcopy(CONFIG),
+        data=SimpleNamespace(test=SimpleNamespace(pipeline=_test_pipeline())),
+    )
+    with pytest.raises(ValueError, match="VAD_IMG_NORM"):
+        POLICY()._configure(cfg)
+
+
+def test_model_yaml_declares_the_released_normalisation_so_it_is_in_the_run_id() -> None:
+    """Without the key a fixed run hashes like a run from before the fix, and --resume or Bench2Drive pooling
+    would continue or pool one with the other (runner._declared_env)."""
+    from paddock.registry import Registry
+    from paddock.runner import _declared_env
+
+    spec = Registry.load().models["vad"]
+    assert spec.runtime.env[vad.IMG_NORM_ENV] == "released"
+    assert _declared_env(spec)[vad.IMG_NORM_ENV] == "released"
+    assert vad.IMG_NORM_ENV not in spec.runtime.tuning_env
 
 
 def test_the_released_weights_values_are_the_ones_vads_docs_give() -> None:
