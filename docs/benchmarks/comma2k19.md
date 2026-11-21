@@ -8,7 +8,7 @@
 | Dataset | `comma2k19` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/comma2k19/`](../../src/paddock/adapters/benchmarks/comma2k19/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [simlingo](../models/simlingo.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -781,6 +781,7 @@ failure.
 | vad (`VAD_base`, the road camera as CAM_FRONT, five slots black) | 3 s | 5.759 | 9.682 | 13.658 | — | — | — | 23.621 | 16.093 | 0.846 | 0.781 |
 | uniad (`uniad_base_e2e`, the road camera as CAM_FRONT, five slots black) | 3 s | 6.242 | 10.538 | 14.917 | — | — | — | 25.928 | 18.008 | 0.888 | 0.679 |
 | drivejepa (perception-based agent, NAVSIM v2; the road camera in 1 of 4 slots) | 4 s | 7.474 | 13.080 | 18.754 | 24.385 | — | — | 32.893 | 23.401 | 0.852 | 0.620 |
+| simlingo (`RenzKa/simlingo` 26c7c89, the road camera placed in its 110 deg frame) | 2.5 s | 7.337 | 12.749 | 19.320 | — | — | — | 37.847 | 21.478 | 0.928 | 0.355 |
 | meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.892 | 0.034 |
 
 **VAD plans no faster than about 18 m/s,** the top of the nuScenes city driving it was trained on (run `20261112T213250-61c395`, all 10,165 keyframes). Where the recorded path averages 25 m/s or more over the next 3 s, its plan's median speed is 18.4 m/s. Two thirds of comma2k19's keyframes (6,689 of 10,165) average 20 m/s or more, and there its median ADE@3s is 20.27 m; below 20 m/s it is 1.36 m. UniAD has the same ceiling, a little lower (run `20261112T213250-a862cc`, all 10,165 keyframes): its plan's median speed there is 16.95 m/s, and its median ADE@3s is 22.45 m at 20 m/s or more and 1.64 m below. Its first 1,692 samples ran at paddock `0093535`; the other 8,473 ran at `79a230f`, which computes a black view's backbone features once instead of on every step (PR #217; at most 0.36 mm from the uncached plan on the same input).
@@ -1182,7 +1183,15 @@ padded. Lower is better throughout.
 | VAD | 3 s | 5.759 | 9.682 | 13.658 | — | — | — | 23.621 | 16.093 | 0.781 |
 | UniAD | 3 s | 6.242 | 10.538 | 14.917 | — | — | — | 25.928 | 18.008 | 0.679 |
 | Drive-JEPA ⟲ | 4 s | 7.469 | 13.070 | 18.740 | 24.368 | — | — | 32.869 | 23.401 | 0.622 |
+| SimLingo | 2.5 s | 7.337 | 12.749 | 19.320 | — | — | — | 37.847 | 21.478 | 0.355 |
 | METEOR | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.034 |
+
+**SimLingo plans far too short for the highway** (`20261119T140738-46b00e`). Trained only in CARLA, it
+has never seen real camera footage or I-280's speeds: its plan covers 29.2 m on average where the
+recorded drive covers 65.9 m, a mean along-track bias of -18.8 m, so nearly all of its ADE@3s
+of 19.320 is speed (across-track 1.310 m). Its 2.5 s plan is padded with its last position to the
+3 s scored (the P mark). It gets the road camera at its true scale in SimLingo's 110 deg frame,
+the rest black ([docs/models/simlingo.md](../models/simlingo.md#comma2k19)).
 
 **VAD and UniAD plan no faster than about 18 m/s,** the top of the nuScenes city
 driving their released checkpoints were trained on, while two thirds of these

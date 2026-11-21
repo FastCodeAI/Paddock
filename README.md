@@ -62,7 +62,8 @@ it differs.
 - **P — grades a pipeline built around the model.** VisionPilot has no
   trajectory output, so paddock builds one from its lane and speed outputs.
   METEOR, UniAD and VAD plan 3 s and NAVSIM scores 4 s, so the last second is
-  extrapolated.
+  extrapolated. SimLingo plans 2.5 s, so on every benchmark its plan is padded
+  with its last position to the 3 s or 4 s scored.
   OpenPilot on Bench2Drive drives through openpilot's own longitudinal planner
   and its driver-resume nudge, which stands in for a driver pressing resume
   once the car has stood 3 s with no lead.
@@ -250,6 +251,7 @@ benchmark is one new directory under `adapters/`. What crosses the wire:
 | [METEOR](docs/models/meteor.md) | TIER IV's 8-camera multi-task network | [tier4/METEOR](https://github.com/tier4/METEOR) · Apache-2.0 | |
 | [OpenPilot](docs/models/openpilot.md) | comma.ai's driving model, a single 30M-parameter network | [commaai/openpilot](https://github.com/commaai/openpilot) · MIT | [Learning to Drive from a World Model](https://arxiv.org/abs/2504.19077) |
 | [Qwen-Drive 1.0](docs/models/qwendrive.md) | 4B vision-language model with a flow-matching planner | [QwenLM/Qwen-Drive-1.0](https://github.com/QwenLM/Qwen-Drive-1.0) · Apache-2.0 | [Qwen-Drive-1.0](https://arxiv.org/abs/2609.00111) |
+| [SimLingo](docs/models/simlingo.md) | University of Tuebingen's InternVL2-1B vision-language-action model, trained in CARLA on one wide front camera | [RenzKa/simlingo](https://github.com/RenzKa/simlingo) · Apache-2.0 | [SimLingo](https://arxiv.org/abs/2503.09594) |
 | [UniAD](docs/models/uniad.md) | OpenDriveLab's planning-oriented stack: tracking, mapping, motion, occupancy and planning on one BEV grid (nuScenes checkpoint) | [OpenDriveLab/UniAD](https://github.com/OpenDriveLab/UniAD) · Apache-2.0 | [UniAD](https://arxiv.org/abs/2212.10156) |
 | [VAD](docs/models/vad.md) | HUST's vectorised planner: agent and map queries on one BEV grid (nuScenes checkpoint) | [hustvl/VAD](https://github.com/hustvl/VAD) · Apache-2.0 | [VAD](https://arxiv.org/abs/2303.12077) |
 | [VisionPilot](docs/models/visionpilot.md) | Autoware's lane and speed networks; Paddock builds the trajectory around them | [autowarefoundation/vision_pilot](https://github.com/autowarefoundation/vision_pilot) · Apache-2.0 | |
