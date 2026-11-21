@@ -107,6 +107,11 @@ repos:
     sha: 28091c1
     description: Qwen-Drive-1.0-4B inference code; Qwen3.5 VLM with a flow-matching planning expert and BEV perception head, imported as a library from src/
 
+  simlingo:
+    url: https://github.com/RenzKa/simlingo.git
+    sha: 743b243
+    description: SimLingo (CVPR 2025), InternVL2-1B vision-language-action driver; the adapter imports its model code from simlingo_training/, nothing from team_code/ (which needs CARLA)
+
   WA-JEPA:
     url: https://github.com/AFARI-Research/WA-JEPA.git
     sha: bec2966

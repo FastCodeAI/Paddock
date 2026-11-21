@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-156 runs across 11 benchmarks.
+157 runs across 11 benchmarks.
 90 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -144,6 +144,7 @@
 | uniad | 20261109T082536-b881a6 | 223 | 2.073 | 1.122 | 2.253 | 3.845 | - | - | - |
 | drivejepa [5] | 20261111T054224-9f8371 | 223 | 2.188 | 1.242 | 2.453 | 3.867 | - | - | - |
 | vad | 20261109T082536-a393ec | 223 | 2.374 | 1.158 | 2.614 | 4.562 | - | - | - |
+| simlingo | 20261118T192528-539c66 | 223 | 4.233 | 1.988 | 5.150 | 7.254 | - | - | - |
 | meteor | 20260914T185351-5e5223 | 223 | 4.784 | 2.334 | 5.542 | 9.011 | - | - | - |
 
 - [1] openpilot: desire input mode set to turn; the default, off, sends none
