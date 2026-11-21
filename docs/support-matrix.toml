@@ -126,6 +126,10 @@ key = "uniad"
 name = "UniAD"
 
 [[model]]
+key = "simlingo"
+name = "SimLingo"
+
+[[model]]
 key = "vad"
 name = "VAD"
 
@@ -273,6 +277,21 @@ comma2k19 = { run = "comma2k19/vad/20261112T213250-61c395" }  # the road camera 
 alpasim = { run = "alpasim/vad/20261110T153825-72448c" }  # six cameras, re-rendered as nuScenes' rig
 bench2drive = { run = "bench2drive/vad/full220-86aa45e768a29a64-6cb75d", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
 hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" }  # nuScenes checkpoint, zero-shot
+
+[cells.simlingo]
+# Trained only in CARLA, so every cell here is zero-shot on real camera footage. Without
+# CAM_SIMLINGO, a dataset's CAM_FRONT is placed at its true scale in SimLingo's 110 deg frame.
+# --
+# nuscenes: added by its own results PR
+# --
+# kitscenes: added by its own results PR
+# --
+# comma2k19: added by its own results PR
+# --
+# navsim_v1: added by its own results PR
+# --
+navhard = { run = "navhard/simlingo/20261118T193738-0d9b9a", marks = "P" }
+# --
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }

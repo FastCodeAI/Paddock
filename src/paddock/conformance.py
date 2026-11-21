@@ -78,7 +78,7 @@ MAX_MOUNT_DEG = 15.0
 #: Cameras paddock's own contract says point down the road. Their bearing is
 #: not the rig's business the way a ring camera's is: a `CAM_FRONT` facing
 #: sideways is a sign flip or a swapped axis, not a design decision.
-FORWARD_CAMERAS = frozenset({"CAM_FRONT", "CAM_OP_ROAD", "CAM_OP_WIDE"})
+FORWARD_CAMERAS = frozenset({"CAM_FRONT", "CAM_OP_ROAD", "CAM_OP_WIDE", "CAM_SIMLINGO"})
 
 #: How far one of those may point off straight ahead. Generous, because a real
 #: bracket is allowed a few degrees and a wide camera is sometimes toed out;

@@ -8,7 +8,7 @@
 | Dataset | rendered by the simulator |
 | Primary metric | `driving_score` |
 | Adapter | [`adapters/benchmarks/bench2drive/`](../../src/paddock/adapters/benchmarks/bench2drive/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [simlingo](../models/simlingo.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -199,12 +199,15 @@ contains the flag. If a site genuinely needs Low, make it a patch under
 ## Camera rig
 
 Every model is driven through the same cameras: paddock's rig, nuScenes' six
-views at half nuScenes' 1600x900, plus openpilot's pair (`rig.py`). A site can
+views at half nuScenes' 1600x900, plus two models' own: openpilot's pair, and
+SimLingo's one 110 deg 1024x512 front camera, 1.5 m behind the vehicle origin and
+2.0 m up (`CAM_SIMLINGO`), each rendered only for the model that declares it
+(`rig.py`). A site can
 name another rig to ask how much a model's drive depends on its cameras:
 
 | `camera_rig` | what it renders |
 |---|---|
-| `paddock` (default) | six 800x450 views, 70 deg (back 110), 1.5 m up |
+| `paddock` (default) | six 800x450 views, 70 deg (back 110), 1.5 m up; openpilot's and SimLingo's own cameras for those models |
 | `bench2drive` | Bench2Drive's own rig, which its dataset was recorded with (`tools/data_collect.py` at 7ec25d1): the same six at 1600x900, 1.6 m up |
 | `kitscenes` | KITScenes' roof pod, approximated from the calibration in `kitscenes.md`: an 88 x 54 deg front 1.8 m up and 87 x 63 deg side and rear views 2.0 m up |
 

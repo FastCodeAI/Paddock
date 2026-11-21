@@ -58,6 +58,11 @@ _PADDOCK = {
     # own model slot (img / big_img) instead of both views being cut from one 800x450 frame.
     "CAM_OP_ROAD": _camera(1.0, 0.0, 1.3, 0.0, 40.0, 1928, 1208),
     "CAM_OP_WIDE": _camera(1.0, 0.0, 1.3, 0.0, 119.0, 1928, 1208),
+    # SimLingo's one camera, as its agent mounts it (team_code/config_simlingo.py at 743b243:
+    # camera_pos_0 [-1.5, 0.0, 2.0], rot [0, 0, 0], 1024x512, fov 110). Trained on it alone; the
+    # 70 deg CAM_FRONT would show it a narrower, magnified view. Rendered only for a model that
+    # declares it, like openpilot's pair.
+    "CAM_SIMLINGO": _camera(-1.5, 0.0, 2.0, 0.0, 110.0, 1024, 512),
 }
 
 _BENCH2DRIVE = {
