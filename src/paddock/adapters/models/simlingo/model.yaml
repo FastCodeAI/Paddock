@@ -1,0 +1,64 @@
+name: simlingo
+description: SimLingo (CVPR 2025, Univ. of Tuebingen) - InternVL2-1B vision-language-action driver, one wide front camera, trained in CARLA
+repo: simlingo
+
+runtime:
+  # SimLingo ships a conda environment.yaml, not a uv lock; setup.sh builds a uv
+  # environment from the versions it pins (torch moved to 2.7.1 for Blackwell GPUs).
+  kind: uv
+  python: "3.10"
+  venv: "{repo}/.venv"
+  # simlingo_training/ is imported as a library from the checkout. team_code/ is
+  # not: it is a CARLA leaderboard agent and imports carla.
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    # Links made by setup.sh to the pinned snapshots in the site's Hugging Face
+    # cache, after checking every file's sha256: RenzKa/simlingo at 26c7c89 (the
+    # epoch-13 checkpoint and its training config) and OpenGVLab/InternVL2-1B at
+    # 0d75ccd (the base model the checkpoint is built on).
+    SIMLINGO_CHECKPOINT: "{weights}/SimLingo"
+    SIMLINGO_BASE: "{weights}/InternVL2-1B"
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+    # SimLingo plans 2.5 s (ten positions 0.25 s apart). Closed-loop clients need
+    # six points on the 0.5 s grid, 3 s, so the plan is padded to this horizon with
+    # its last position (inputs.py). NAVSIM scores 4 s and needs 4.0.
+    SIMLINGO_HORIZON_S: "3.0"
+  env_passthrough:
+    - SIMLINGO_HORIZON_S
+
+capabilities:
+  # SimLingo's one camera, as its agent mounts it (team_code/config_simlingo.py):
+  # 1024x512, 110 deg, 1.5 m behind the vehicle origin and 2.0 m up. Paddock's
+  # Bench2Drive rig renders it under this name (bench2drive/rig.py), as it renders
+  # openpilot's two cameras. Its 70 deg CAM_FRONT would show SimLingo a narrower,
+  # magnified view than it was trained on. A recorded dataset has no CAM_SIMLINGO: its
+  # CAM_FRONT is placed at its true angular scale in that 110 deg frame, the rest black
+  # (inputs.to_canvas). CAM_FRONT is declared for that, as openpilot declares its fallback.
+  cameras: [CAM_SIMLINGO, CAM_FRONT]
+  vram_gb: 4  # measured: 2.04 GiB peak (load + three plans, 18 Nov)
+  startup_timeout_s: 900
+  # The plan as returned: positions 0.25 s apart, from t = 0.25 s.
+  waypoint_dt: 0.25
+  # No planning_hz: its agent plans on every 20 Hz CARLA tick, and so is asked here.
+  architecture: "InternVL2-1B (InternViT-300M + Qwen2-0.5B with LoRA) writes a short commentary, then waypoint and path queries decode the plan"
+  precision: bf16
+  input_size: [1024, 512]
+  history_frames: 1
+  output_kind: waypoints
+  horizon_s: 2.5
+  plan_points_hz: 4.0
+  # Greedy decoding throughout: the same input gives the same plan.
+  stochastic: false
+  needs_speed: true
+  trained_on:
+    # SimLingo's own CARLA dataset, driven by the PDM-Lite expert in every town,
+    # Bench2Drive's included. None of paddock's datasets.
+    - dataset: simlingo-carla
+
+# NAVSIM and navhard score 4 s, so their runs set SIMLINGO_HORIZON_S=4.0 (the plan padded with
+# its last position from 2.5 s). The score_notes line and ranked_with_note entry for it come with
+# the first stored run that sets it (both are checked against stored runs).
+
+benchmarks: [bench2drive, kitscenes, nuscenes, comma2k19, navsim, navsim_v1, navhard, hugsim, neuroncap, alpasim, nuplan]
