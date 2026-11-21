@@ -230,3 +230,10 @@ def test_the_default_plan_fills_the_closed_loop_wire() -> None:
     wire = Trajectory(inputs.plan(_native(), horizon_s()), dt=inputs.PLAN_DT).to_wire()
     assert len(wire["trajectory"]) == N_WAYPOINTS
     np.testing.assert_allclose(wire["trajectory"][0], [4.0, 0.0])  # the model's own 0.5 s point
+
+
+def test_a_turns_distance_is_said_only_for_that_turn() -> None:
+    assert inputs.turn_distance(Command.LEFT, "TURN_LEFT", 25.0) == 25.0
+    assert inputs.turn_distance(Command.LEFT, "TURN_RIGHT", 25.0) is None
+    assert inputs.turn_distance(Command.STRAIGHT, "TURN_LEFT", 25.0) is None
+    assert inputs.turn_distance(Command.RIGHT, None, 25.0) is None

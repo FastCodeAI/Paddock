@@ -39,6 +39,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from paddock.policy.protocol import Command
+
 #: The agent's RoutePlanner(min_distance, max_distance), agent_simlingo.py.
 ROUTE_MIN_DISTANCE_M = 7.5
 ROUTE_MAX_DISTANCE_M = 50.0
@@ -57,16 +59,17 @@ CANVAS_W, CANVAS_H = 1024, 512
 CANVAS_FOV_DEG = 110.0
 CANVAS_F = CANVAS_W / (2.0 * np.tan(np.radians(CANVAS_FOV_DEG) / 2.0))
 
-#: The agent's map_command (agent_simlingo.py), keyed by paddock's Command values: RIGHT 0,
-#: LEFT 1, STRAIGHT 2, FOLLOW_REFERENCE 3. Paddock's STRAIGHT is "no turn ahead", the agent's
-#: lane-following command 4, "follow the road"; its "go straight at the next intersection" (3)
-#: names a junction, which a dataset's command does not say there is.
+#: The agent's map_command (agent_simlingo.py), keyed by paddock's Command. Paddock's STRAIGHT is
+#: "no turn ahead", the agent's lane-following command 4, "follow the road"; its "go straight at the
+#: next intersection" (3) names a junction, which a dataset's command does not say there is.
 COMMAND_TEXT = {
-    0: "go right at the next intersection",
-    1: "go left at the next intersection",
-    2: "follow the road",
-    3: "follow the road",
+    Command.RIGHT: "go right at the next intersection",
+    Command.LEFT: "go left at the next intersection",
+    Command.STRAIGHT: "follow the road",
+    Command.FOLLOW_REFERENCE: "follow the road",
 }
+#: The junction maneuver (Observation.nav_maneuver) each turning command is.
+COMMAND_MANEUVER = {Command.RIGHT: "TURN_RIGHT", Command.LEFT: "TURN_LEFT"}
 FOLLOW = "follow the road"
 
 
@@ -199,7 +202,13 @@ def command_sentence(command: int, distance_m: float | None = None) -> str:
     The agent adds the distance to a turn when it knows it ("in 25 meter"); a dataset's command
     rarely comes with one, and then the sentence is the form the agent uses without a distance.
     """
-    text = COMMAND_TEXT[int(command)]
+    text = COMMAND_TEXT[Command(int(command))]
     if text != FOLLOW and distance_m is not None:
         return f"Command: {text} in {int(distance_m)} meter."
     return f"Command: {text}."
+
+
+def turn_distance(command: int, maneuver: str | None, distance_m: float | None) -> float | None:
+    """The distance to the command's own turn: only when the next junction maneuver is that turn."""
+    wanted = COMMAND_MANEUVER.get(Command(int(command)))
+    return distance_m if wanted is not None and maneuver == wanted else None

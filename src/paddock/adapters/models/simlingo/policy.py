@@ -217,7 +217,7 @@ class SimlingoPolicy(Policy):
             targets = self.tracker.targets(obs.route_xy, obs.ego2world)  # paddock frame
             return TARGET_TEXT, inputs.flip_y(targets).astype(np.float32)
         self.counts["command"] += 1
-        distance = obs.nav_distance_m if obs.nav_maneuver else None
+        distance = inputs.turn_distance(obs.command, obs.nav_maneuver, obs.nav_distance_m)
         return inputs.command_sentence(obs.command, distance), None
 
     def frame(self, obs: Observation) -> np.ndarray:
