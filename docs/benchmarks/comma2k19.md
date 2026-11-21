@@ -1188,7 +1188,7 @@ padded. Lower is better throughout.
 
 **SimLingo plans far too short for the highway** (`20261119T140738-46b00e`). Trained only in CARLA, it
 has never seen real camera footage or I-280's speeds: its plan covers 29.2 m on average where the
-recorded drive covers 65.9 m, an along-track bias of -18.8 m at 3 s, so nearly all of its ADE@3s
+recorded drive covers 65.9 m, a mean along-track bias of -18.8 m, so nearly all of its ADE@3s
 of 19.320 is speed (across-track 1.310 m). Its 2.5 s plan is padded with its last position to the
 3 s scored (the P mark). It gets the road camera at its true scale in SimLingo's 110 deg frame,
 the rest black ([docs/models/simlingo.md](../models/simlingo.md#comma2k19)).
