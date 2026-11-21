@@ -1,0 +1,63 @@
+# @package _global_
+# The driver AlpaSim composes when paddock serves SimLingo through the bridge.
+#
+# SimLingo reads one camera: 1024 x 512, 110 deg across, a pinhole (its agent's CARLA camera,
+# team_code/config_simlingo.py). AlpaSim can only change a camera a scene already has, never add one
+# (camera_catalog.py), so camera_front_wide_120fov is re-rendered through `extra_cameras` as that
+# camera, and the bridge renames it CAM_SIMLINGO: the node then reads its own camera, as on
+# Bench2Drive, and no 110 deg frame is built around a narrower one.
+#
+# What the values are, briefly:
+#   * Intrinsics: f = 512 / tan(55 deg) = 358.5 px, square pixels, principal point at the centre,
+#     every distortion coefficient zero (the bridge sends K and does not undistort).
+#   * Pose: the scene's own recorded front-camera pose (no rig_to_camera), as AutoE2E's front
+#     camera keeps it; on recorded data paddock does not move SimLingo's camera either.
+#   * Global shutter, open for 1 us, for the reason paddock_bridge_autoe2e.yaml gives: a global
+#     render is drawn at the shutter's opening and the bridge sends the pose at its closing.
+#   * 20 Hz for the control step and the camera; 3.0 s of ground-truth warm-up with the driver
+#     called; 400 steps, the whole clip, as every 30-scene row.
+
+wizard:
+  # driver is absent on purpose: the bridge is already listening.
+  run_sim_services:
+    ["renderer", "physics", "trafficsim", "controller", "runtime"]
+
+  external_services:
+    # Overridden per episode with the port the harness actually reserved.
+    driver:
+      - "localhost:9200"
+
+  debug_flags:
+    use_localhost: true
+
+# Do NOT set `runtime.endpoints.driver.skip: true` (see paddock_bridge_qwendrive.yaml).
+runtime:
+  simulation_config:
+    force_gt_duration_us: 3_000_000
+    skip_driver_during_force_gt: false
+    control_timestep_us: 50_000
+    n_sim_steps: 400
+    n_rollouts: 1
+    planner_delay_us: 0
+    ego_mask_rig_config_id: null
+    # height and width must equal extra_cameras' resolution_hw: the render request takes its size
+    # from here and its intrinsics from there.
+    cameras:
+      - logical_id: camera_front_wide_120fov
+        height: 512
+        width: 1024
+        frame_interval_us: 50_000
+        shutter_duration_us: 1
+
+  extra_cameras:
+    - logical_id: camera_front_wide_120fov
+      intrinsics:
+        model: opencv_pinhole
+        opencv_pinhole:
+          focal_length: [358.5, 358.5]
+          principal_point: [512.0, 256.0]
+          radial: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          tangential: [0.0, 0.0]
+          thin_prism: [0.0, 0.0, 0.0, 0.0]
+      resolution_hw: [512, 1024]
+      shutter_type: GLOBAL

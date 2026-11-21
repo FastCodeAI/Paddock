@@ -9,7 +9,7 @@
 | Environment | uv, Python 3.10 |
 | Cameras | `CAM_SIMLINGO`, `CAM_FRONT` |
 | Plan | waypoints, 0.25 s apart, 2.5 s ahead |
-| Paddock can run it on | [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md) |
+| Paddock can run it on | [bench2drive](../benchmarks/bench2drive.md), [kitscenes](../benchmarks/kitscenes.md), [nuscenes](../benchmarks/nuscenes.md), [comma2k19](../benchmarks/comma2k19.md), [navsim](../benchmarks/navsim.md), [navsim_v1](../benchmarks/navsim_v1.md), [navhard](../benchmarks/navhard.md), [hugsim](../benchmarks/hugsim.md), [neuroncap](../benchmarks/neuroncap.md), [alpasim](../benchmarks/alpasim.md), [nuplan](../benchmarks/nuplan.md) |
 
 <!-- /summary -->
 

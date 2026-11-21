@@ -61,4 +61,4 @@ capabilities:
 # its last position from 2.5 s). The score_notes line and ranked_with_note entry for it come with
 # the first stored run that sets it (both are checked against stored runs).
 
-benchmarks: [bench2drive, kitscenes, nuscenes, comma2k19, navsim, navsim_v1, navhard]
+benchmarks: [bench2drive, kitscenes, nuscenes, comma2k19, navsim, navsim_v1, navhard, hugsim, neuroncap, alpasim, nuplan]

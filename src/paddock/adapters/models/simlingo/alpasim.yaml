@@ -1,0 +1,44 @@
+# How the AlpaSim benchmark drives SimLingo through paddock's bridge.
+#
+# Read by adapters/benchmarks/alpasim/harness.py (profile_for). The four keys below are required;
+# an unknown or missing key fails the run with this file's name. See docs/adding-a-model.md,
+# "AlpaSim settings".
+#
+# AlpaSim has no SimLingo driver, so this is the 30-scene setting every ranked row uses -- 20 Hz,
+# 3.0 s warm-up with the driver called, 400 steps -- with SimLingo's one camera rendered as its
+# agent mounts it (driver/paddock_bridge_simlingo.yaml) and renamed CAM_SIMLINGO. The node is
+# asked every 100 ms and answers the ticks between from its last plan; SimLingo plans from the
+# current frame alone, so the frames between replans are not sent. AlpaSim's route rides along
+# as route_xy and becomes SimLingo's two target points, as its CARLA agent gets them. Plans come
+# back 0.25 s apart, padded from 2.5 s to 3.0 s with their last position (SIMLINGO_HORIZON_S).
+
+# Under driver/ in this folder.
+driver: paddock_bridge_simlingo
+
+# Extra bridge.py flags.
+bridge_args:
+  - --camera-name
+  - camera_front_wide_120fov=CAM_SIMLINGO
+  - --named-cameras-only
+  - --pinhole-intrinsics
+  # One plan every 100 ms, two control steps; the tick between answers from the last plan.
+  - --replan-every-us
+  - "100000"
+  # Both must equal the driver config's control step and force_gt_duration_us.
+  - --frame-interval-us
+  - "50000"
+  - --force-gt-us
+  - "3000000"
+  - --send-route
+  # The node's plan is 0.25 s apart (model.yaml waypoint_dt).
+  - --waypoint-dt
+  - "0.25"
+
+# SimLingo declares CAM_FRONT as well, for sources without its camera; here it gets its own.
+cameras: [CAM_SIMLINGO]
+
+# Under adapters/benchmarks/alpasim/scenes/: the same 30 scenes as every ranked row.
+scenes_csv: public_2601_30scenes_26p01.csv
+
+# Write the bridge's per-replan log next to the run's samples.jsonl.
+replan_log: true
