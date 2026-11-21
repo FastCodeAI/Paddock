@@ -71,7 +71,7 @@ A run over any other list carries a different `sequences_sha256` in its
 | vad | `20261109T082536-a393ec` | 223 | 2.374 | a paddock run; the six ring cameras, VAD-Base nuScenes checkpoint |
 | simlingo | `20261118T192528-539c66` | 223 | 4.233 | a paddock run; CAM_FRONT placed at its true scale in SimLingo's 110 deg frame, the route as its command sentence (the default `command_source = "straight"`: "follow the road"); see below |
 
-All ten carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All eleven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
 
 openpilot's row is its configured run. Its other ranked runs on the same 223
