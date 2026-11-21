@@ -189,7 +189,8 @@ cells are on the same 2 Hz frames.
 horizon is). Trained only in CARLA, it sees real footage here: CAM_FRONT placed at its true
 scale in its 110 deg frame, the rest black, and the command as its own sentence
 ([docs/models/simlingo.md](../models/simlingo.md#navhard)). The padding reads as a stop at
-2.5 s, and comfort is its weakest term (history comfort 0.249 and 0.232 by stage).
+2.5 s, and comfort is its weakest term: two-frame extended comfort 0.027 and 0.033 by stage,
+the lowest of the twelve, and history comfort 0.249 and 0.232.
 
 The constant-velocity row is paddock's own agent, run with no model process.
 Neither it nor any row here is comparable with navtest EPDMS or with published

@@ -97,8 +97,8 @@ All 450 stage-one frames (`navhard/simlingo/20261118T193738-0d9b9a`), `valid: tr
 other eleven rows: **EPDMS 0.128** (stage one 0.406, stage two 0.300), seventh of twelve, above the
 constant-velocity floor (0.115). Its plan is padded from 2.5 s to the 4 s scored
 (`SIMLINGO_HORIZON_S = 4.0`); collisions and traffic lights are good (no at-fault collision 0.929
-in stage one, traffic lights 0.998), comfort is not (history comfort 0.249), which is what a plan
-that stops at 2.5 s scores as.
+in stage one, traffic lights 0.998), comfort is not (two-frame extended comfort 0.027, the lowest of the
+twelve, and history comfort 0.249), which is what a plan that stops at 2.5 s scores as.
 
 ### NAVSIM v1
 
