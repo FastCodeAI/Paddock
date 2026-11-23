@@ -92,10 +92,24 @@ records the two envs and does not rank. `VAD_IMG_NORM=config`
 feeds the config's values, as every run before the fix did.
 
 **Every VAD result paddock made before this fix (20 Nov 2026) used the config's normalisation, so every one is
-wrong in that way**, on every benchmark: the stored runs under `results/<bench>/vad/` (nuScenes, KITScenes,
-comma2k19, NAVSIM v1, NAVSIM v2, navhard, neuroNCAP, AlpaSim, Bench2Drive, HUGSIM), and the VAD cells of the
-support matrix that name them, which the README marks **S** (stale). Re-running them gives numbers for the model
-as it was trained. On the golden keyframes the change moves VAD's plan by up to 5.5 m at 3 s on four scene-0103
+wrong in that way**, on every benchmark. All ten were run again with the fix (paddock `8d37169`,
+`VAD_IMG_NORM: "released"`, 20–23 Nov 2026, same samples, scenes and routes, every other setting as before); each
+earlier run is superseded by its re-run (`paddock supersede`), and the support matrix names the re-runs:
+
+| Benchmark | Metric | Config normalisation (superseded) | Released normalisation | n | Run |
+|---|---|---|---|---|---|
+| nuScenes | L2, cumulative avg (m, lower is better) | 1.127 | 0.705 | 5,119 | `nuscenes/vad/20261120T113536-4a641f` |
+| KITScenes | ADE (m, lower is better) | 2.374 | 1.619 | 223 | `kitscenes/vad/20261120T124311-06a1d5` |
+| comma2k19 | ADE (m, lower is better) | 13.658 | 13.850 | 10,165 | `comma2k19/vad/20261121T043612-597a2d` |
+| NAVSIM v2 | EPDMS | 0.428 | 0.452 | 12,146 | `navsim/vad/20261120T124116-88559f` |
+| NAVSIM v2 hard | EPDMS | 0.099 | 0.101 | 450 | `navhard/vad/20261120T184739-5e470a` |
+| NAVSIM v1 | PDMS | 0.473 | 0.494 | 12,146 | `navsim_v1/vad/20261120T183501-625133` |
+| neuroNCAP | NCAP score (0–5) | 2.513 | 0.818 | 200 | `neuroncap/vad/20261122T002427-4bdf83` |
+| AlpaSim | scene score | 0.252 | 0.346 | 30 | `alpasim/vad/20261121T020047-8124e8` |
+| Bench2Drive | driving score | 15.58 | 15.68 | 220 | `bench2drive/vad/full220-caffenorm-86aa45e768a29a64-17d468` |
+| HUGSIM | HD-Score | 0.096 | 0.175 | 420 | `hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c` |
+
+On the golden keyframes the change moves VAD's plan by up to 5.5 m at 3 s on four scene-0103
 keyframes, and over scene-0103 and scene-0916 its 3 s point by a median 3.65 m (max 8.85 m) and 2.81 m (max
 7.03 m), with every other input the same. (The golden test's own measure, the largest x or y difference over
 the six waypoints, gives medians 3.5 m and 2.4 m, maxima 8.2 m and 5.3 m.) Bench2DriveZoo's VAD checkpoint is a

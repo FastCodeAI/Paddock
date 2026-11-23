@@ -129,8 +129,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "resumed: 7946 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "valid": false,
+  "superseded_by": "20261121T043612-597a2d",
+  "notes": "resumed: 7946 sample(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only Superseded by 20261121T043612-597a2d: Fed the config's ImageNet normalisation; the later run feeds the caffe normalisation VAD's released weights were trained with (VAD_IMG_NORM released, PR #228).",
   "ingested_from": ""
 }
