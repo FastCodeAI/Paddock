@@ -792,7 +792,7 @@ start-up failures on a shared host (the reused scenes are recorded in
 `run.json`; wall time does not change a drive). See `docs/models/autoe2e.md`.
 
 ⬣ UniAD's and VAD's AlpaSim cells (`results/alpasim/uniad/20261110T120651-8ea842`,
-`results/alpasim/vad/20261110T153825-72448c`, both valid) are the same 30 scenes,
+`results/alpasim/vad/20261121T020047-8124e8`, both valid) are the same 30 scenes,
 referee scorer and 20 Hz control step, driven through **paddock's bridge**. Their
 six cameras are re-rendered as nuScenes' surround rig, at nuScenes' own intrinsics
 and poses (`paddock_bridge_nuscenes_rig.yaml`), every 0.5 s, and the model is asked
@@ -839,8 +839,8 @@ support matrix quotes — the same drivers under the same referee score:
 | Alpamayo 2 Edge, through the bridge | `6cam-20Hz` | 0.4366 | −0.0510 | 0.6279 | 0.370 | 7 / 30 | 7 / 30 | 6 / 30 |
 | METEOR ⬡ | `6cam-20Hz` | 0.4232 | −0.0644 | 0.4301 | 0.469 | 1 / 30 | 10 / 30 | 5 / 30 |
 | Drive-JEPA | `1cam-20Hz` | 0.4209 | −0.0667 | 0.5091 | 0.465 | 7 / 30 | 12 / 30 | 5 / 30 |
+| VAD ⬣ | `6cam-2Hz` | 0.3455 | −0.1420 | 0.3975 | 0.331 | 5 / 30 | 15 / 30 | 7 / 30 |
 | UniAD ⬣ | `6cam-2Hz` | 0.2841 | −0.2035 | 0.4151 | 0.337 | 3 / 30 | 8 / 30 | 13 / 30 |
-| VAD ⬣ | `6cam-2Hz` | 0.2525 | −0.2351 | 0.3049 | 0.298 | 3 / 30 | 14 / 30 | 6 / 30 |
 | AutoE2E ⬢ | `6cam-20Hz` | 0.1694 | −0.3182 | 0.2867 | 0.121 | 9 / 30 | 10 / 30 | 7 / 30 |
 
 One rollout per scene, so read the differences with their spread: paired over

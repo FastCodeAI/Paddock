@@ -68,7 +68,7 @@ A run over any other list carries a different `sequences_sha256` in its
 | alpamayo2edge | `20261111T230906-22b8a7` | 223 | 0.752 | a paddock run; the route as text (`command_source = "gt"`), as Alpamayo 1.5's matrix cell (`legacy-full-nav`) is; five ring cameras in its six slots, the front twice; see below |
 | autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
 | uniad | `20261109T082536-b881a6` | 223 | 2.073 | a paddock run; the six ring cameras, UniAD 1.0 base nuScenes checkpoint |
-| vad | `20261109T082536-a393ec` | 223 | 2.374 | a paddock run; the six ring cameras, VAD-Base nuScenes checkpoint |
+| vad | `20261120T124311-06a1d5` | 223 | 1.619 | a paddock run; the six ring cameras, VAD-Base nuScenes checkpoint |
 
 All ten carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
@@ -640,5 +640,5 @@ nuScenes checkpoints, zero-shot here, given all six ring cameras.
 | Qwen-Drive 1.0 | **0.806** | **1.777** |
 | AutoE2E | 0.847 ⊞ | 1.903 ⊞ |
 | UniAD | 2.073 | 3.845 |
-| VAD | 2.374 | 4.562 |
+| VAD | 1.619 | 3.431 |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |

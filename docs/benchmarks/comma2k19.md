@@ -778,12 +778,12 @@ failure.
 | constant velocity (registered policy, 6 waypoints) | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.466 | 0.650 |
 | autoe2e (`kitscenes-epoch-5`, the road camera alone, five views left out) | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.640 | 0.766 |
 | visionpilot (synthesised trajectory) | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.747 | 0.676 |
-| vad (`VAD_base`, the road camera as CAM_FRONT, five slots black) | 3 s | 5.759 | 9.682 | 13.658 | — | — | — | 23.621 | 16.093 | 0.846 | 0.781 |
+| vad (`VAD_base`, the road camera as CAM_FRONT, five slots black) | 3 s | 5.852 | 9.826 | 13.850 | — | — | — | 23.932 | 16.534 | 0.836 | 0.790 |
 | uniad (`uniad_base_e2e`, the road camera as CAM_FRONT, five slots black) | 3 s | 6.242 | 10.538 | 14.917 | — | — | — | 25.928 | 18.008 | 0.888 | 0.679 |
 | drivejepa (perception-based agent, NAVSIM v2; the road camera in 1 of 4 slots) | 4 s | 7.474 | 13.080 | 18.754 | 24.385 | — | — | 32.893 | 23.401 | 0.852 | 0.620 |
 | meteor (`meteor_v157c3Z.onnx`, the road camera in 2 of 8 slots, `narrow_refpose`) | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.892 | 0.034 |
 
-**VAD plans no faster than about 18 m/s,** the top of the nuScenes city driving it was trained on (run `20261112T213250-61c395`, all 10,165 keyframes). Where the recorded path averages 25 m/s or more over the next 3 s, its plan's median speed is 18.4 m/s. Two thirds of comma2k19's keyframes (6,689 of 10,165) average 20 m/s or more, and there its median ADE@3s is 20.27 m; below 20 m/s it is 1.36 m. UniAD has the same ceiling, a little lower (run `20261112T213250-a862cc`, all 10,165 keyframes): its plan's median speed there is 16.95 m/s, and its median ADE@3s is 22.45 m at 20 m/s or more and 1.64 m below. Its first 1,692 samples ran at paddock `0093535`; the other 8,473 ran at `79a230f`, which computes a black view's backbone features once instead of on every step (PR #217; at most 0.36 mm from the uncached plan on the same input).
+**VAD plans no faster than about 18 m/s,** the top of the nuScenes city driving it was trained on (run `20261121T043612-597a2d`, all 10,165 keyframes). Where the recorded path averages 25 m/s or more over the next 3 s, its plan's median speed is 18.2 m/s. Two thirds of comma2k19's keyframes (6,689 of 10,165) average 20 m/s or more, and there its median ADE@3s is 20.64 m; below 20 m/s it is 1.14 m. UniAD has the same ceiling, a little lower (run `20261112T213250-a862cc`, all 10,165 keyframes): its plan's median speed there is 16.95 m/s, and its median ADE@3s is 22.45 m at 20 m/s or more and 1.64 m below. Its first 1,692 samples ran at paddock `0093535`; the other 8,473 ran at `79a230f`, which computes a black view's backbone features once instead of on every step (PR #217; at most 0.36 mm from the uncached plan on the same input).
 
 The drivejepa row above is `20261106T192049-391e2d`, in which momentum was on and
 could not act: each sample reset the node. It is retired by the momentum-aware run
@@ -1179,7 +1179,7 @@ padded. Lower is better throughout.
 | Baseline (Constant Velocity) | 3 s | 0.252 | 0.611 | 1.135 | — | — | — | 2.546 | 0.816 | 0.650 |
 | AutoE2E | 6 s | 0.734 | 0.977 | 1.350 | 1.949 | 2.846 | — | 2.396 | 1.339 | 0.766 |
 | VisionPilot ∗ | 4 s | 0.964 | 2.126 | 3.592 | 5.287 | — | — | 7.415 | 1.513 | 0.676 |
-| VAD | 3 s | 5.759 | 9.682 | 13.658 | — | — | — | 23.621 | 16.093 | 0.781 |
+| VAD | 3 s | 5.852 | 9.826 | 13.850 | — | — | — | 23.932 | 16.534 | 0.790 |
 | UniAD | 3 s | 6.242 | 10.538 | 14.917 | — | — | — | 25.928 | 18.008 | 0.679 |
 | Drive-JEPA ⟲ | 4 s | 7.469 | 13.070 | 18.740 | 24.368 | — | — | 32.869 | 23.401 | 0.622 |
 | METEOR | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.034 |
@@ -1187,7 +1187,7 @@ padded. Lower is better throughout.
 **VAD and UniAD plan no faster than about 18 m/s,** the top of the nuScenes city
 driving their released checkpoints were trained on, while two thirds of these
 keyframes (6,689 of 10,165) average 20 m/s or more. Below 20 m/s their median
-ADE@3s is 1.36 m (VAD) and 1.64 m (UniAD). Each gets the road camera as
+ADE@3s is 1.14 m (VAD) and 1.64 m (UniAD). Each gets the road camera as
 CAM_FRONT and its five other slots black.
 
 **OpenPilot and the baseline separate after the first second.** Constant

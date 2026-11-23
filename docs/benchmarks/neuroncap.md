@@ -749,7 +749,7 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 selection was off by default, scored 4.13, and the camera-blind one 3.57. See the
 neuroNCAP table.
 
-⊡ UniAD (`20261109T092826-5919f1`) and VAD (`20261110T033544-7f435b`): the
+⊡ UniAD (`20261109T092826-5919f1`) and VAD (`20261122T002427-4bdf83`): the
 nuScenes checkpoints, given the six surround cameras. neuroNCAP asks every 0.1 s;
 the adapter steps the model every 0.5 s, the 2 Hz it was trained at, and answers
 the calls in between from the plan it holds.
@@ -779,10 +779,10 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | AutoE2E | 3.46 ±2.16 | 3.71 ±1.82 | 2.01 ±2.30 | **3.16** | 42.0% |
 | Alpamayo 2 Edge | 3.45 ±1.71 | 3.22 ±2.19 | 1.56 ±1.99 | **2.92** | 54.0% |
 | METEOR | 2.44 ±2.42 | 3.20 ±2.39 | 2.50 ±2.50 | **2.64** | 48.0% |
-| VAD ⊡ | 2.83 ±2.23 | 1.15 ±1.75 | 3.23 ±2.22 | **2.51** | 57.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | UniAD ⊡ | 3.23 ±2.29 | 0.77 ±1.52 | 1.62 ±2.34 | **2.21** | 59.0% |
 | VisionPilot | 2.39 ±1.63 | 1.11 ±1.39 | 0.05 ±0.13 | **1.49** | 86.0% |
+| VAD ⊡ | 0.75 ±1.53 | 0.11 ±0.71 | 1.66 ±2.32 | **0.82** | 87.0% |
 | Baseline (Constant Velocity) § | 0.95 ±1.11 | 0.33 ±0.42 | 0.17 ±0.71 | **0.60** | 97.0% |
 
 ⊙ Momentum-aware, run `20261110T204020-036fb3` (valid): the default protocol at the

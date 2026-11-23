@@ -482,7 +482,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
 | AutoE2E ⧗ | 0.553 | 1.444 | 2.697 | 1.565 | 0.839 | 1.319 | 1.862 |
 | UniAD ⊡ | 0.533 | 1.075 | 1.891 | 1.166 | 0.706 | 1.008 | 1.869 |
-| VAD ⊡ | 0.855 | 1.814 | 3.017 | 1.895 | 1.127 | 1.634 | 2.064 |
+| VAD ⊡ | 0.526 | 1.129 | 1.949 | 1.201 | 0.705 | 1.031 | 1.309 |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
@@ -498,7 +498,7 @@ input is built.
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
 starting weights were trained on nuScenes train, not val.
 
-⊡ UniAD (run `20261109T183938-41eed0`) and VAD (run `20261110T000020-53cda0`), both valid, n = 5,119,
+⊡ UniAD (run `20261109T183938-41eed0`) and VAD (run `20261120T113536-4a641f`), both valid, n = 5,119,
 are fed as their own test loops ran the val set: each scene one episode, keyframe by keyframe
 (`sequence = "scene"`), with the inputs their own converters give a keyframe (`inputs`). See
 [Scene order](#scene-order-uniad-vad) and [The datasets' own inputs](#the-datasets-own-inputs-uniad-vad).
