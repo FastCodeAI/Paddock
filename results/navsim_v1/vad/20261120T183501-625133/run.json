@@ -1,0 +1,49 @@
+{
+  "run_id": "20261120T183501-625133",
+  "site": "uvother-fastcode-shakaal",
+  "benchmark": "navsim_v1",
+  "model": "vad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-20T18:35:01+00:00",
+  "duration_s": 755.8,
+  "repo_sha": null,
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "013e89176339021d",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [],
+    "split": "navtest",
+    "agent": "paddock_replay",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "node": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "replayed_from": "navsim/vad/20261120T124116-88559f",
+    "plans": {
+      "n": 12146,
+      "sha256": "c0bc03c4d6ad812e",
+      "from": [
+        "20261120T124116-88559f"
+      ]
+    }
+  },
+  "hardware": {},
+  "provenance": {},
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "no model process ran: 12146 plans replayed from navsim/vad/20261120T124116-88559f (that run: epdms 0.4518); the same plans, this benchmark's scorer",
+  "ingested_from": ""
+}

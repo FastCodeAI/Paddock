@@ -1020,7 +1020,7 @@ its own rate. Each record is `paddock ingest`'s pool (`routes = "all"`); the sup
 | Alpamayo 1.5 | 10 Hz | yes | 38.22 | 56.77 | 0.744 | 40.00 | [`full220-86aa45e768a29a64-600411`](../../results/bench2drive/alpamayo15/full220-86aa45e768a29a64-600411/run.json) |
 | Qwen-Drive, frames every 0.1 s between plans | 2 Hz | no | 27.41 | 61.70 | 0.467 | 78.64 | [`pooled220-86aa45e768a29a64-a23127`](../../results/bench2drive/qwendrive/pooled220-86aa45e768a29a64-a23127/run.json) |
 | UniAD (1.0 base, nuScenes-trained, zero-shot) | 2 Hz | no | 16.23 | 41.61 | 0.422 | 84.55 | [`full220-86aa45e768a29a64-fb1f0a`](../../results/bench2drive/uniad/full220-86aa45e768a29a64-fb1f0a/run.json) |
-| VAD (base, nuScenes-trained, zero-shot) | 2 Hz | no | 15.58 | 31.45 | 0.672 | 52.73 | [`full220-86aa45e768a29a64-6cb75d`](../../results/bench2drive/vad/full220-86aa45e768a29a64-6cb75d/run.json) |
+| VAD (base, nuScenes-trained, zero-shot) | 2 Hz | no | 15.68 | 33.64 | 0.653 | 53.18 | [`full220-caffenorm-86aa45e768a29a64-17d468`](../../results/bench2drive/vad/full220-caffenorm-86aa45e768a29a64-17d468/run.json) |
 | AutoE2E | 10 Hz | yes | 14.29 | 27.72 | 0.547 | 80.00 | [`full220-86aa45e768a29a64-740c68`](../../results/bench2drive/autoe2e/full220-86aa45e768a29a64-740c68/run.json) |
 | Alpamayo 2 Edge | 10 Hz | yes | 13.87 | 38.78 | 0.483 | 65.45 | [`full220-86aa45e768a29a64-ffe60a`](../../results/bench2drive/alpamayo2edge/full220-86aa45e768a29a64-ffe60a/run.json) |
 | METEOR | 5 Hz | yes | 1.89 | 5.30 | 0.926 | 11.82 | [`full220-86aa45e768a29a64-2144df`](../../results/bench2drive/meteor/full220-86aa45e768a29a64-2144df/run.json) |

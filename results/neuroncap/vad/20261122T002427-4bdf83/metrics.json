@@ -1,0 +1,379 @@
+{
+  "run_id": "20261122T002427-4bdf83",
+  "primary_metric": "ncap_score",
+  "n": 200,
+  "metrics": {
+    "ncap_score": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.817554,
+      "median": 0.0,
+      "p90": 5.0,
+      "max": 5.0,
+      "std": 1.705661
+    },
+    "collision_rate": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.87,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.336303
+    },
+    "impact_speed": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 9.365317,
+      "median": 8.722109,
+      "p90": 15.390926,
+      "max": 23.272959,
+      "std": 5.897862
+    },
+    "reference_speed": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 8.60405,
+      "median": 8.159018,
+      "p90": 13.756432,
+      "max": 21.010004,
+      "std": 4.821378
+    },
+    "pdm_nc": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.29716,
+      "median": 0.156403,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.349537
+    },
+    "pdm_dac": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.933889,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.149516
+    },
+    "pdm_ttc": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.207515,
+      "median": 0.012195,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.337618
+    },
+    "pdm_ep": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.257962,
+      "median": 0.153535,
+      "p90": 0.815574,
+      "max": 1.0,
+      "std": 0.290306
+    },
+    "pdm_comfort": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.988264,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "std": 0.035803
+    },
+    "pdm_style_score": {
+      "n": 200,
+      "n_missing": 0,
+      "mean": 0.221961,
+      "median": 0.091271,
+      "p90": 0.70714,
+      "max": 0.990011,
+      "std": 0.278535
+    }
+  },
+  "by_split": {
+    "frontal": {
+      "n": 50,
+      "ncap_score": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.10624,
+        "median": 0.0,
+        "p90": 0.022945,
+        "max": 5.0,
+        "std": 0.699398
+      },
+      "collision_rate": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.98,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.14
+      },
+      "impact_speed": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 16.488749,
+        "median": 13.779662,
+        "p90": 22.972462,
+        "max": 23.272959,
+        "std": 4.857383
+      },
+      "reference_speed": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 14.631842,
+        "median": 13.279218,
+        "p90": 21.010004,
+        "max": 21.010004,
+        "std": 4.262198
+      },
+      "pdm_nc": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.158871,
+        "median": 0.112698,
+        "p90": 0.363032,
+        "max": 1.0,
+        "std": 0.18303
+      },
+      "pdm_dac": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.959718,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.087232
+      },
+      "pdm_ttc": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.063539,
+        "median": 0.0,
+        "p90": 0.193174,
+        "max": 0.913043,
+        "std": 0.143699
+      },
+      "pdm_ep": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.158871,
+        "median": 0.112698,
+        "p90": 0.363032,
+        "max": 1.0,
+        "std": 0.18303
+      },
+      "pdm_comfort": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.967221,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.057091
+      },
+      "pdm_style_score": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.117769,
+        "median": 0.060364,
+        "p90": 0.292258,
+        "max": 0.963768,
+        "std": 0.163907
+      }
+    },
+    "side": {
+      "n": 50,
+      "ncap_score": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 1.655364,
+        "median": 0.04431,
+        "p90": 5.0,
+        "max": 5.0,
+        "std": 2.297708
+      },
+      "collision_rate": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.68,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.466476
+      },
+      "impact_speed": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 5.929577,
+        "median": 7.441264,
+        "p90": 12.108316,
+        "max": 12.422271,
+        "std": 4.591505
+      },
+      "reference_speed": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 5.51335,
+        "median": 4.773021,
+        "p90": 9.49102,
+        "max": 9.49102,
+        "std": 2.854707
+      },
+      "pdm_nc": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.532584,
+        "median": 0.43,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.455132
+      },
+      "pdm_dac": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.857041,
+        "median": 0.938333,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.186855
+      },
+      "pdm_ttc": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.428355,
+        "median": 0.107692,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.462018
+      },
+      "pdm_ep": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.40609,
+        "median": 0.386563,
+        "p90": 0.91,
+        "max": 1.0,
+        "std": 0.356646
+      },
+      "pdm_comfort": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.999062,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.003711
+      },
+      "pdm_style_score": {
+        "n": 50,
+        "n_missing": 0,
+        "mean": 0.358566,
+        "median": 0.239167,
+        "p90": 0.823753,
+        "max": 0.979167,
+        "std": 0.330496
+      }
+    },
+    "stationary": {
+      "n": 100,
+      "ncap_score": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.754306,
+        "median": 0.0,
+        "p90": 2.715971,
+        "max": 5.0,
+        "std": 1.525223
+      },
+      "collision_rate": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.91,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.286182
+      },
+      "impact_speed": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 7.521471,
+        "median": 8.286039,
+        "p90": 10.934236,
+        "max": 13.570275,
+        "std": 3.543719
+      },
+      "reference_speed": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 7.135504,
+        "median": 7.713516,
+        "p90": 9.873731,
+        "max": 11.854921,
+        "std": 2.869417
+      },
+      "pdm_nc": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.248593,
+        "median": 0.147059,
+        "p90": 0.591941,
+        "max": 1.0,
+        "std": 0.290512
+      },
+      "pdm_dac": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.959399,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.139681
+      },
+      "pdm_ttc": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.169083,
+        "median": 0.0,
+        "p90": 0.506378,
+        "max": 1.0,
+        "std": 0.273296
+      },
+      "pdm_ep": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.233444,
+        "median": 0.147059,
+        "p90": 0.547409,
+        "max": 0.976027,
+        "std": 0.267816
+      },
+      "pdm_comfort": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.993386,
+        "median": 1.0,
+        "p90": 1.0,
+        "max": 1.0,
+        "std": 0.024924
+      },
+      "pdm_style_score": {
+        "n": 100,
+        "n_missing": 0,
+        "mean": 0.205754,
+        "median": 0.08712,
+        "p90": 0.52739,
+        "max": 0.990011,
+        "std": 0.268506
+      }
+    }
+  },
+  "by_group": {}
+}

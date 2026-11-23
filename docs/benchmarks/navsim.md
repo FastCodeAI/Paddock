@@ -854,7 +854,7 @@ site that ran it holds no nuPlan 10 Hz data. Its 0.626 compares with Alpamayo 1.
 different way than it reaches Alpamayo 1.5 ([docs/models/alpamayo2edge.md](../models/alpamayo2edge.md)).
 
 ⊟ **UniAD's and VAD's figures rank with a note** (`20261109T082522-c24426`,
-`20261110T095855-0ebf09`). Both nuScenes checkpoints plan 3 s; NAVSIM scores 4 s and
+`20261120T124116-88559f`). Both nuScenes checkpoints plan 3 s; NAVSIM scores 4 s and
 refuses a shorter plan, so the site set `UNIAD_HORIZON_S` / `VAD_HORIZON_S` to 4.0 and
 paddock continued each plan by holding its last 0.5 s step, a second the model never
 planned. Their `model.yaml` lists that setting under `ranked_with_note`, as METEOR's
@@ -907,5 +907,5 @@ was first run on, for reference only.
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.840 | 0.982 | 0.964 | 0.993 | 0.998 | 0.820 | 0.977 | 0.975 | 0.982 | **0.867** | — |
 | AutoE2E, 10 Hz nuPlan history ☉ | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 | 0.830 | 0.984 | 0.812 | — |
 | UniAD ⊟ | 0.478 | 0.826 | 0.729 | 0.919 | 0.984 | 0.517 | 0.792 | 0.842 | 0.877 | 0.389 | — |
-| VAD ⊟ | 0.428 | 0.814 | 0.722 | 0.848 | 0.981 | 0.443 | 0.787 | 0.833 | 0.895 | 0.456 | — |
+| VAD ⊟ | 0.452 | 0.806 | 0.741 | 0.897 | 0.980 | 0.492 | 0.780 | 0.883 | 0.885 | 0.458 | — |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |

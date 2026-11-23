@@ -178,7 +178,7 @@ name.
 
 ## Results
 
-One campaign of ten paddock models, driven 8-10 Nov 2026 (UniAD and VAD 9-10 Nov) through paddock's own bridge and
+One campaign of ten paddock models, driven 8-10 Nov 2026 (UniAD 9-10 Nov; VAD again 21 Nov, with the image normalisation its released weights were trained with, [vad.md](../models/vad.md#the-normalisation-and-every-vad-result-before-20-nov-2026)) through paddock's own bridge and
 ingested from its recordings (see [Recorded campaigns](#recorded-campaigns)). WA-JEPA was not
 driven. Every run covers all 420 scenarios, is `complete` and `valid: true`. Command only,
 PR #57 controller, the scripted cars' planner fix (patch 0003), the whole plan sent (up to
@@ -193,9 +193,9 @@ sorted by HD-Score.
 | [UniAD](../models/uniad.md) (1.0 base, nuScenes checkpoint, zero-shot) | 2 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-9d698c`](../../results/hugsim/uniad/fullplan-f7d8f9d4b9736ddd-9d698c/run.json) | 26.1 | 35.0 | 45.7 | 54.3 | 91.0 | 37.9 | 47.5 |
 | [Constant velocity](../models/constant_velocity.md) (floor) | 4 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-a8f5b7`](../../results/hugsim/constant_velocity/fullplan-f7d8f9d4b9736ddd-a8f5b7/run.json) | 24.2 | 65.6 | 28.6 | 72.9 | 93.0 | 68.6 | 100.0 |
 | [Alpamayo 1.5](../models/alpamayo15.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-7ea973`](../../results/hugsim/alpamayo15/fullplan-f7d8f9d4b9736ddd-7ea973/run.json) | 23.8 | 54.6 | 35.7 | 70.8 | 89.5 | 65.2 | 63.5 |
+| [VAD](../models/vad.md) (base, nuScenes checkpoint, zero-shot) | 2 Hz | 3 s | [`fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c`](../../results/hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c/run.json) | 17.5 | 33.3 | 33.4 | 44.2 | 89.6 | 35.5 | 96.6 |
 | [VisionPilot](../models/visionpilot.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-92c0b7`](../../results/hugsim/visionpilot/fullplan-f7d8f9d4b9736ddd-92c0b7/run.json) | 16.3 | 35.2 | 34.5 | 67.6 | 94.3 | 48.9 | 7.8 |
 | [METEOR](../models/meteor.md) | 4 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-241d7f`](../../results/hugsim/meteor/fullplan-f7d8f9d4b9736ddd-241d7f/run.json) | 16.2 | 30.7 | 32.5 | 48.3 | 81.4 | 35.7 | 53.2 |
-| [VAD](../models/vad.md) (base, nuScenes checkpoint, zero-shot) | 2 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-9d698c`](../../results/hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c/run.json) | 9.6 | 54.4 | 15.9 | 62.6 | 89.4 | 57.3 | 95.6 |
 | [openpilot](../models/openpilot.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-cac3b5`](../../results/hugsim/openpilot/fullplan-f7d8f9d4b9736ddd-cac3b5/run.json) | 6.1 | 73.5 | 7.0 | 84.1 | 88.3 | 82.6 | 100.0 |
 | [AutoE2E](../models/autoe2e.md) v1.0 | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-4d9640`](../../results/hugsim/autoe2e/fullplan-f7d8f9d4b9736ddd-4d9640/run.json) | 4.3 | 27.5 | 13.7 | 44.8 | 48.9 | 37.0 | 64.9 |
 
@@ -209,9 +209,9 @@ HD-Score by source dataset and by difficulty:
 | UniAD | 2.9 | 43.2 | 31.0 | 31.3 | 53.2 | 25.2 | 20.1 | 11.9 |
 | Constant velocity | 7.8 | 34.6 | 30.5 | 26.2 | 49.2 | 30.4 | 14.1 | 5.5 |
 | Alpamayo 1.5 | 22.4 | 19.3 | 26.3 | 26.5 | 41.8 | 27.6 | 14.8 | 12.9 |
+| VAD | 3.3 | 24.3 | 25.3 | 18.8 | 44.5 | 10.4 | 8.9 | 14.3 |
 | VisionPilot | 7.7 | 16.1 | 21.3 | 20.5 | 35.2 | 22.0 | 7.4 | 2.2 |
 | METEOR | 2.1 | 31.8 | 20.8 | 13.7 | 34.9 | 15.0 | 13.8 | 5.8 |
-| VAD | 3.6 | 12.3 | 11.3 | 12.1 | 12.6 | 11.7 | 7.7 | 6.4 |
 | openpilot | 2.5 | 5.5 | 4.6 | 12.0 | 8.9 | 8.9 | 4.2 | 2.0 |
 | AutoE2E | 0.5 | 5.0 | 6.2 | 5.6 | 4.9 | 4.5 | 4.5 | 3.3 |
 
@@ -225,9 +225,9 @@ How episodes ended, % of 420:
 | UniAD | 25.5 | 46.2 | 23.6 | 1.4 | 3.3 |
 | Constant velocity | 6.2 | 54.8 | 25.2 | 7.6 | 6.2 |
 | Alpamayo 1.5 | 16.7 | 44.0 | 18.6 | 20.7 | 0.0 |
+| VAD | 8.6 | 59.3 | 27.4 | 1.7 | 3.1 |
 | VisionPilot | 11.7 | 56.2 | 12.4 | 7.9 | 11.9 |
 | METEOR | 11.7 | 39.0 | 42.6 | 6.7 | 0.0 |
-| VAD | 0.0 | 43.3 | 35.2 | 0.5 | 21.0 |
 | openpilot | 0.0 | 41.4 | 4.0 | 0.0 | 54.5 |
 | AutoE2E | 0.0 | 14.8 | 67.1 | 18.1 | 0.0 |
 

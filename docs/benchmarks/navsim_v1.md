@@ -300,17 +300,19 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | Qwen-Drive 1.0, 10 Hz nuPlan history ‡ | 0.876 | 0.982 | 0.964 | 0.817 | 0.941 | 1.000 | 0.987 |
 | AutoE2E v1.0, 10 Hz nuPlan history ‡ | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
 | UniAD ⊟ | 0.532 | 0.826 | 0.729 | 0.525 | 0.692 | 0.963 | 0.914 |
-| VAD ⊟ | 0.473 | 0.813 | 0.722 | 0.451 | 0.682 | 0.958 | 0.843 |
+| VAD ⊟ | 0.494 | 0.805 | 0.741 | 0.505 | 0.663 | 0.938 | 0.893 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
 ⊟ UniAD's and VAD's rows replay the plans of their NAVSIM v2 runs
 (`20261112T130241-e02e88` from `navsim/uniad/20261109T082522-c24426`,
-`20261112T132424-25e0e5` from `navsim/vad/20261110T095855-0ebf09`), no model process
+`20261120T183501-625133` from `navsim/vad/20261120T124116-88559f`), no model process
 running. Those plans are 3 s held to 4 s by paddock (`UNIAD_HORIZON_S` /
 `VAD_HORIZON_S`), a setting their `model.yaml` lists as ranked with a note, so both
 rows rank with that note. The first replays (`20261110T154404-e02e88`,
 `20261110T160343-25e0e5`) inherited their sources' old `valid: false` and are
-superseded by these; see ⊟ in [navsim.md](navsim.md#notes-on-the-matrix-cells).
+superseded by these; see ⊟ in [navsim.md](navsim.md#notes-on-the-matrix-cells). VAD's earlier replay of a run
+made with the config's image normalisation (`20261112T132424-25e0e5`) is superseded by this one
+([vad.md](../models/vad.md#the-normalisation-and-every-vad-result-before-20-nov-2026)).
 
 **Qwen-Drive reproduces its own published row here, term by term.** Its
 technical report gives the `planner-sft`-without-reasoning navtest row — the

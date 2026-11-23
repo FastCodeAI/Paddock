@@ -148,7 +148,8 @@ with its own state handling -- and paddock's harness builds the same scenes from
 model's own dataset inputs ("The datasets' own inputs", above), and sends them in scene order as the runner does, to `/infer_each`:
 at every keyframe sent (34 of scene-0103's 40 and 35 of scene-0916's 41: scene order feeds a scene up to
 its last scored keyframe) the plan is the repo's own loop's, a maximum difference of 0.000 m for UniAD and for
-VAD (10 Nov 2026, RTX PRO 6000, the card shared). The unit tests (`tests/test_scene_order.py`, and
+VAD (10 Nov 2026, RTX PRO 6000, the card shared; VAD again on 20 Nov 2026, its references written again with the
+normalisation its released weights were trained with, docs/models/vad.md). The unit tests (`tests/test_scene_order.py`, and
 `test_a_model_with_no_temporal_state_scores_the_same_in_scene_order_as_in_windows` in
 `tests/test_runner_scenes.py`) pin the scored set, the order, resumes and limits, the refusals, and that a
 model without temporal state scores the same in either order.
@@ -170,7 +171,9 @@ scene order was within 1.26 m of UniAD's own loop (median 0.27 m) and windows wi
 for VAD 2.22 m (median 0.93 m) and 3.49 m (median 1.46 m). One input at a time, the quaternion's sign was
 most of it (median 0.29 m UniAD, 0.89 m VAD; max 1.44 / 2.06 m), the cameras' own ego poses next (0.12 /
 0.04 m) and the CAN-bus message least (0.05 / 0.06 m); scene-0103 has no keyframe where the commands
-differ. Those runs are not comparable with runs made since, which record `inputs` in their config.
+differ. Those runs are not comparable with runs made since, which record `inputs` in their config. VAD's
+figures in this paragraph were measured with the config's image normalisation, which every VAD run before
+20 Nov 2026 used and which its released weights were not trained with (docs/models/vad.md).
 
 ## Site setup
 
@@ -479,7 +482,7 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | Qwen-Drive 1.0 | 0.318 | 0.722 | 1.360 | 0.800 | 0.450 | 0.678 | 0.770 |
 | AutoE2E ⧗ | 0.553 | 1.444 | 2.697 | 1.565 | 0.839 | 1.319 | 1.862 |
 | UniAD ⊡ | 0.533 | 1.075 | 1.891 | 1.166 | 0.706 | 1.008 | 1.869 |
-| VAD ⊡ | 0.855 | 1.814 | 3.017 | 1.895 | 1.127 | 1.634 | 2.064 |
+| VAD ⊡ | 0.526 | 1.129 | 1.949 | 1.201 | 0.705 | 1.031 | 1.309 |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
@@ -495,7 +498,7 @@ input is built.
 6.5 s of past keyframes it declares, where the other rows get 2 s; its BEVFormer V2
 starting weights were trained on nuScenes train, not val.
 
-⊡ UniAD (run `20261109T183938-41eed0`) and VAD (run `20261110T000020-53cda0`), both valid, n = 5,119,
+⊡ UniAD (run `20261109T183938-41eed0`) and VAD (run `20261120T113536-4a641f`), both valid, n = 5,119,
 are fed as their own test loops ran the val set: each scene one episode, keyframe by keyframe
 (`sequence = "scene"`), with the inputs their own converters give a keyframe (`inputs`). See
 [Scene order](#scene-order-uniad-vad) and [The datasets' own inputs](#the-datasets-own-inputs-uniad-vad).

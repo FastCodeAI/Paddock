@@ -42,8 +42,8 @@
   "hardware": {},
   "provenance": {},
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277); the same plans, this benchmark's scorer",
+  "valid": false,
+  "superseded_by": "20261120T183501-625133",
+  "notes": "no model process ran: 12146 plans replayed from navsim/vad/20261110T095855-0ebf09 (that run: epdms 0.4277); the same plans, this benchmark's scorer Superseded by 20261120T183501-625133: Fed the config's ImageNet normalisation; the later run feeds the caffe normalisation VAD's released weights were trained with (VAD_IMG_NORM released, PR #228).",
   "ingested_from": ""
 }

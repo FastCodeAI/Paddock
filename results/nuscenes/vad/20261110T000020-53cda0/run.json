@@ -108,8 +108,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261120T113536-4a641f",
+  "notes": "Superseded by 20261120T113536-4a641f: Fed the config's ImageNet normalisation; the later run feeds the caffe normalisation VAD's released weights were trained with (VAD_IMG_NORM released, PR #228).",
   "ingested_from": ""
 }

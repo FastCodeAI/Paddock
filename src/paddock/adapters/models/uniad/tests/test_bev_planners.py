@@ -530,6 +530,8 @@ def test_the_bgr_frames_reach_the_nuscenes_pipeline_as_the_loader_reads_them() -
 # -- the configs the adapters load ---------------------------------------------------------------------
 
 #: (img_norm_cfg mean, std, to_rgb) each config must hold; the adapters feed BGR, as the datasets' loaders do.
+#: VAD's is not what its released weights were trained with, and its adapter replaces it before building the
+#: pipeline (vad/policy.py, RELEASED_IMG_NORM); this pins the file the replacement is made on.
 NORMALISATION = {
     "uniad": ([103.530, 116.280, 123.675], [1.0, 1.0, 1.0], False),
     "vad": ([123.675, 116.28, 103.53], [58.395, 57.12, 57.375], True),

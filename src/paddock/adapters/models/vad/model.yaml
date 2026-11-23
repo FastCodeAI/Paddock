@@ -16,6 +16,11 @@ runtime:
     VAD_CONFIG: "{repo}/projects/configs/VAD/VAD_base_stage_2.py"
     # VAD-Base from the hustvl/VAD README (Google Drive id 1FLX-4LVm4z-RskghFbxGuYlcYOQmV5bS); docs/models/vad.md.
     VAD_CHECKPOINT: "{weights}/vad/VAD_base.pth"
+    # The normalisation the checkpoint is fed (policy.py, `_configure`): "released", the caffe values VAD's
+    # docs prescribe for the released weights (docs/train_eval.md); "config", the config's torchvision
+    # values, which every VAD run before 20 Nov 2026 used (docs/models/vad.md). Declared so that a run's id
+    # says which: --resume refuses to continue one as the other, and a Bench2Drive pool of both does not rank.
+    VAD_IMG_NORM: "released"
     # VAD_HORIZON_S (unset): continue the plan past its own 3 s by holding the last 0.5 s step, for
     # NAVSIM, which scores 4 s and refuses a shorter plan. An extrapolation the model never made, so it is
     # set per benchmark, in a [models.vad.benchmarks.navsim.env] pairing, and the report notes it.
