@@ -1,0 +1,126 @@
+{
+  "run_id": "20261123T235241-cd7298",
+  "site": "renesas-sjc",
+  "benchmark": "nuplan",
+  "model": "vad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-23T23:52:41+00:00",
+  "duration_s": 791.5,
+  "repo_sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+  "dataset": {
+    "name": "nuplan",
+    "n_samples": 351,
+    "sequences_sha256": "05efb12a2f3eaf9e",
+    "n_expected": 351
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_RIGHT",
+      "CAM_FRONT_LEFT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "mini",
+    "scenarios_per_type": 8,
+    "min_separation_s": 20.0,
+    "history_frames": 48,
+    "interval_s": 0.5,
+    "eval_horizon_s": 3.0,
+    "camera": "CAM_F0",
+    "declared_env": {
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1",
+      "VAD_CHECKPOINT": "{weights}/vad/VAD_base.pth",
+      "VAD_CONFIG": "{repo}/projects/configs/VAD/VAD_base_stage_2.py"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "VAD",
+      "sha": "1688c4b1c3a9e2e7873ca9700ff8058170c0e3c8",
+      "pinned_sha": "1688c4b",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "1f9db98cd4d8c7428404d407c08361c53d3958eb",
+      "dirty": true
+    },
+    "policy": {
+      "episode": 352,
+      "blank_views": [],
+      "source_size": {
+        "CAM_FRONT_RIGHT": [
+          1920,
+          1080
+        ],
+        "CAM_BACK": [
+          1920,
+          1080
+        ],
+        "CAM_FRONT": [
+          1920,
+          1080
+        ],
+        "CAM_FRONT_LEFT": [
+          1920,
+          1080
+        ],
+        "CAM_BACK_RIGHT": [
+          1920,
+          1080
+        ],
+        "CAM_BACK_LEFT": [
+          1920,
+          1080
+        ]
+      },
+      "quaternion_source": "ego2world",
+      "command": 2,
+      "command_record": {
+        "source": "given",
+        "command": 2,
+        "name": "FORWARD",
+        "given": "STRAIGHT"
+      },
+      "gravity_added": true,
+      "lidar_source": "nominal",
+      "plan_lidar": [
+        [
+          -0.0,
+          0.0
+        ],
+        [
+          -0.0,
+          0.0
+        ],
+        [
+          -0.0,
+          0.0
+        ],
+        [
+          -0.0,
+          0.0
+        ],
+        [
+          -0.0,
+          0.0
+        ],
+        [
+          -0.0,
+          0.0
+        ]
+      ],
+      "steps": 10,
+      "frames_fed": 10
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}
