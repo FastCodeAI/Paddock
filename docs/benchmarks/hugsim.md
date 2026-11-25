@@ -50,7 +50,7 @@ HUGSIM's upstream install pins torch 2.4/cu118, which has no kernels for newer G
 the site that produced the results below built torch 2.7.1/cu128 and the CUDA
 extensions for sm_120, and kept every other package at the versions upstream's
 `pixi.lock` pins. `paddock doctor` and every run start with `preflight`, which checks
-the checkout and its three patches, the data directories, the HD-map link, and that
+the checkout and its four patches, the data directories, the HD-map link, and that
 the interpreter can import the simulator and the bridge.
 
 ## Running it
@@ -112,6 +112,13 @@ waypoints. The choices that fix what is measured:
   point (`sim/utils/agent_controller.py:170`), and the simulator dies with no score.
   That one case now takes the agent's distance to the point; an episode where it never
   happens is unchanged. It is what ended Drive-JEPA's `scene-0166-medium-01` (below).
+- **The route's last command** (`patches/HUGSIM/0004`). Upstream's `dense_cam_poses`
+  appends the route's last camera pose without its command, so the command list is one
+  shorter than the poses, and `_get_info` raises `IndexError` when the ego is nearest that
+  last pose. The last pose now takes the last command; every pose and every earlier
+  command is unchanged on all 82 released scenes, and `_get_info` is the list's only
+  reader, so an episode that never reaches the last pose is unchanged. Only SimLingo has
+  hit it: kitti360 `scene-3000_3200-easy-00`, both attempts (below).
 - **The whole plan is sent**, up to 4 s (8 waypoints 0.5 s apart; NAVSIM's horizon,
   UniAD and VAD plan 3 s). HUGSIM scores every step's sent plan -- collision, drivable
   area, TTC and comfort over its length -- so a plan cut short is judged over less time
@@ -195,6 +202,7 @@ sorted by HD-Score.
 | [Alpamayo 1.5](../models/alpamayo15.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-7ea973`](../../results/hugsim/alpamayo15/fullplan-f7d8f9d4b9736ddd-7ea973/run.json) | 23.8 | 54.6 | 35.7 | 70.8 | 89.5 | 65.2 | 63.5 |
 | [VisionPilot](../models/visionpilot.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-92c0b7`](../../results/hugsim/visionpilot/fullplan-f7d8f9d4b9736ddd-92c0b7/run.json) | 16.3 | 35.2 | 34.5 | 67.6 | 94.3 | 48.9 | 7.8 |
 | [METEOR](../models/meteor.md) | 4 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-241d7f`](../../results/hugsim/meteor/fullplan-f7d8f9d4b9736ddd-241d7f/run.json) | 16.2 | 30.7 | 32.5 | 48.3 | 81.4 | 35.7 | 53.2 |
+| [SimLingo](../models/simlingo.md) ‡ (CARLA-only, zero-shot) | 4 Hz | 3 s (2.5 s padded) | [`20261124T041719-645041`](../../results/hugsim/simlingo/20261124T041719-645041/run.json) | 12.0 | 20.9 | 36.1 | 46.2 | 92.4 | 29.9 | 12.7 |
 | [VAD](../models/vad.md) (base, nuScenes checkpoint, zero-shot) | 2 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-9d698c`](../../results/hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c/run.json) | 9.6 | 54.4 | 15.9 | 62.6 | 89.4 | 57.3 | 95.6 |
 | [openpilot](../models/openpilot.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-cac3b5`](../../results/hugsim/openpilot/fullplan-f7d8f9d4b9736ddd-cac3b5/run.json) | 6.1 | 73.5 | 7.0 | 84.1 | 88.3 | 82.6 | 100.0 |
 | [AutoE2E](../models/autoe2e.md) v1.0 | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-4d9640`](../../results/hugsim/autoe2e/fullplan-f7d8f9d4b9736ddd-4d9640/run.json) | 4.3 | 27.5 | 13.7 | 44.8 | 48.9 | 37.0 | 64.9 |
@@ -211,6 +219,7 @@ HD-Score by source dataset and by difficulty:
 | Alpamayo 1.5 | 22.4 | 19.3 | 26.3 | 26.5 | 41.8 | 27.6 | 14.8 | 12.9 |
 | VisionPilot | 7.7 | 16.1 | 21.3 | 20.5 | 35.2 | 22.0 | 7.4 | 2.2 |
 | METEOR | 2.1 | 31.8 | 20.8 | 13.7 | 34.9 | 15.0 | 13.8 | 5.8 |
+| SimLingo | 4.8 | 20.2 | 10.9 | 14.0 | 32.2 | 8.9 | 7.3 | 4.9 |
 | VAD | 3.6 | 12.3 | 11.3 | 12.1 | 12.6 | 11.7 | 7.7 | 6.4 |
 | openpilot | 2.5 | 5.5 | 4.6 | 12.0 | 8.9 | 8.9 | 4.2 | 2.0 |
 | AutoE2E | 0.5 | 5.0 | 6.2 | 5.6 | 4.9 | 4.5 | 4.5 | 3.3 |
@@ -227,12 +236,24 @@ How episodes ended, % of 420:
 | Alpamayo 1.5 | 16.7 | 44.0 | 18.6 | 20.7 | 0.0 |
 | VisionPilot | 11.7 | 56.2 | 12.4 | 7.9 | 11.9 |
 | METEOR | 11.7 | 39.0 | 42.6 | 6.7 | 0.0 |
+| SimLingo | 11.7 | 59.8 | 26.0 | 2.1 | 0.5 |
 | VAD | 0.0 | 43.3 | 35.2 | 0.5 | 21.0 |
 | openpilot | 0.0 | 41.4 | 4.0 | 0.0 | 54.5 |
 | AutoE2E | 0.0 | 14.8 | 67.1 | 18.1 | 0.0 |
 
 What to read with them:
 
+- **‡ SimLingo was driven later, by `paddock run`, not ingested.** 24-25 Nov 2026, one
+  node on a shared RTX PRO 6000. Same 420 scenarios (`sequences_sha256: f7d8f9d4b9736ddd`),
+  command only, PR #57 controller, patches 0003 and 0004, 400-step cap. It declares no
+  planning rate, so it was asked every step (14,369 plans, no bridge error); its 2.5 s plan
+  is padded to 3 s (`SIMLINGO_HORIZON_S`) and sent as 6 waypoints 0.5 s apart. 418
+  scenarios ran on 24 Nov; kitti360 `scene-3000_3200-easy-00` crashed in the simulator
+  (patch 0004 above) and nuScenes `scene-0167-medium-01` failed to start, and both were
+  re-driven with `--resume` (the second with patch 0004 applied, uncommitted at the time:
+  the record says `dirty`). With it, `scene-3000_3200-easy-00` completed its route.
+  Trained only in CARLA, so this is zero-shot on real footage: 59.8% of its episodes end
+  hitting a vehicle, the most of any model here.
 - **† Alpamayo 2 Edge was driven later, by `paddock run`, not ingested.** 14-15 Nov 2026,
   one node on a shared RTX PRO 6000, through the harness and `launcher.py` on this branch
   rather than the campaign runner, so its record's run id is a plain `paddock run` id. Same
@@ -323,7 +344,7 @@ recorded none, so an older run keeps its id.
 | `bridge.py` is the bridge that drove the campaign | camera matrices, vehicle pose and the plans sent to HUGSIM match that bridge's own output to 1e-12 on a test rig (`tests/test_bridge.py`); its scipy rotations are replaced by numpy, equal to 7e-16 on 10,000 random rotations | **verified** |
 | Patch 0001 is the controller the campaign ran | the campaign applied PR #57 at run time; the patched `traj2control` gives bit-identical acceleration and steering rate on 200 random plans | **verified** |
 | Patch 0002 renders what the campaign rendered | the same code as the campaign's run-time replacement, moved into `_get_obs`; scores never read images | argued (read, not re-run) |
-| The three patches apply at the pinned sha | `git apply` on a clean checkout of `62c690d`, in order; the patched files equal the intended trees | **verified** |
+| The four patches apply at the pinned sha | `git apply` on a clean checkout of `62c690d`, in order; the patched files equal the intended trees | **verified** |
 | Patch 0003 lets scene-0166-medium-01 finish | the same guard, applied at run time, re-drove released Drive-JEPA on it: steps 0-59 identical to the crashed attempt (ego path, all 30 model calls), then on to the 400-step cap; 3,860 random IDM cases identical to upstream, finite on the 140 upstream raises on | **verified** |
 | The bridge sends the model's whole plan | `plan` read before `trajectory`, the horizon counted in time, cut at 8 (`tests/test_bridge.py`); end to end, every call of the 8-9 Nov campaign logged 8 waypoints sent for the six models that plan 4 s or more (AutoE2E plans 12, openpilot 20) and 6 for the two that plan 3 s | **verified** |
 | The Drive-JEPA node drove as main's adapter did on 22 Oct | the served adapter differs from `ac7788f` only by recording and a camera placement that is identical given the identity `lidar2ego`. Against a run of `ac7788f` itself on 7 scenarios: 5 identical to six decimals; the two longest (331 and 400 steps) diverged | argued, partly checked |

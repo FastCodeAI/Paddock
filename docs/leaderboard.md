@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-156 runs across 11 benchmarks.
+157 runs across 11 benchmarks.
 90 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -115,6 +115,7 @@
 | alpamayo15 | fullplan-f7d8f9d4b9736ddd-7ea973 | 420 | 0.238 | 0.546 | 35.709 | 0.708 | 0.895 | 0.652 | 0.635 |
 | visionpilot | fullplan-f7d8f9d4b9736ddd-92c0b7 | 420 | 0.163 | 0.352 | 34.545 | 0.676 | 0.943 | 0.489 | 0.078 |
 | meteor | fullplan-f7d8f9d4b9736ddd-241d7f | 420 | 0.162 | 0.307 | 32.460 | 0.483 | 0.814 | 0.357 | 0.532 |
+| simlingo | 20261124T041719-645041 | 420 | 0.120 | 0.209 | 36.104 | 0.462 | 0.924 | 0.299 | 0.127 |
 | vad | fullplan-f7d8f9d4b9736ddd-9d698c | 420 | 0.096 | 0.544 | 15.857 | 0.626 | 0.894 | 0.573 | 0.956 |
 | openpilot | fullplan-f7d8f9d4b9736ddd-cac3b5 | 420 | 0.061 | 0.735 | 6.996 | 0.841 | 0.883 | 0.826 | 1.000 |
 | autoe2e | fullplan-f7d8f9d4b9736ddd-4d9640 | 420 | 0.043 | 0.275 | 13.653 | 0.448 | 0.489 | 0.370 | 0.649 |

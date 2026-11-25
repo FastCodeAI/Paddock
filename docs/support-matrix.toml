@@ -292,6 +292,8 @@ hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" } 
 # --
 # navhard: added by its own results PR
 # --
+# Asked every 0.25 s step; driven by paddock run, not ingested (hugsim.md).
+hugsim = { run = "hugsim/simlingo/20261124T041719-645041" }
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }

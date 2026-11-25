@@ -99,6 +99,15 @@ Not in this pull request.
 
 Not in this pull request.
 
+### HUGSIM
+
+All 420 scenarios (`hugsim/simlingo/20261124T041719-645041`), `valid: true`: **HD-Score 0.120**
+(PDMS 0.209, route completion 36.1%), ninth of twelve, ahead of VAD, openpilot and AutoE2E. It
+drives further than METEOR or VisionPilot but hits a vehicle in 59.8% of episodes, the most of any
+model, and its comfort (0.127) is second lowest. Asked every 4 Hz step; its 2.5 s plan is padded to
+the 3 s sent. One scenario needed a simulator fix (`patches/HUGSIM/0004`); see
+[hugsim.md](../benchmarks/hugsim.md).
+
 ### Bench2Drive
 
 Not in this pull request.
