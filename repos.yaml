@@ -124,6 +124,11 @@ repos:
     sha: 1688c4b
     description: VAD (hustvl, ICCV 2023) on the OpenMMLab 1.x stack; the nuScenes VAD-Base checkpoint runs on it unpatched
 
+  HiP-AD:
+    url: https://github.com/nullmax-vision/HiP-AD.git
+    sha: 9610ed8
+    description: HiP-AD (Nullmax, ICCV 2025) on the OpenMMLab 1.x stack; the released Bench2Drive checkpoint runs on it unpatched
+
   Bench2DriveZoo:
     url: https://github.com/Thinklab-SJTU/Bench2DriveZoo.git
     sha: 498c1f7
