@@ -119,8 +119,8 @@
     }
   },
   "status": "complete",
-  "valid": true,
-  "superseded_by": "",
-  "notes": "",
+  "valid": false,
+  "superseded_by": "20261125T191256-bcd462",
+  "notes": "Superseded by 20261125T191256-bcd462: Made from a checkout with uncommitted changes, and before #228 fixed the VAD caffe normalisation; replaced by a clean run on 25 Nov 2026.",
   "ingested_from": ""
 }
