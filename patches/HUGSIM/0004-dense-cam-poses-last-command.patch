@@ -1,0 +1,27 @@
+Subject: [PATCH 4/4] dense_cam_poses: the last pose keeps a command, so the command list is as long as the poses
+
+Crash fix. dense_cam_poses densifies the route's camera poses and copies each segment's command
+onto the poses it adds, but appends the final pose without its command, so after it the command
+list is one entry shorter than the pose list. _get_info looks up commands[nearest_cam_idx]; when
+the ego is nearest the route's last pose, that index is one past the end -- IndexError in the
+simulator, and the episode dies with no score (hug_sim.py _get_info, kitti360
+scene-3000_3200-easy-00 with SimLingo: both attempts, after it drove to the route's end).
+
+Fix: the last pose takes the last command. Every pose and every earlier command is unchanged
+(checked on all 82 released scenes), and _get_info is the only reader of the list, so an episode
+that never reaches the last pose is unchanged.
+
+Not reachable from outside: the crash is inside the simulator. Upstreamable.
+
+diff --git a/sim/utils/sim_utils.py b/sim/utils/sim_utils.py
+--- a/sim/utils/sim_utils.py
++++ b/sim/utils/sim_utils.py
+@@ -91,6 +91,8 @@
+                 dense_poses.append(interp_pose)
+                 dense_cmds.append(cmds[i])
+         dense_poses.append(cam_poses[-1])
++        # The last pose takes the last command too, so commands[i] is defined for every pose.
++        dense_cmds.append(cmds[-1])
+         dense_poses = np.stack(dense_poses)
+         cam_poses = dense_poses
+         cmds = dense_cmds

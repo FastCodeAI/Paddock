@@ -110,6 +110,7 @@ PATCH_MARKERS = (
     ),
     ("sim/hugsim_env/envs/hug_sim.py", "HUGSIM_RENDER_CAMS", "0002-render-only-requested-cameras.patch"),
     ("sim/utils/agent_controller.py", "if lookahead_lengths.numel():", "0003-idm-one-point-lookahead.patch"),
+    ("sim/utils/sim_utils.py", "dense_cmds.append(cmds[-1])", "0004-dense-cam-poses-last-command.patch"),
 )
 
 #: What the bridge and the launcher import, checked in HUGSIM's interpreter by `preflight` so a missing

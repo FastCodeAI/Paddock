@@ -159,7 +159,7 @@ def test_patch_problems_on_an_unpatched_checkout(tmp_path: Path) -> None:
     (tmp_path / "sim/hugsim_env/envs/hug_sim.py").write_text("def _get_obs(self):\n")
     (tmp_path / "sim/utils/agent_controller.py").write_text("class IDM:\n    pass\n")
     problems = harness.patch_problems(tmp_path)
-    assert len(problems) == 3 and all(re.search(r"000[123]-", p) for p in problems)
+    assert len(problems) == 4 and all(re.search(r"000[1234]-", p) for p in problems)
 
 
 def test_frames_between_plans_are_recorded_for_a_model_asked_slower_than_its_history() -> None:

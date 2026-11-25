@@ -76,6 +76,7 @@ repos:
       - 0001-traj2control-heading-pr57.patch
       - 0002-render-only-requested-cameras.patch
       - 0003-idm-one-point-lookahead.patch
+      - 0004-dense-cam-poses-last-command.patch
 
   kitscenes:
     url: https://github.com/KIT-MRT/kitscenes.git
