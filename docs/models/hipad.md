@@ -92,6 +92,26 @@ comma2k19 sends one camera; the other five are black. AlpaSim re-renders its cam
 
 ## Results
 
+### Bench2Drive
+
+Not in this pull request.
+
+### HUGSIM
+
+Not in this pull request.
+
+### neuroNCAP
+
+Not in this pull request.
+
+### AlpaSim
+
+Not in this pull request.
+
+### nuScenes
+
+Not in this pull request.
+
 ### KITScenes
 
 All 223 keyframes (`kitscenes/hipad/20261125T174440-e12ba8`), `valid: true`: **ADE 5.345 m**, FDE at 3 s
@@ -101,6 +121,26 @@ the car is doing (correlation 0.18 with the distance driven). It reads no speed,
 and its memory of earlier frames, trained in CARLA. That memory is fed as HiP-AD's own agent feeds it (see
 *Verification*), and the command's stand-in target point does not set the speed: 10 m, 20 m or 40 m ahead,
 the planned 3 s distance moved by under 1 m on 20 keyframes.
+
+### comma2k19
+
+Not in this pull request.
+
+### NAVSIM v1
+
+Not in this pull request.
+
+### NAVSIM v2
+
+Not in this pull request.
+
+### navhard
+
+Not in this pull request.
+
+### nuPlan
+
+Not in this pull request.
 
 ## Verification
 
