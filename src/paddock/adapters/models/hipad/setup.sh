@@ -13,7 +13,9 @@
 #   (default 12.0, Blackwell; set it for your card). About a minute.
 #
 # The README's own pins (torch 1.13 + CUDA 11.7) have no kernels for recent GPUs. Every pin below is the
-# one the agent comparison passed with (docs/models/hipad.md, "Verification").
+# one the agent comparison passed with (docs/models/hipad.md, "Verification"). Untested end to end as a
+# script: the env those checks ran in was a copy of an existing UniAD/VAD env with the steps below run by
+# hand, the same steps, in the same order.
 
 set -euo pipefail
 
