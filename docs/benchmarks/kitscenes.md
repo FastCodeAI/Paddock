@@ -8,7 +8,7 @@
 | Dataset | `kitscenes` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/kitscenes/`](../../src/paddock/adapters/benchmarks/kitscenes/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [hipad](../models/hipad.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -69,8 +69,9 @@ A run over any other list carries a different `sequences_sha256` in its
 | autoe2e | `20261020T220509-dee848` | 223 | 0.847 | a paddock run; six cameras, the scene's map and an **oracle route**; **adapted**, fine-tuned on KITScenes train, see below |
 | uniad | `20261109T082536-b881a6` | 223 | 2.073 | a paddock run; the six ring cameras, UniAD 1.0 base nuScenes checkpoint |
 | vad | `20261120T124311-06a1d5` | 223 | 1.619 | a paddock run; the six ring cameras, VAD-Base nuScenes checkpoint |
+| hipad | `20261125T174440-e12ba8` | 223 | 5.345 | a paddock run; the six ring cameras, the released Bench2Drive (CARLA) checkpoint; the target point from the command; see below |
 
-All ten carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
+All eleven carry `sequences_sha256: 80665529bea7f500` — the same 223 keyframes,
 so the column compares.
 
 openpilot's row is its configured run. Its other ranked runs on the same 223
@@ -641,4 +642,14 @@ nuScenes checkpoints, zero-shot here, given all six ring cameras.
 | AutoE2E | 0.847 ⊞ | 1.903 ⊞ |
 | UniAD | 2.073 | 3.845 |
 | VAD | 1.619 | 3.431 |
+| HiP-AD | 5.345 | 10.314 |
 | Baseline (Constant Velocity) | 1.381 | 3.091 |
+
+**HiP-AD is trained only in CARLA, and this is its first real camera footage** (`20261125T174440-e12ba8`).
+It is last of the eleven here, far behind the constant-velocity floor (1.381): ADE 5.345, FDE at 3 s 10.314,
+of which 5.20 m along the path and 0.66 m across it, so nearly all the error is speed. It plans about the same
+distance whatever the car is doing: 15.6 m in 3 s on average where the car drove under 5 m, 20.3 m where it
+drove over 30 m. HiP-AD reads no speed; it has only its cameras and its memory of earlier frames to judge it
+by, and it was trained on CARLA's. KITScenes sends no route, so its target point comes from the command
+([docs/models/hipad.md](../models/hipad.md#kitscenes)); on 20 keyframes, moving that point from 10 m to
+40 m ahead moved the planned 3 s distance by under 1 m.
