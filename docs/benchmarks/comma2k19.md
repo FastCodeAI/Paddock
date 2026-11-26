@@ -8,7 +8,7 @@
 | Dataset | `comma2k19` |
 | Primary metric | `ade` |
 | Adapter | [`adapters/benchmarks/comma2k19/`](../../src/paddock/adapters/benchmarks/comma2k19/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [constant_velocity](../models/constant_velocity.md), [drivejepa](../models/drivejepa.md), [hipad](../models/hipad.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -102,6 +102,7 @@ row is read with it.
 | Qwen-Drive | the road frame in its front view; its front-left and front-right views are black, because the model has no flag for a missing camera. The run's diagnostics list them as `blank_views` |
 | Drive-JEPA | the road frame in its front view; its front-left, front-right and back views are black. The model keeps only its front camera, so they never reach the plan; they are there because its loader expects four. The run's diagnostics list them as `blank_views` |
 | UniAD, VAD | the road frame as CAM_FRONT, at its own intrinsics and mount; their five other slots are black at nuScenes' own calibration of them, because the spatial cross-attention projects every BEV point through all six. The run's diagnostics list them as `blank_views` |
+| HiP-AD | the road frame as CAM_FRONT, at its own intrinsics and mount; its five other slots are black at nuScenes' own calibration of them, as UniAD's and VAD's are (the same shared code). comma2k19 sends no route, so its target point comes from the command. The run's diagnostics list the black slots as `blank_views` |
 | VisionPilot | its one camera |
 | constant velocity | no image |
 
@@ -672,7 +673,7 @@ recorded samples rather than by eye so that "a curve" means a measured one:
 | sustained curve | speed > 20 m/s, \|yaw rate\| > 0.06 rad/s | `4/99c94dc769b5d96e\|2018-06-27--15-03-44/18/998` |
 | pull-away from low speed | lowest speeds, ranked by distance covered over the horizon — 2.65 m/s travelling 20.7 m, so a real departure and not a parked car | `8/99c94dc769b5d96e\|2018-08-17--15-51-25/6/999` |
 
-One sample id addresses the same scene for every row, because all nine runs score
+One sample id addresses the same scene for every row, because all twelve runs score
 the identical sample set. The mp4s land in `{runs}/comma2k19/_samples/` and are
 not tracked — they are tens of megabytes and regenerate from the stored runs.
 
@@ -749,7 +750,7 @@ into the car's frame too.
 ## Recorded results
 
 The full dataset, 10,165 samples, every row on the identical sample set
-(`sequences_sha256` `293a225a0b5cbaff` in all nine run records). A model is
+(`sequences_sha256` `293a225a0b5cbaff` in all twelve run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
@@ -902,8 +903,10 @@ Its plan is also much smoother than supercombo's: `comfort_within_bounds` 0.991
 against 0.322, and `comfort_lon_jerk_max` 0.58 m/s³ against 5.05 — see the jerk
 result below, which is the same measurement from the other side.
 
-Of the nine, only openpilot and visionpilot publish auxiliary heads through
-`Trajectory.extras`; alpamayo15, alpamayo2edge and qwendrive emit a trajectory and nothing else,
+Of the twelve, only openpilot and visionpilot publish auxiliary heads through
+`Trajectory.extras`; alpamayo15, alpamayo2edge, qwendrive and constant velocity emit a trajectory and
+nothing else, as uniad, vad and hipad do here (theirs carry a route command only where a route decided it,
+and comma2k19 sends none),
 and autoe2e's, meteor's and drivejepa's extras are their own diagnostics, so every
 metric in the next two paragraphs is `NaN` for them.
 That is the intended behaviour of one declared metric list rather than a
@@ -1127,7 +1130,7 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 place a keyframe at all, so it is 2033 × 5 (`{0: 2, 5: 2033}`) — derived, with
 both segments named, in [docs/datasets/comma2k19.md](../datasets/comma2k19.md).
 Every row is over the identical sample set (`sequences_sha256 =
-293a225a0b5cbaff` in all nine `run.json`), and every row was re-run in November
+293a225a0b5cbaff` in all twelve `run.json`), and every row was re-run in November
 2026 and scored against a ground truth in the car's frame (see [Recorded
 results](comma2k19.md#recorded-results)). **Alpamayo 2 Edge leads at every horizon
 from 1 s to 5 s, on the mean and the median, on one camera** (0.438 at 3 s): four of its
@@ -1182,7 +1185,15 @@ padded. Lower is better throughout.
 | VAD | 3 s | 5.852 | 9.826 | 13.850 | — | — | — | 23.932 | 16.534 | 0.790 |
 | UniAD | 3 s | 6.242 | 10.538 | 14.917 | — | — | — | 25.928 | 18.008 | 0.679 |
 | Drive-JEPA ⟲ | 4 s | 7.469 | 13.070 | 18.740 | 24.368 | — | — | 32.869 | 23.401 | 0.622 |
+| HiP-AD | 3 s | 10.276 | 18.246 | 26.725 | — | — | — | 47.939 | 32.386 | 0.441 |
 | METEOR | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.034 |
+
+**HiP-AD's 26.725 is a reach failure too** (`20261125T174735-904013`): its plans cover 20.9 m on
+average where the car drove 65.9 m, and its along-track error, 26.58 m, is almost all of it. Its plans are
+well shaped: 0.185 m lateral error at matched arc length, near OpenPilot's 0.135. HiP-AD is trained only in
+CARLA and reads no speed; it judges speed from its camera and its memory of earlier frames
+([docs/models/hipad.md](../models/hipad.md#comma2k19)). Four keyframes failed once and were scored on
+`--resume`.
 
 **VAD and UniAD plan no faster than about 18 m/s,** the top of the nuScenes city
 driving their released checkpoints were trained on, while two thirds of these

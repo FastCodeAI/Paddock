@@ -67,6 +67,11 @@ cd /tmp/pr-<N> && make check; echo "exit=$?"
   root whose `samples/CAM_*` hold the scenes). `make check` runs their paddock-env tests only, among them that
   the harness sends those scenes' keyframes what the repos' datasets gave them. A PR that touches
   `adapters/benchmarks/nuscenes/` needs it too. If your site has no such env, say so in the review.
+- A PR that touches the HiP-AD adapter (`src/paddock/adapters/models/hipad/`) needs `make check-hipad
+  HIPAD_PY=<python> HIPAD_REPO=<repo> HIPAD_CHECKPOINT=<pth> HIPAD_FRAMES=<dir>` too: HiP-AD's own CARLA
+  agent and the adapter, fed the same frames, must give the model the same inputs and the same first plan.
+  It needs HiP-AD's env, the GPU and the checkpoint, so `make check` runs its paddock-env tests only. If
+  your site has no such env, say so in the review.
 - If the site has a checkout of the upstream tool the PR shells out to (CARLA,
   neuro-ncap, NAVSIM's devkit), open it and verify the flags, file layouts and
   output schema the PR assumes. "Matches the 0.0.4 checkout" is a verified
@@ -235,6 +240,7 @@ And the structure:
 - [ ] `make check-alpamayo` run if the Alpamayo 1.5 adapter changed, or marked not run
 - [ ] `make check-alpamayo2edge` run if the Alpamayo 2 Edge adapter changed, or marked not run
 - [ ] `make check-uniad-vad` run if a UniAD / VAD adapter changed, or marked not run
+- [ ] `make check-hipad` run if the HiP-AD adapter changed, or marked not run
 - [ ] upstream flags / schemas verified against a real checkout, or marked argued
 - [ ] every external import and path is preflighted and documented
 - [ ] scorer failure statuses raise `RuntimeError`; poor outcomes still score
