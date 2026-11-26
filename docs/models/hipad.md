@@ -93,10 +93,14 @@ comma2k19 sends one camera; the other five are black. AlpaSim re-renders its cam
 ## Verification
 
 - **Against HiP-AD's own agent** (`tests/agent_reference.py`, `make check-hipad`): the agent's code at the
-  pinned sha, with CARLA stubbed, and the adapter fed the same three frames of six real 1600x900 cameras on
-  Bench2Drive's rig, the adapter through the calibration paddock's Bench2Drive client computes. Every input
-  equal: the camera projections and the image tensor exactly, the command exactly, the target point and
-  the pose to 1e-14. The first plan (both memories empty) equal to 2.1e-4 m (fp16). Run 25 Nov 2026. **verified**
+  pinned sha, with CARLA stubbed and switched to one temporal memory (HiP-AD's open-loop mode, which the
+  adapter runs), and the adapter, fed the same six frames, 0.5 s apart, of six real 1600x900 cameras on
+  Bench2Drive's rig, the adapter through the calibration paddock's Bench2Drive client computes. On every
+  frame, every input equal: the camera projections, the image tensor, the command and the timestamp
+  exactly, the target point and the pose to 1e-14. On every frame the plan equal to within 2.5 mm, so the
+  temporal memory is fed what HiP-AD's own code feeds it. Plans are not bit-equal: fp16 and flash-attention
+  are not bit-reproducible, and the memory carries the rounding on (one run differed by up to 4 cm; two
+  runs of one model on one KITScenes set by up to 0.17 m). Run 26 Nov 2026. **verified**
 - **Paddock's own env** (`tests/test_policy.py`, in `make check`): the command and lane-change mapping,
   the route planner's choice of target point, the stand-in target points, the axes, the image pipeline's
   numbers, and the policy contract on a stub model.

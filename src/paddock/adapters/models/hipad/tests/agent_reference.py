@@ -15,10 +15,12 @@ compass, speedometer and the six cameras, as CARLA would hand them. The adapter 
 as paddock's Bench2Drive client sends it: the rig's calibration as ``agent.py`` builds it, the pose, and
 the route around the car.
 
-Compared on every frame: the camera projections, the image tensor, the command, the target point and the
-frame's pose. On the first frame, the plan: HiP-AD's agent keeps ten temporal memories (``with_close_loop``)
-and the adapter one, and both start empty, so the first plan must be the same; later ones are not
-comparable by construction (policy.py, *Rate*).
+Compared on every frame: the camera projections, the image tensor, the command, the target point, the
+frame's pose and its timestamp; and on every frame, the plan. HiP-AD's agent keeps ten temporal memories
+(``with_close_loop``), each stepped every tenth call; the adapter keeps one, stepped every call (policy.py,
+*Rate*). Here the agent
+is switched to one memory after it is built, so both step one memory 0.5 s at a time and every plan is
+comparable: the frames after the first check what the memory is fed, its timestamps and poses.
 """
 
 from __future__ import annotations
@@ -95,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("repo")
     parser.add_argument("checkpoint")
     parser.add_argument("frames_dir")
-    parser.add_argument("--frames", type=int, default=3)
+    parser.add_argument("--frames", type=int, default=6)
     args = parser.parse_args(argv)
 
     import cv2
@@ -133,6 +135,10 @@ def main(argv: list[str] | None = None) -> int:
     agent_module.Config.fromfile = staticmethod(fromfile)
     agent = agent_module.SparseAgent()
     agent.setup(f"{config}+{args.checkpoint}+reference")
+    # One temporal memory, as the adapter runs HiP-AD (policy.py, *Rate*): HiP-AD's own open-loop mode.
+    head = agent.model.head.onedecoder_head
+    head.with_close_loop = False
+    head.init_instance_bank_list()
     agent.lat_ref, agent.lon_ref = 0.0, 0.0
     # A straight route east (CARLA +x), points 10 m behind to 200 m ahead, every 50 m, LANEFOLLOW.
     route_x = [-10.0, 0.0, 50.0, 100.0, 150.0, 200.0]
@@ -224,13 +230,16 @@ def main(argv: list[str] | None = None) -> int:
         compare("gt_ego_fut_cmd", a["gt_ego_fut_cmd"], b["gt_ego_fut_cmd"], 0)
         compare("target_point", a["target_point"], b["target_point"], 1e-3)
         compare("T_global", a["img_metas"][0]["T_global"], b["img_metas"][0]["T_global"], 1e-6)
-        if i == 0:
-            compare(
-                "plan_speed_2hz",
-                seen[-1]["outputs"][0]["img_bbox"]["plan_speed_2hz"],
-                fed[-1]["outputs"][0]["img_bbox"]["plan_speed_2hz"],
-                1e-3,
-            )
+        compare("timestamp", a["timestamp"], b["timestamp"], 1e-9)
+        compare(
+            "plan_speed_2hz",
+            seen[-1]["outputs"][0]["img_bbox"]["plan_speed_2hz"],
+            fed[-1]["outputs"][0]["img_bbox"]["plan_speed_2hz"],
+            # Equal inputs, but not bit-equal plans: fp16 and flash-attention are not bit-reproducible,
+            # and the memory carries a frame's rounding into the next. Two runs of one model on one
+            # KITScenes set differed by up to 0.17 m; a wrong timestamp or pose moves a plan by metres.
+            0.1,
+        )
     print("PASS" if not failures else f"FAIL: {', '.join(failures)}")
     return 0 if not failures else 1
 
