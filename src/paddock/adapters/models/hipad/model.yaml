@@ -31,7 +31,8 @@ runtime:
 capabilities:
   # In the model's own order (the agent's CAMERA).
   cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT]
-  vram_gb: 6
+  # Measured 1.8 GB for the node (0.85 GB allocated at peak), 26 Nov 2026.
+  vram_gb: 3
   startup_timeout_s: 900
   waypoint_dt: 0.5
   # Its temporal memory steps 0.5 s at a time, as it trained (policy.py, *Rate*).

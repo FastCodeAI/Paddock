@@ -47,6 +47,8 @@ real camera footage it has never seen.
     (`TORCH_CUDA_ARCH_LIST`; 12.0 here). About a minute.
 
   The README's own pins (torch 1.13 + CUDA 11.7, mmcv-full 1.7.1) have no kernels for recent GPUs.
+  `setup.sh` has not run end to end: the env the checks below ran in was a copy of an existing UniAD/VAD
+  env, with the script's own steps run by hand in its order.
 
 ## How paddock drives it
 
