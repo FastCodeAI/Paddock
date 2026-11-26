@@ -282,9 +282,26 @@ hugsim = { run = "hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c", note =
 # Trained only in Bench2Drive's CARLA set, so every cell but bench2drive is zero-shot on real camera footage.
 # Where a benchmark sends no route, the target point comes from the command (docs/models/hipad.md).
 # --
+# bench2drive: added by its own results PR
+# --
+# hugsim: added by its own results PR
+# --
+# neuroncap: added by its own results PR
+# --
+# alpasim: added by its own results PR
+# --
+# nuscenes: added by its own results PR
+# --
 kitscenes = { run = "kitscenes/hipad/20261125T174440-e12ba8" }
 # --
-# each other cell: added by its own results PR
+# comma2k19: added by its own results PR
+# --
+# navsim_v1: added by its own results PR
+# --
+# navsim: added by its own results PR
+# --
+# navhard: added by its own results PR
+# --
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
