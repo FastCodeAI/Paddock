@@ -90,6 +90,52 @@ navhard score 4 s, so they need the plan continued past its 3 s (`HIPAD_HORIZON_
 comma2k19 sends one camera; the other five are black. AlpaSim re-renders its cameras as nuScenes' rig
 (`alpasim.yaml`, VAD's profile) and sends its route.
 
+## Results
+
+### Bench2Drive
+
+Not in this pull request.
+
+### HUGSIM
+
+Not in this pull request.
+
+### neuroNCAP
+
+Not in this pull request.
+
+### AlpaSim
+
+Not in this pull request.
+
+### nuScenes
+
+Not in this pull request.
+
+### KITScenes
+
+Not in this pull request.
+
+### comma2k19
+
+Not in this pull request.
+
+### NAVSIM v1
+
+Not in this pull request.
+
+### NAVSIM v2
+
+Not in this pull request.
+
+### navhard
+
+Not in this pull request.
+
+### nuPlan
+
+Not in this pull request.
+
 ## Verification
 
 - **Against HiP-AD's own agent** (`tests/agent_reference.py`, `make check-hipad`): the agent's code at the
