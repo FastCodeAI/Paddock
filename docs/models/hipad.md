@@ -120,7 +120,11 @@ Not in this pull request.
 
 ### comma2k19
 
-Not in this pull request.
+All 10,165 keyframes (`comma2k19/hipad/20261125T174735-904013`), `valid: true`: **ADE@3s 26.725 m**, FDE@3s
+47.939 m. Tenth of eleven, ahead of METEOR only. A reach failure: its plans cover 20.9 m on average where the
+car drove 65.9 m on the highway, so 26.58 m of the error is along the path and 0.68 m across it; at matched
+arc length its lateral error is 0.185 m. The road camera is CAM_FRONT and its five other slots are black; the
+target point comes from the command. Four keyframes failed once and were scored on `--resume`.
 
 ### NAVSIM v1
 

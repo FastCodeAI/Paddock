@@ -102,6 +102,7 @@ row is read with it.
 | Qwen-Drive | the road frame in its front view; its front-left and front-right views are black, because the model has no flag for a missing camera. The run's diagnostics list them as `blank_views` |
 | Drive-JEPA | the road frame in its front view; its front-left, front-right and back views are black. The model keeps only its front camera, so they never reach the plan; they are there because its loader expects four. The run's diagnostics list them as `blank_views` |
 | UniAD, VAD | the road frame as CAM_FRONT, at its own intrinsics and mount; their five other slots are black at nuScenes' own calibration of them, because the spatial cross-attention projects every BEV point through all six. The run's diagnostics list them as `blank_views` |
+| HiP-AD | the road frame as CAM_FRONT, at its own intrinsics and mount; its five other slots are black at nuScenes' own calibration of them, as UniAD's and VAD's are (the same shared code). comma2k19 sends no route, so its target point comes from the command. The run's diagnostics list the black slots as `blank_views` |
 | VisionPilot | its one camera |
 | constant velocity | no image |
 
@@ -749,7 +750,7 @@ into the car's frame too.
 ## Recorded results
 
 The full dataset, 10,165 samples, every row on the identical sample set
-(`sequences_sha256` `293a225a0b5cbaff` in all nine run records). A model is
+(`sequences_sha256` `293a225a0b5cbaff` in all ten run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
@@ -1127,7 +1128,7 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 place a keyframe at all, so it is 2033 × 5 (`{0: 2, 5: 2033}`) — derived, with
 both segments named, in [docs/datasets/comma2k19.md](../datasets/comma2k19.md).
 Every row is over the identical sample set (`sequences_sha256 =
-293a225a0b5cbaff` in all nine `run.json`), and every row was re-run in November
+293a225a0b5cbaff` in all ten `run.json`), and every row was re-run in November
 2026 and scored against a ground truth in the car's frame (see [Recorded
 results](comma2k19.md#recorded-results)). **Alpamayo 2 Edge leads at every horizon
 from 1 s to 5 s, on the mean and the median, on one camera** (0.438 at 3 s): four of its
@@ -1182,7 +1183,15 @@ padded. Lower is better throughout.
 | VAD | 3 s | 5.852 | 9.826 | 13.850 | — | — | — | 23.932 | 16.534 | 0.790 |
 | UniAD | 3 s | 6.242 | 10.538 | 14.917 | — | — | — | 25.928 | 18.008 | 0.679 |
 | Drive-JEPA ⟲ | 4 s | 7.469 | 13.070 | 18.740 | 24.368 | — | — | 32.869 | 23.401 | 0.622 |
+| HiP-AD | 3 s | 10.276 | 18.246 | 26.725 | — | — | — | 47.939 | 32.386 | 0.441 |
 | METEOR | 3 s | 11.841 | 21.621 | 30.167 | — | — | — | 51.507 | 37.395 | 0.034 |
+
+**HiP-AD's 26.725 is a reach failure too** (`20261125T174735-904013`): its plans cover 20.9 m on
+average where the car drove 65.9 m, and its along-track error, 26.58 m, is almost all of it. Its plans are
+well shaped: 0.185 m lateral error at matched arc length, near OpenPilot's 0.135. HiP-AD is trained only in
+CARLA and reads no speed; it judges speed from its camera and its memory of earlier frames
+([docs/models/hipad.md](../models/hipad.md#comma2k19)). Four keyframes failed once and were scored on
+`--resume`.
 
 **VAD and UniAD plan no faster than about 18 m/s,** the top of the nuScenes city
 driving their released checkpoints were trained on, while two thirds of these

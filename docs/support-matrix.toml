@@ -294,7 +294,7 @@ hugsim = { run = "hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c", note =
 # --
 # kitscenes: added by its own results PR
 # --
-# comma2k19: added by its own results PR
+comma2k19 = { run = "comma2k19/hipad/20261125T174735-904013" }  # the road camera as CAM_FRONT, its five other slots black
 # --
 # navsim_v1: added by its own results PR
 # --

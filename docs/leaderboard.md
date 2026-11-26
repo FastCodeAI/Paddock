@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-158 runs across 11 benchmarks.
+159 runs across 11 benchmarks.
 100 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -98,6 +98,7 @@
 | vad | 20261121T043612-597a2d | 10165 | 13.850 | 7.815 | 15.808 | 23.932 | 3.000 | 5.852 | 9.826 |
 | uniad | 20261112T213250-a862cc | 10165 | 14.917 | 8.369 | 16.995 | 25.928 | 3.000 | 6.242 | 10.538 |
 | drivejepa [2] | 20261111T074533-0f26ee | 10165 | 18.740 | 10.322 | 21.631 | 32.869 | 4.000 | 7.469 | 13.070 |
+| hipad | 20261125T174735-904013 | 10165 | 26.725 | 13.929 | 30.531 | 47.939 | 3.000 | 10.276 | 18.246 |
 | meteor | 20261106T064120-226c00 | 10165 | 30.167 | 16.702 | 35.804 | 51.507 | 3.000 | 11.841 | 21.621 |
 
 - [1] alpamayo2edge: slots with no source camera fed black frames; the front and telephoto real
