@@ -113,8 +113,8 @@ Not in this pull request.
 ### nuScenes
 
 All 5,119 keyframes (`nuscenes/hipad/20261125T174612-255a76`), `valid: true`: **cumulative L2 3.108 m**,
-L2 2.219 / 5.426 / 8.484 m at 1 / 2 / 3 s, collisions 5.46%. Last of the eleven models. Mostly speed: at 3 s,
-7.22 m of error along the path and 1.34 m across it, and it plans 14.0 m in 3 s where the car moved under 5 m
+L2 2.219 / 5.426 / 8.484 m at 1 / 2 / 3 s, collisions 5.46%. Last of the eleven models. Mostly speed: at 3 s, on the
+keyframes where the car moved over 1 m, 7.22 m of error along the path and 1.34 m across it, and it plans 14.0 m in 3 s where the car moved under 5 m
 (correlation 0.50 with the distance driven). Two keyframes failed once and were scored on `--resume`. The
 target point comes from each keyframe's command, nuScenes sending no route.
 
