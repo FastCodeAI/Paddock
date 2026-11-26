@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-158 runs across 11 benchmarks.
+159 runs across 11 benchmarks.
 100 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -145,6 +145,7 @@
 | uniad | 20261109T082536-b881a6 | 223 | 2.073 | 1.122 | 2.253 | 3.845 | - | - | - |
 | drivejepa [5] | 20261111T054224-9f8371 | 223 | 2.188 | 1.242 | 2.453 | 3.867 | - | - | - |
 | meteor | 20260914T185351-5e5223 | 223 | 4.784 | 2.334 | 5.542 | 9.011 | - | - | - |
+| hipad | 20261125T174440-e12ba8 | 223 | 5.345 | 2.292 | 6.154 | 10.314 | - | - | - |
 
 - [1] openpilot: desire input mode set to turn; the default, off, sends none
 - [2] openpilot: camera height taken as 1.22x openpilot's to fit this dataset's rig

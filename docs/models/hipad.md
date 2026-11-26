@@ -90,6 +90,18 @@ navhard score 4 s, so they need the plan continued past its 3 s (`HIPAD_HORIZON_
 comma2k19 sends one camera; the other five are black. AlpaSim re-renders its cameras as nuScenes' rig
 (`alpasim.yaml`, VAD's profile) and sends its route.
 
+## Results
+
+### KITScenes
+
+All 223 keyframes (`kitscenes/hipad/20261125T174440-e12ba8`), `valid: true`: **ADE 5.345 m**, FDE at 3 s
+10.314 m; 5.20 m of error along the path and 0.66 m across it. Last of the eleven models, far behind the
+constant-velocity floor (1.381). It steers well and misjudges speed: it plans about 16-20 m in 3 s whatever
+the car is doing (correlation 0.18 with the distance driven). It reads no speed, and judges it from cameras
+and its memory of earlier frames, trained in CARLA. That memory is fed as HiP-AD's own agent feeds it (see
+*Verification*), and the command's stand-in target point does not set the speed: 10 m, 20 m or 40 m ahead,
+the planned 3 s distance moved by under 1 m on 20 keyframes.
+
 ## Verification
 
 - **Against HiP-AD's own agent** (`tests/agent_reference.py`, `make check-hipad`): the agent's code at the

@@ -496,8 +496,10 @@
 <text x="20" y="657" class="ink" font-size="14" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="start" font-weight="600">HiP-AD</text>
 <rect class="miss" x="219" y="630.5" width="72" height="43" rx="4"/>
 <text x="255" y="656" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
-<rect class="miss" x="294" y="630.5" width="72" height="43" rx="4"/>
-<text x="330" y="656" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
+<rect class="r6" x="294" y="630.5" width="72" height="43" rx="4"/>
+<text x="330" y="651.5" class="t6" font-size="14" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" text-anchor="middle" font-weight="600">5.345</text>
+<text x="330" y="666.5" class="t6" font-size="10.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle" opacity="0.85">#12</text>
+<path class="worse" d="M297 633.5h10l-5 8.5z" stroke-width="1.5"/>
 <rect class="miss" x="369" y="630.5" width="72" height="43" rx="4"/>
 <text x="405" y="656" class="sec" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" text-anchor="middle">—</text>
 <rect class="miss" x="444" y="630.5" width="72" height="43" rx="4"/>
