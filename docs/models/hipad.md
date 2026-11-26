@@ -100,4 +100,6 @@ comma2k19 sends one camera; the other five are black. AlpaSim re-renders its cam
 - **Paddock's own env** (`tests/test_policy.py`, in `make check`): the command and lane-change mapping,
   the route planner's choice of target point, the stand-in target points, the axes, the image pipeline's
   numbers, and the policy contract on a stub model.
-- **Each benchmark, end to end:** smoke-tested on one scene or a few samples each; see the PR.
+- **Each benchmark:** `paddock run --dry-run` (the pre-run checks) passes for every benchmark in
+  `model.yaml` except NAVSIM v2, whose metric cache this site's account cannot read, and nuPlan, whose
+  `mini` split is not on this site. nuScenes and KITScenes were driven end to end on 5 samples each.
