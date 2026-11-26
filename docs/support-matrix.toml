@@ -290,7 +290,7 @@ hugsim = { run = "hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c", note =
 # --
 # alpasim: added by its own results PR
 # --
-# nuscenes: added by its own results PR
+nuscenes = { run = "nuscenes/hipad/20261125T174612-255a76" }
 # --
 # kitscenes: added by its own results PR
 # --

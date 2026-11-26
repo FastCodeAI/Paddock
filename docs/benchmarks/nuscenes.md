@@ -483,7 +483,16 @@ history, CUDA inference, CPU camera warping and resume assistance disabled.
 | AutoE2E ⧗ | 0.553 | 1.444 | 2.697 | 1.565 | 0.839 | 1.319 | 1.862 |
 | UniAD ⊡ | 0.533 | 1.075 | 1.891 | 1.166 | 0.706 | 1.008 | 1.869 |
 | VAD ⊡ | 0.526 | 1.129 | 1.949 | 1.201 | 0.705 | 1.031 | 1.309 |
+| HiP-AD | 2.219 | 5.426 | 8.484 | 5.376 | 3.108 | 4.645 | 5.464 |
 | Baseline (Constant Velocity) | 0.372 | 1.151 | 2.340 | 1.288 | 0.641 | 1.069 | 1.661 |
+
+**HiP-AD is trained only in CARLA, and this is its first real camera footage** (`20261125T174612-255a76`).
+Cumulative L2 3.108 m, last of the eleven, behind OpenPilot (2.477) and the constant-velocity floor (0.641).
+The error grows with the horizon (2.219 m at 1 s, 8.484 m at 3 s) and is mostly speed: at 3 s, 7.22 m along
+the path against 1.34 m across it. It plans 14.0 m in 3 s on average where the car moved under 5 m, and 22.3 m
+where it moved over 15 m (correlation 0.50 with the distance driven). HiP-AD reads no speed; it judges it from
+its six cameras and its memory of earlier frames, and it was trained only on CARLA's. nuScenes sends no route,
+so its target point comes from each keyframe's command ([docs/models/hipad.md](../models/hipad.md#nuscenes)).
 
 Point L2 averages errors at 1, 2 and 3 seconds. Cumulative L2 averages the three
 prefix means; ADE at 3 seconds averages all six half-second errors. Collision
