@@ -130,7 +130,7 @@ focal length without anything failing.
 
 ## Results
 
-All nine models are scored on the full set of **351 scorable anchors**, one
+All eleven models are scored on the full set of **351 scorable anchors**, one
 shared sample set. Each cell is the mean from one committed record under
 `results/nuplan/`. Each model has one ranked record; the earlier runs are marked
 superseded and kept on disk. The leaderboard's nuPlan section has the same table
@@ -142,15 +142,17 @@ with the run ids.
 | alpamayo15 | 0.684 | 0.197 | 0.728 | 1.579 | 0.604 | 0.170 | 0.970 |
 | alpamayo2edge | 0.689 | 0.312 | 0.756 | 1.390 | 0.623 | 0.161 | 0.973 |
 | autoe2e | 0.826 | 0.270 | 0.885 | 1.855 | 0.636 | 0.355 | 0.960 |
+| vad | 0.855 | 0.362 | 0.894 | 1.809 | 0.667 | 0.328 | 0.955 |
 | openpilot | 0.922 | 0.457 | 1.021 | 1.744 | 0.853 | 0.198 | 0.937 |
+| uniad | 1.090 | 0.564 | 1.131 | 2.113 | 0.911 | 0.398 | 0.928 |
 | drivejepa | 1.249 | 0.543 | 1.345 | 2.543 | 1.201 | 0.167 | 0.967 |
 | constant_velocity | 1.255 | 0.390 | 1.353 | 2.833 | 1.086 | 0.317 | 0.873 |
 | visionpilot | 1.707 | 0.815 | 1.779 | 3.298 | 1.336 | 0.676 | 0.874 |
 | meteor | 1.966 | 0.747 | 2.127 | 4.211 | 1.718 | 0.636 | 0.880 |
 
-Six of the other eight models beat constant velocity on ADE, Drive-JEPA by only 0.006 m.
+Eight of the other ten models beat constant velocity on ADE, Drive-JEPA by only 0.006 m.
 VisionPilot and METEOR do not. On pdm_ep constant velocity is the lowest of the
-nine, at 0.873.
+eleven, at 0.873.
 
 Caveats that travel with individual rows:
 
@@ -192,7 +194,7 @@ including model load; METEOR did the same set in 27 s on GPU.
 
 **Verified**: the full path runs end to end — sample construction, selection,
 ground truth, calibration decoding, camera-path resolution, inference and
-scoring — and all nine models are scored on one shared sample set. The golden tests
+scoring — and all eleven models are scored on one shared sample set. The golden tests
 build a synthetic log and run with no dataset, no devkit and no GPU. The
 adapter has been exercised at a second site, on a different nuPlan copy and
 split, with no devkit present.
@@ -207,7 +209,7 @@ full 351-anchor set is scored.
 
 ## Support-matrix results
 
-nuPlan has no column in the README's support matrix yet. All nine models are
+nuPlan has no column in the README's support matrix yet. All eleven models are
 ranked on the full 351 anchors (see [Results](#results)); the column waits on one
 check, whether Qwen-Drive was trained on these logs. The per-metric results and
 their notes stay here as the record. Each note below starts with the mark it
@@ -216,7 +218,7 @@ explains. Marks about a model rather than this benchmark (∗ ◊ ◇ ✦ ✧) a
 
 ### Notes on these runs
 
-◐ **All nine models are ranked on the full set** of 351 scorable anchors, one
+◐ **All eleven models are ranked on the full set** of 351 scorable anchors, one
 ranked record each. The earlier runs are superseded and kept on disk; the table in
 [Results](#results) is the ranked set.
 
