@@ -673,7 +673,7 @@ recorded samples rather than by eye so that "a curve" means a measured one:
 | sustained curve | speed > 20 m/s, \|yaw rate\| > 0.06 rad/s | `4/99c94dc769b5d96e\|2018-06-27--15-03-44/18/998` |
 | pull-away from low speed | lowest speeds, ranked by distance covered over the horizon — 2.65 m/s travelling 20.7 m, so a real departure and not a parked car | `8/99c94dc769b5d96e\|2018-08-17--15-51-25/6/999` |
 
-One sample id addresses the same scene for every row, because all nine runs score
+One sample id addresses the same scene for every row, because all twelve runs score
 the identical sample set. The mp4s land in `{runs}/comma2k19/_samples/` and are
 not tracked — they are tens of megabytes and regenerate from the stored runs.
 
@@ -750,7 +750,7 @@ into the car's frame too.
 ## Recorded results
 
 The full dataset, 10,165 samples, every row on the identical sample set
-(`sequences_sha256` `293a225a0b5cbaff` in all ten run records). A model is
+(`sequences_sha256` `293a225a0b5cbaff` in all twelve run records). A model is
 scored only as far as it plans; `—` is where its own horizon ends, not a
 failure. Lower is better except `pdm_style_score`.
 
@@ -903,8 +903,10 @@ Its plan is also much smoother than supercombo's: `comfort_within_bounds` 0.991
 against 0.322, and `comfort_lon_jerk_max` 0.58 m/s³ against 5.05 — see the jerk
 result below, which is the same measurement from the other side.
 
-Of the nine, only openpilot and visionpilot publish auxiliary heads through
-`Trajectory.extras`; alpamayo15, alpamayo2edge and qwendrive emit a trajectory and nothing else,
+Of the twelve, only openpilot and visionpilot publish auxiliary heads through
+`Trajectory.extras`; alpamayo15, alpamayo2edge, qwendrive and constant velocity emit a trajectory and
+nothing else, as uniad, vad and hipad do here (theirs carry a route command only where a route decided it,
+and comma2k19 sends none),
 and autoe2e's, meteor's and drivejepa's extras are their own diagnostics, so every
 metric in the next two paragraphs is `NaN` for them.
 That is the intended behaviour of one declared metric list rather than a
@@ -1128,7 +1130,7 @@ rather than this benchmark (∗ ◊ ◇ ✦ ✧) are explained in
 place a keyframe at all, so it is 2033 × 5 (`{0: 2, 5: 2033}`) — derived, with
 both segments named, in [docs/datasets/comma2k19.md](../datasets/comma2k19.md).
 Every row is over the identical sample set (`sequences_sha256 =
-293a225a0b5cbaff` in all ten `run.json`), and every row was re-run in November
+293a225a0b5cbaff` in all twelve `run.json`), and every row was re-run in November
 2026 and scored against a ground truth in the car's frame (see [Recorded
 results](comma2k19.md#recorded-results)). **Alpamayo 2 Edge leads at every horizon
 from 1 s to 5 s, on the mean and the median, on one camera** (0.438 at 3 s): four of its
