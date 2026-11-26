@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-158 runs across 11 benchmarks.
+159 runs across 11 benchmarks.
 100 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -277,6 +277,7 @@
 | drivejepa [1] | 20261111T061849-382fec | 5119 | 1.995 | 0.819 | 0.613 | 0.008 | 0.010 | 1.806 | 1.077 |
 | openpilot | 20260929T174538-b479ee | 5119 | 4.029 | 1.897 | 1.403 | 0.012 | 0.011 | 4.018 | 2.442 |
 | openpilot [2] [3] [4] | 20260908T110028-b71f4f | 5119 | 4.057 | 1.925 | 1.424 | 0.013 | 0.011 | 4.054 | 2.470 |
+| hipad | 20261125T174612-255a76 | 5119 | 5.376 | 2.219 | 1.585 | 0.015 | 0.011 | 5.426 | 3.093 |
 
 - [1] drivejepa: streamed (per_scene): samples fed in order to one node that keeps its state, not one at a time
 - [2] openpilot: driving model run as a site-compiled CUDA build of the same graph, not on the CPU

@@ -17,7 +17,7 @@ PY := $(shell \
   elif [ -x .venv/bin/python ]; then echo ".venv/bin/python"; \
   else echo "python3"; fi)
 
-.PHONY: help setup setup-conda check check-alpasim-driver check-alpamayo check-alpamayo2edge check-openpilot check-uniad-vad test lint fmt typecheck doctor which clean
+.PHONY: help setup setup-conda check check-alpasim-driver check-alpamayo check-alpamayo2edge check-openpilot check-uniad-vad check-hipad test lint fmt typecheck doctor which clean
 
 help:
 	@echo "make setup        — create .venv and install paddock (uv; the default)"
@@ -28,6 +28,7 @@ help:
 	@echo "make check-alpamayo2edge ALPAMAYO2_EDGE_PY=<python> ALPAMAYO2_EDGE_CHECKPOINT=<dir> — the Alpamayo 2 Edge input tests, against NVIDIA's own code"
 	@echo "make check-openpilot OPENPILOT_REPO=<dir> — the openpilot geometry tests, against its checkout"
 	@echo "make check-uniad-vad UNIAD_VAD_DATA=<dir> UNIAD_VAD_SCENE_DATA=<nuscenes> — UniAD/VAD golden tests, on the GPU"
+	@echo "make check-hipad HIPAD_PY=<python> HIPAD_REPO=<repo> HIPAD_CHECKPOINT=<pth> HIPAD_FRAMES=<dir> — HiP-AD against its own agent, on the GPU"
 	@echo "make test         — pytest only"
 	@echo "make lint         — ruff only"
 	@echo "make fmt          — ruff format + autofix"
@@ -130,6 +131,16 @@ check-uniad-vad:
 	@test -n "$(UNIAD_VAD_DATA)" || { echo "set UNIAD_VAD_DATA to the directory holding scene-0103's samples/CAM_*/ JPEGs"; exit 2; }
 	@test -n "$(UNIAD_VAD_SCENE_DATA)" || { echo "set UNIAD_VAD_SCENE_DATA to a nuScenes root whose samples/CAM_*/ hold scene-0103 and scene-0916"; exit 2; }
 	UNIAD_VAD_GOLDEN=1 UNIAD_VAD_GOLDEN_DATA="$(UNIAD_VAD_DATA)" UNIAD_VAD_SCENE_DATA="$(UNIAD_VAD_SCENE_DATA)" UNIAD_VAD_INFOS_REFERENCE="$(UNIAD_VAD_INFOS_REFERENCE)" $(PY) -m pytest src/paddock/adapters/models/uniad/tests/test_golden.py src/paddock/adapters/models/uniad/tests/test_scene_golden.py -q -rs -s $(PYTEST_ARGS)
+
+# HiP-AD's own CARLA agent and the adapter on the same frames (docs/models/hipad.md, "Verification"): in
+# HiP-AD's env, on the GPU, with its checkpoint. HIPAD_FRAMES holds CAM_FRONT/, CAM_FRONT_LEFT/, ... folders
+# of 1600x900 frames; any real camera footage serves.
+check-hipad:
+	@test -n "$(HIPAD_PY)" || { echo "set HIPAD_PY to HiP-AD's interpreter ([models.hipad] venv)/bin/python"; exit 2; }
+	@test -n "$(HIPAD_REPO)" || { echo "set HIPAD_REPO to the HiP-AD checkout"; exit 2; }
+	@test -n "$(HIPAD_CHECKPOINT)" || { echo "set HIPAD_CHECKPOINT to hipad_stage2.pth"; exit 2; }
+	@test -n "$(HIPAD_FRAMES)" || { echo "set HIPAD_FRAMES to a directory of CAM_*/ frame folders"; exit 2; }
+	cd "$(HIPAD_REPO)" && PYTHONNOUSERSITE=1 PYTHONPATH="$(CURDIR)/src" $(HIPAD_PY) -m paddock.adapters.models.hipad.tests.agent_reference "$(HIPAD_REPO)" "$(HIPAD_CHECKPOINT)" "$(HIPAD_FRAMES)"
 
 test:
 	$(PY) -m pytest -q
