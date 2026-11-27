@@ -1,0 +1,73 @@
+name: hipad
+description: HiP-AD (Nullmax, ICCV 2025) - hierarchical, multi-granularity planning with deformable attention in one Sparse4D-style decoder, released Bench2Drive checkpoint
+repo: HiP-AD
+
+runtime:
+  # UniAD and VAD's stack (torch 2.7.1+cu128, mmcv-full 1.7.2, mmdet 2.28.2), plus HiP-AD's own deformable
+  # aggregation op built for this GPU; setup.sh builds it. Set [models.hipad] venv where your site keeps it.
+  kind: conda
+  python: "3.9"
+  venv: "{repos}/.conda-envs/hipad"
+  # The repo root, for `projects.mmdet3d_plugin`, which the config names as its plugin.
+  pythonpath: ["{repo}"]
+  cwd: "{repo}"
+  env:
+    # The config the README pairs with the released checkpoint.
+    HIPAD_CONFIG: "{repo}/projects/configs/hipad_b2d_stage2.py"
+    # hipad_stage2.pth from the repo's GitHub release `weighs` (docs/models/hipad.md).
+    HIPAD_CHECKPOINT: "{weights}/HiP-AD/hipad_stage2.pth"
+    # The checkout, for the config's planning anchors (policy.py, `repoint`).
+    HIPAD_REPO: "{repo}"
+    # HIPAD_HORIZON_S (unset): continue the plan past its own 3 s by holding the last 0.5 s step, for NAVSIM,
+    # which scores 4 s and refuses a shorter plan. Set per benchmark, as VAD's is.
+    # HIPAD_HORIZON_S: "4.0"
+    PYTHONNOUSERSITE: "1"
+    MPLBACKEND: "Agg"
+    OMP_NUM_THREADS: "2"
+    # Frame-preparing threads beside the model's own (uniad/bev_planners.py, THREADS_ENV). Speed only.
+    UNIAD_VAD_THREADS: "5"
+  tuning_env: [UNIAD_VAD_THREADS]
+
+capabilities:
+  # In the model's own order (the agent's CAMERA).
+  cameras: [CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT]
+  # Measured 1.8 GB for the node (0.85 GB allocated at peak), 26 Nov 2026.
+  vram_gb: 3
+  startup_timeout_s: 900
+  waypoint_dt: 0.5
+  # Its temporal memory steps 0.5 s at a time, as it trained (policy.py, *Rate*).
+  planning_hz: 2.0
+
+  # -- model card (docs/models/comparison.md) --
+  architecture: "ResNet-50 + FPN, one Sparse4D-style decoder for agent, map and planning queries, planning deformable attention"
+  precision: fp16
+  # Loaded at 1600x900, scaled by 0.4 and cut to 640x352 (the config's data_aug_conf).
+  input_size: [640, 352]
+  # One frame of images per call; the instance banks carry the past.
+  history_frames: 1
+  camera_hz: 2.0
+  output_kind: waypoints
+  horizon_s: 3.0
+  plan_points_hz: 2.0
+  stochastic: false
+  # Speed is a training target here (with_supervise_ego_status), not an input: the planner reads the
+  # images, the command and the route's target point.
+  needs_speed: false
+  trained_on:
+    # Bench2Drive's Base set (the README's data preparation; hipad_b2d_stage2.py's ann files).
+    - dataset: bench2drive
+      split: base
+    - dataset: imagenet
+
+# HIPAD_HORIZON_S changes what a NAVSIM score means. The leaderboard prints the line under any ranked run that
+# set it to something other than the declared default (unset). A site may set it and stay ranked: NAVSIM and
+# navhard cannot score a 3 s plan.
+score_notes:
+  HIPAD_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+ranked_with_note: [HIPAD_HORIZON_S]
+
+# Every benchmark that sends the six surround cameras, as for VAD. navsim, navsim_v1 and navhard need
+# HIPAD_HORIZON_S = "4.0". comma2k19 sends its forward camera alone; the other five slots are black.
+# Bench2Drive and AlpaSim send a route, the source of HiP-AD's target point; everywhere else it comes from the
+# command (inputs.command_target_point).
+benchmarks: [bench2drive, hugsim, neuroncap, alpasim, nuscenes, kitscenes, comma2k19, navsim, navsim_v1, navhard, nuplan]

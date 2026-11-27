@@ -64,6 +64,11 @@ ASSIGNED: dict[str, str] = {
     # ground truth and 8 from every model at once.
     "uniad": "#900000",
     "vad": "#70d0a0",
+    # The hash gave hipad #e377c2, VAD's old pink: 2.3 from visionpilot's under the measure above.
+    # A violet picked the same way from a grid of candidates: 11.7 from its nearest model or ground
+    # truth under any colour blindness (alpamayo15, ground truth's blue), 3.9:1 on a white chart
+    # surface and 4.3:1 on a dark one.
+    "hipad": "#bb44ff",
 }
 
 #: Drawn from for models with no assigned colour.

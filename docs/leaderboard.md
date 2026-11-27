@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-158 runs across 11 benchmarks.
+159 runs across 11 benchmarks.
 100 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -167,6 +167,7 @@
 | vad [6] | 20261120T184739-5e470a | 450 | 0.101 | 0.320 | 0.863 | 0.484 | 0.831 | 0.996 | 0.858 |
 | meteor [7] | 20261110T181854-9b4014 | 450 | 0.088 | 0.315 | 0.868 | 0.507 | 0.752 | 0.996 | 0.802 |
 | autoe2e | 20261110T192825-24d0b3 | 450 | 0.082 | 0.330 | 0.858 | 0.520 | 0.649 | 0.993 | 0.829 |
+| hipad [8] | 20261125T184400-1fa7d2 | 450 | 0.078 | 0.318 | 0.792 | 0.593 | 0.724 | 0.996 | 0.870 |
 
 - [1] drivejepa: streamed (per_log): samples fed in order to one node that keeps its state, not one at a time
 - [2] openpilot: driving model run as a site-compiled CUDA build of the same graph, not on the CPU
@@ -175,6 +176,7 @@
 - [5] uniad: plan continued to 4.0 s by paddock; the model itself plans 3 s
 - [6] vad: plan continued to 4.0 s by paddock; the model itself plans 3 s
 - [7] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [8] hipad: plan continued to 4.0 s by paddock; the model itself plans 3 s
 
 ## navsim
 

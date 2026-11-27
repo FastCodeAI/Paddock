@@ -8,7 +8,7 @@
 | Dataset | `navhard` |
 | Primary metric | `epdms` |
 | Adapter | [`adapters/benchmarks/navhard/`](../../src/paddock/adapters/benchmarks/navhard/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [autoe2e](../models/autoe2e.md), [drivejepa](../models/drivejepa.md), [hipad](../models/hipad.md), [meteor](../models/meteor.md), [openpilot](../models/openpilot.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -119,7 +119,7 @@ maps, checked by size and sha256.
 
 ## Results
 
-All ten runs are the full split, 450 stage-one frames, all 450 scored, and carry
+All twelve runs are the full split, 450 stage-one frames, all 450 scored, and carry
 `sequences_sha256: 3af39efa412cc8df`, so they are the same frames. In each, the
 per-frame mean matches the devkit's combined row (`by_group.source_aggregates.paddock_check`).
 NC is no at-fault collisions and DAC drivable-area compliance.
@@ -137,9 +137,18 @@ NC is no at-fault collisions and DAC drivable-area compliance.
 | VAD ⊟ | 0.1014 | 0.320 | 0.263 | 0.863 | 0.484 | 0.768 | 0.526 | `20261120T184739-5e470a` | true |
 | METEOR ◊ | 0.0878 | 0.315 | 0.261 | 0.868 | 0.507 | 0.779 | 0.545 | `20261110T181854-9b4014` | true |
 | AutoE2E | 0.0822 | 0.330 | 0.240 | 0.858 | 0.520 | 0.764 | 0.436 | `20261110T192825-24d0b3` | true |
+| HiP-AD ⊛ | 0.0781 | 0.318 | 0.215 | 0.792 | 0.593 | 0.691 | 0.566 | `20261125T184400-1fa7d2` | true |
 
 `epdms` is the mean of a per-frame product, so it is not the product of the two
 stage columns.
+
+⊛ **HiP-AD plans 3 s, continued to the 4 s scored by repeating its last 0.5 s step** (`HIPAD_HORIZON_S =
+4.0`, which its model.yaml lists as ranked with a note, as VAD's horizon is). Trained only in CARLA, it sees
+real footage here: the six cameras, and a target point from the command, navhard sending no route
+([docs/models/hipad.md](../models/hipad.md#navhard)). It is last of the twelve. Its weakest terms are
+drivable-area compliance (0.593 and 0.566 by stage) and two-frame extended comfort (0.058 and 0.040).
+The record was written again from its stored chunks (`--resume`, nothing scored again) after the note went
+into model.yaml, so it is ranked.
 
 ⟲ **Drive-JEPA is momentum-aware, in streamed mode** (`config.streamed =
 "per_log"`): 225 of the 450 stage-one frames were handed the plan the node made
