@@ -1,6 +1,6 @@
 # Paddock leaderboard
 
-158 runs across 11 benchmarks.
+159 runs across 11 benchmarks.
 100 run(s) excluded as invalid — shown at the end, never averaged in.
 
 ## alpasim
@@ -212,11 +212,13 @@
 | uniad | 20261112T130241-e02e88 | 12146 | 0.532 | 0.826 | 0.729 | 0.525 | 0.692 | 0.963 | 0.914 |
 | vad | 20261120T183501-625133 | 12146 | 0.494 | 0.805 | 0.741 | 0.505 | 0.663 | 0.938 | 0.893 |
 | visionpilot | 20261111T194001-cc5073 | 12146 | 0.472 | 0.756 | 0.802 | 0.442 | 0.605 | 0.997 | 0.902 |
-| meteor [2] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
+| hipad [2] | 20261126T140948-20ddbe | 12146 | 0.415 | 0.706 | 0.721 | 0.437 | 0.580 | 0.690 | 0.797 |
+| meteor [3] | 20260915T005223-071c0b | 12146 | 0.366 | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 |
 | constant_velocity | 20260911T034553-8f28ac | 12146 | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
 
 - [1] drivejepa: streamed (per_log): samples fed in order to one node that keeps its state, not one at a time
-- [2] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [2] hipad: plan continued to 4.0 s by paddock; the model itself plans 3 s
+- [3] meteor: plan continued to 4.0 s by paddock; the model itself plans 3 s
 
 ## neuroncap
 

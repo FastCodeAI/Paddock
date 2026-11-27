@@ -8,7 +8,7 @@
 | Dataset | `navsim` |
 | Primary metric | `pdms` |
 | Adapter | [`adapters/benchmarks/navsim_v1/`](../../src/paddock/adapters/benchmarks/navsim_v1/) |
-| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [drivejepa](../models/drivejepa.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
+| Models paddock can run on it | [alpamayo15](../models/alpamayo15.md), [alpamayo2edge](../models/alpamayo2edge.md), [drivejepa](../models/drivejepa.md), [hipad](../models/hipad.md), [qwendrive](../models/qwendrive.md), [uniad](../models/uniad.md), [vad](../models/vad.md), [visionpilot](../models/visionpilot.md) |
 
 <!-- /summary -->
 
@@ -226,6 +226,7 @@ from `results/navsim/` for reference: a different composite, not a ranking.
 | alpamayo2edge | **0.699** | 0.924 | 0.801 | 0.665 | 0.847 | 0.991 | 0.873 | 0.626 | `20261111T070439-f19e8f` | replay of `navsim/alpamayo2edge/20261111T052918-f9f90a`'s 12,146 plans, 9 min, no GPU |
 | visionpilot | **0.472** | 0.756 | 0.802 | 0.442 | 0.605 | 0.997 | 0.902 | 0.454 | `20261111T194001-cc5073` | replay of `navsim/visionpilot/20261111T173726-ff827e`'s 12,146 plans, no GPU |
 | meteor | **0.366** | 0.693 | 0.687 | 0.340 | 0.582 | 0.997 | 0.800 | 0.303 | `20260915T005223-071c0b` | replay of `navsim/meteor/20260914T234307-e56cfc`, 12 min. Its plans are 3 s extended to 4 s (`METEOR_HORIZON_S`); see `docs/models/meteor.md` |
+| hipad | **0.415** | 0.706 | 0.721 | 0.437 | 0.580 | 0.690 | 0.797 | — | `20261126T140948-20ddbe` | a paddock run, not a replay: it has no NAVSIM v2 run yet; plan continued to 4 s |
 | constant_velocity | **0.207** | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 | 0.239 | `20260911T034553-8f28ac` | node-less baseline, 27 min |
 | human (`valid: false`) | 0.946 | 1.000 | 1.000 | 0.870 | 1.000 | 0.999 | 0.988 | — | `20260911T041230-67c4f3` | node-less anchor, 35 min |
 
@@ -301,7 +302,16 @@ future scores 0.946 against the paper's 94.8 (privileged; stored `valid: false`)
 | AutoE2E v1.0, 10 Hz nuPlan history ‡ | 0.538 | 0.824 | 0.777 | 0.514 | 0.700 | 1.000 | 0.859 |
 | UniAD ⊟ | 0.532 | 0.826 | 0.729 | 0.525 | 0.692 | 0.963 | 0.914 |
 | VAD ⊟ | 0.494 | 0.805 | 0.741 | 0.505 | 0.663 | 0.938 | 0.893 |
+| HiP-AD ⊛ | 0.415 | 0.706 | 0.721 | 0.437 | 0.580 | 0.690 | 0.797 |
 | Baseline (Constant Velocity) | 0.207 | 0.680 | 0.578 | 0.194 | 0.500 | 1.000 | 0.799 |
+
+⊛ **HiP-AD's row is its own run, not a replay** (`20261126T140948-20ddbe`): it had no NAVSIM v2 run to
+replay. It plans 3 s, continued to the 4 s scored by repeating its last 0.5 s step (`HIPAD_HORIZON_S = 4.0`,
+listed in its model.yaml as ranked with a note). Trained only in CARLA, it sees real footage here: the six
+cameras, and a target point from the command, NAVSIM sending no route
+([docs/models/hipad.md](../models/hipad.md#navsim-v1)). It is ahead of METEOR and the constant-velocity
+floor only. Comfort (0.690, where every other model is 0.93 or more) and ego progress (0.437) are its
+weakest terms.
 
 ⊟ UniAD's and VAD's rows replay the plans of their NAVSIM v2 runs
 (`20261112T130241-e02e88` from `navsim/uniad/20261109T082522-c24426`,
