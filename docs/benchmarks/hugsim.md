@@ -196,6 +196,7 @@ sorted by HD-Score.
 | [VAD](../models/vad.md) (base, nuScenes checkpoint, zero-shot) | 2 Hz | 3 s | [`fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c`](../../results/hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c/run.json) | 17.5 | 33.3 | 33.4 | 44.2 | 89.6 | 35.5 | 96.6 |
 | [VisionPilot](../models/visionpilot.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-92c0b7`](../../results/hugsim/visionpilot/fullplan-f7d8f9d4b9736ddd-92c0b7/run.json) | 16.3 | 35.2 | 34.5 | 67.6 | 94.3 | 48.9 | 7.8 |
 | [METEOR](../models/meteor.md) | 4 Hz | 3 s | [`fullplan-f7d8f9d4b9736ddd-241d7f`](../../results/hugsim/meteor/fullplan-f7d8f9d4b9736ddd-241d7f/run.json) | 16.2 | 30.7 | 32.5 | 48.3 | 81.4 | 35.7 | 53.2 |
+| [HiP-AD](../models/hipad.md) § (CARLA-only, zero-shot) | 2 Hz | 3 s | [`20261126T184259-a386b3`](../../results/hugsim/hipad/20261126T184259-a386b3/run.json) | 14.5 | 22.0 | 34.0 | 35.2 | 85.6 | 26.6 | 37.3 |
 | [openpilot](../models/openpilot.md) | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-cac3b5`](../../results/hugsim/openpilot/fullplan-f7d8f9d4b9736ddd-cac3b5/run.json) | 6.1 | 73.5 | 7.0 | 84.1 | 88.3 | 82.6 | 100.0 |
 | [AutoE2E](../models/autoe2e.md) v1.0 | 4 Hz | 4 s | [`fullplan-f7d8f9d4b9736ddd-4d9640`](../../results/hugsim/autoe2e/fullplan-f7d8f9d4b9736ddd-4d9640/run.json) | 4.3 | 27.5 | 13.7 | 44.8 | 48.9 | 37.0 | 64.9 |
 
@@ -212,6 +213,7 @@ HD-Score by source dataset and by difficulty:
 | VAD | 3.3 | 24.3 | 25.3 | 18.8 | 44.5 | 10.4 | 8.9 | 14.3 |
 | VisionPilot | 7.7 | 16.1 | 21.3 | 20.5 | 35.2 | 22.0 | 7.4 | 2.2 |
 | METEOR | 2.1 | 31.8 | 20.8 | 13.7 | 34.9 | 15.0 | 13.8 | 5.8 |
+| HiP-AD | 3.2 | 23.0 | 17.8 | 16.0 | 44.0 | 5.0 | 7.3 | 11.4 |
 | openpilot | 2.5 | 5.5 | 4.6 | 12.0 | 8.9 | 8.9 | 4.2 | 2.0 |
 | AutoE2E | 0.5 | 5.0 | 6.2 | 5.6 | 4.9 | 4.5 | 4.5 | 3.3 |
 
@@ -228,11 +230,19 @@ How episodes ended, % of 420:
 | VAD | 8.6 | 59.3 | 27.4 | 1.7 | 3.1 |
 | VisionPilot | 11.7 | 56.2 | 12.4 | 7.9 | 11.9 |
 | METEOR | 11.7 | 39.0 | 42.6 | 6.7 | 0.0 |
+| HiP-AD | 13.6 | 56.4 | 27.9 | 2.1 | 0.0 |
 | openpilot | 0.0 | 41.4 | 4.0 | 0.0 | 54.5 |
 | AutoE2E | 0.0 | 14.8 | 67.1 | 18.1 | 0.0 |
 
 What to read with them:
 
+- **§ HiP-AD was driven later, by `paddock run`, not ingested.** 26-27 Nov 2026, one node on a shared
+  RTX PRO 6000. Same 420 scenarios (`sequences_sha256: f7d8f9d4b9736ddd`), command only, PR #57 controller,
+  patches 0003 and 0004 (the route's last command; #238), 400-step cap. It is asked at its declared 2 Hz,
+  every other step (5,194 plans over 10,177 steps, no bridge error), and sends its 3 s plan as 6 waypoints
+  0.5 s apart. Six scenarios failed on the first pass, four of them with `CUDA out of memory` on a shared
+  card, and were driven again with `--resume`. Trained only in CARLA, this is zero-shot on real footage, and
+  its target point comes from the command, HUGSIM sending no route.
 - **† Alpamayo 2 Edge was driven later, by `paddock run`, not ingested.** 14-15 Nov 2026,
   one node on a shared RTX PRO 6000, through the harness and `launcher.py` on this branch
   rather than the campaign runner, so its record's run id is a plain `paddock run` id. Same

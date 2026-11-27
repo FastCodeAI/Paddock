@@ -284,7 +284,7 @@ hugsim = { run = "hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c", note =
 # --
 # bench2drive: added by its own results PR
 # --
-# hugsim: added by its own results PR
+hugsim = { run = "hugsim/hipad/20261126T184259-a386b3", note = "2 Hz" }
 # --
 # neuroncap: added by its own results PR
 # --

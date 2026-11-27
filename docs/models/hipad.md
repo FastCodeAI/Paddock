@@ -100,7 +100,11 @@ Not in this pull request.
 
 ### HUGSIM
 
-Not in this pull request.
+All 420 scenarios (`hugsim/hipad/20261126T184259-a386b3`), `valid: true`: **HD-Score 0.145** (PDMS 0.220, route
+completion 34.0%), tenth of twelve, ahead of openpilot and AutoE2E. It hits a vehicle in 56.4% of scenarios
+and completes 13.6%. Asked every other 4 Hz step (its 2 Hz), it sends its 3 s plan as 6 waypoints. Driven with
+HUGSIM patch 0004 (#238); six scenarios that ran out of GPU memory on the first pass were driven again with
+`--resume`. The target point comes from the command.
 
 ### neuroNCAP
 
