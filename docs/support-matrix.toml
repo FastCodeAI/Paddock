@@ -300,7 +300,7 @@ hugsim = { run = "hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c", note =
 # --
 # navsim: added by its own results PR
 # --
-# navhard: added by its own results PR
+navhard = { run = "navhard/hipad/20261125T184400-1fa7d2", marks = "P" }
 # --
 
 [cells.constant_velocity]

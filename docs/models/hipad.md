@@ -132,7 +132,10 @@ Not in this pull request.
 
 ### navhard
 
-Not in this pull request.
+All 450 stage-one frames (`navhard/hipad/20261125T184400-1fa7d2`), `valid: true`: **EPDMS 0.078**, stage one
+0.318, stage two 0.215. Last of the twelve models. Its plan is continued from 3 s to the 4 s scored
+(`HIPAD_HORIZON_S = 4.0`, ranked with a note). Its weakest terms are drivable-area compliance (0.593 and
+0.566 by stage) and two-frame extended comfort (0.058 and 0.040). The target point comes from the command.
 
 ### nuPlan
 
