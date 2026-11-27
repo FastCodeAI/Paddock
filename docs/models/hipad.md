@@ -124,7 +124,10 @@ Not in this pull request.
 
 ### NAVSIM v1
 
-Not in this pull request.
+All 12,146 navtest scenarios (`navsim_v1/hipad/20261126T140948-20ddbe`), `valid: true`: **PDMS 0.415**.
+Ahead of METEOR (0.366) and the constant-velocity floor (0.207) only. Comfort (0.690) and ego progress
+(0.437) are its weakest terms. Its plan is continued from 3 s to the 4 s scored (`HIPAD_HORIZON_S = 4.0`,
+ranked with a note), and its target point comes from the command.
 
 ### NAVSIM v2
 

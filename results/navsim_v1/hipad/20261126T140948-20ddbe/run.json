@@ -1,0 +1,68 @@
+{
+  "run_id": "20261126T140948-20ddbe",
+  "site": "fastcode-shakaal-mitish",
+  "benchmark": "navsim_v1",
+  "model": "hipad",
+  "mode": "open_loop",
+  "started_utc": "2026-11-27T05:12:08+00:00",
+  "duration_s": 4080.2,
+  "repo_sha": "9610ed83a89145433fe77da04a0077b42013994c",
+  "dataset": {
+    "name": "navsim",
+    "split": "navtest",
+    "n_samples": 12146,
+    "sequences_sha256": "013e89176339021d",
+    "n_failed": 0,
+    "n_unscored": 0,
+    "n_expected": 12146
+  },
+  "config": {
+    "limit": null,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "split": "navtest",
+    "agent": "paddock_proxy",
+    "allow_partial": false,
+    "allow_slow": false,
+    "overrides": [],
+    "chunk_order": "by_size",
+    "merged_from": null,
+    "input_hz": 2.0,
+    "history_source": "openscene",
+    "history_s": 1.5,
+    "declared_env": {
+      "HIPAD_CHECKPOINT": "{weights}/HiP-AD/hipad_stage2.pth",
+      "HIPAD_CONFIG": "{repo}/projects/configs/hipad_b2d_stage2.py",
+      "HIPAD_REPO": "{repo}",
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1"
+    },
+    "model_env": {
+      "HIPAD_HORIZON_S": "4.0"
+    }
+  },
+  "hardware": {},
+  "provenance": {
+    "repo": {
+      "repo": "HiP-AD",
+      "sha": "9610ed83a89145433fe77da04a0077b42013994c",
+      "pinned_sha": "9610ed8",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "8849e05b3d5a1bb8431f73388a47c80e234c135c",
+      "dirty": false
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

@@ -296,7 +296,7 @@ hugsim = { run = "hugsim/vad/fullplan-caffenorm-f7d8f9d4b9736ddd-9d698c", note =
 # --
 # comma2k19: added by its own results PR
 # --
-# navsim_v1: added by its own results PR
+navsim_v1 = { run = "navsim_v1/hipad/20261126T140948-20ddbe", marks = "P" }
 # --
 # navsim: added by its own results PR
 # --

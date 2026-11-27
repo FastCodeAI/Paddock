@@ -59,8 +59,12 @@ capabilities:
       split: base
     - dataset: imagenet
 
-# HIPAD_HORIZON_S changes what a NAVSIM score means. Its score note and ranked_with_note entry, as VAD's,
-# go in with HiP-AD's first NAVSIM results: a note is checked against a stored run that sets it.
+# HIPAD_HORIZON_S changes what a NAVSIM score means. The leaderboard prints the line under any ranked run that
+# set it to something other than the declared default (unset). A site may set it and stay ranked: NAVSIM and
+# navhard cannot score a 3 s plan.
+score_notes:
+  HIPAD_HORIZON_S: "plan continued to {value} s by paddock; the model itself plans 3 s"
+ranked_with_note: [HIPAD_HORIZON_S]
 
 # Every benchmark that sends the six surround cameras, as for VAD. navsim, navsim_v1 and navhard need
 # HIPAD_HORIZON_S = "4.0". comma2k19 sends its forward camera alone; the other five slots are black.
