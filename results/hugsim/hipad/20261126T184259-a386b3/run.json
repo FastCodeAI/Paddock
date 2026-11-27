@@ -1,0 +1,155 @@
+{
+  "run_id": "20261126T184259-a386b3",
+  "site": "fastcode-shakaal-mitish",
+  "benchmark": "hugsim",
+  "model": "hipad",
+  "mode": "closed_loop",
+  "started_utc": "2026-11-27T14:42:30+00:00",
+  "duration_s": 839.2,
+  "repo_sha": "9610ed83a89145433fe77da04a0077b42013994c",
+  "dataset": {
+    "name": "hugsim",
+    "n_samples": 420,
+    "sequences_sha256": "f7d8f9d4b9736ddd",
+    "n_expected": 420,
+    "n_failed": 0,
+    "n_reused": 414
+  },
+  "config": {
+    "scene": null,
+    "runs": 1,
+    "cameras": [
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT",
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT"
+    ],
+    "excluded": [
+      "scene-021-medium-02",
+      "scene-027-medium-02",
+      "scene-028-medium-02",
+      "scene-032-medium-02",
+      "scene-033-medium-02",
+      "scene-034-medium-02",
+      "scene-038-medium-02",
+      "scene-039-medium-02",
+      "scene-040-medium-02",
+      "scene-044-medium-02",
+      "scene-053-medium-02",
+      "scene-090-medium-02",
+      "scene-095-medium-02",
+      "scene-113-medium-02",
+      "scene-124-medium-02",
+      "scene-140045460035-hard-00"
+    ],
+    "controller": "traj2control with upstream PR #57 (patches/HUGSIM/0001)",
+    "step_cap": 400,
+    "route": "command only",
+    "plan_sent": "the reply's whole plan, up to 8 waypoints 0.5 s apart",
+    "idm_guard": "patches/HUGSIM/0003",
+    "infer_every": 2,
+    "infer_hz": 2.0,
+    "render_cams": [
+      "CAM_BACK",
+      "CAM_BACK_LEFT",
+      "CAM_BACK_RIGHT",
+      "CAM_FRONT",
+      "CAM_FRONT_LEFT",
+      "CAM_FRONT_RIGHT"
+    ],
+    "declared_env": {
+      "HIPAD_CHECKPOINT": "{weights}/HiP-AD/hipad_stage2.pth",
+      "HIPAD_CONFIG": "{repo}/projects/configs/hipad_b2d_stage2.py",
+      "HIPAD_REPO": "{repo}",
+      "MPLBACKEND": "Agg",
+      "PYTHONNOUSERSITE": "1"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "HiP-AD",
+      "sha": "9610ed83a89145433fe77da04a0077b42013994c",
+      "pinned_sha": "9610ed8",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "8849e05b3d5a1bb8431f73388a47c80e234c135c",
+      "dirty": false
+    },
+    "policy": {
+      "episode": 7,
+      "blank_views": [],
+      "source_size": {
+        "CAM_FRONT": [
+          800,
+          450
+        ],
+        "CAM_FRONT_LEFT": [
+          800,
+          450
+        ],
+        "CAM_FRONT_RIGHT": [
+          800,
+          450
+        ],
+        "CAM_BACK": [
+          800,
+          450
+        ],
+        "CAM_BACK_LEFT": [
+          800,
+          450
+        ],
+        "CAM_BACK_RIGHT": [
+          800,
+          450
+        ]
+      },
+      "command": "STRAIGHT",
+      "target_source": "command",
+      "target_point": [
+        -0.0,
+        20.0
+      ],
+      "lidar_source": "nominal",
+      "plan_lidar": [
+        [
+          0.005,
+          4.598
+        ],
+        [
+          -0.003,
+          9.18
+        ],
+        [
+          -0.014,
+          13.693
+        ],
+        [
+          0.019,
+          17.995
+        ],
+        [
+          0.004,
+          22.29
+        ],
+        [
+          0.02,
+          26.444
+        ]
+      ],
+      "steps": 23,
+      "frames_fed": 1
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "resumed: 414 episode(s) reused from an earlier attempt, so started_utc and duration_s describe this attempt only",
+  "ingested_from": ""
+}

@@ -80,6 +80,7 @@ MODELS = {
     "autoe2e": "AutoE2E",
     "uniad": "UniAD",
     "vad": "VAD",
+    "hipad": "HiP-AD",
 }
 
 #: Where each declared camera or view looks: (view, yaw in degrees left of forward, field of
