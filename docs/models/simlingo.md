@@ -99,6 +99,13 @@ Not in this pull request.
 
 Not in this pull request.
 
+### neuroNCAP
+
+The full official set, 20 scenario-scene pairs x 10 seeded runs (`neuroncap/simlingo/20261127T150658-2d979d`),
+`valid: true`: **NCAP score 1.91** of 5, collisions in 68% of runs; between UniAD (2.21) and VisionPilot
+(1.49). Stationary 2.72, frontal 1.18, side 1.00. CAM_FRONT is placed in SimLingo's 110 deg frame; its 2.5 s
+plan is padded to the 3 s sent, on every 0.1 s step.
+
 ### Bench2Drive
 
 Not in this pull request.

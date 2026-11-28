@@ -1,0 +1,66 @@
+{
+  "run_id": "20261127T150658-2d979d",
+  "site": "fastcode-shakaal-mitish",
+  "benchmark": "neuroncap",
+  "model": "simlingo",
+  "mode": "closed_loop",
+  "started_utc": "2026-11-27T15:06:58+00:00",
+  "duration_s": 72823.6,
+  "repo_sha": "743b243afd6cf5ff51b9fa1f8cac86f22d569684",
+  "dataset": {
+    "name": "nuscenes",
+    "n_samples": 200,
+    "sequences_sha256": "ef927e969576db84",
+    "n_expected": 200,
+    "n_failed": 0,
+    "n_reused": 0
+  },
+  "config": {
+    "scene": "0099,0101,0103,0106,0108,0110,0278,0331,0346,0783,0796,0921,0923,0966",
+    "runs": 10,
+    "cameras": [
+      "CAM_SIMLINGO",
+      "CAM_FRONT"
+    ],
+    "declared_env": {
+      "HF_HUB_OFFLINE": "1",
+      "SIMLINGO_BASE": "{weights}/InternVL2-1B",
+      "SIMLINGO_CHECKPOINT": "{weights}/SimLingo",
+      "SIMLINGO_HORIZON_S": "3.0",
+      "TRANSFORMERS_OFFLINE": "1"
+    }
+  },
+  "hardware": {
+    "gpu_free_gb_at_start": null
+  },
+  "provenance": {
+    "repo": {
+      "repo": "simlingo",
+      "sha": "743b243afd6cf5ff51b9fa1f8cac86f22d569684",
+      "pinned_sha": "743b243",
+      "at_pin": true
+    },
+    "paddock": {
+      "sha": "8849e05b3d5a1bb8431f73388a47c80e234c135c",
+      "dirty": false
+    },
+    "policy": {
+      "model": "simlingo",
+      "checkpoint": "SimLingo",
+      "base": "InternVL2-1B",
+      "horizon_s": 3.0,
+      "last_commentary": "Follow the route. Decelerate to stay behind the maroon car that is to the front left in 10.0 meters. Waypoints:",
+      "counts": {
+        "target_points": 0,
+        "command": 11752,
+        "own_camera": 0,
+        "front_in_110_frame": 11752
+      }
+    }
+  },
+  "status": "complete",
+  "valid": true,
+  "superseded_by": "",
+  "notes": "",
+  "ingested_from": ""
+}

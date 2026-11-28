@@ -782,6 +782,7 @@ all 200 runs. Runs are seeded 0-9, so every model met identical scenario jitter.
 | VAD ⊡ | 2.83 ±2.23 | 1.15 ±1.75 | 3.23 ±2.22 | **2.51** | 57.0% |
 | Qwen-Drive 1.0 | 2.71 ±1.73 | 1.52 ±1.49 | 3.00 ±2.04 | **2.49** | 69.0% |
 | UniAD ⊡ | 3.23 ±2.29 | 0.77 ±1.52 | 1.62 ±2.34 | **2.21** | 59.0% |
+| SimLingo ⊕ | 2.72 ±2.19 | 1.18 ±1.93 | 1.00 ±2.00 | **1.91** | 68.0% |
 | VisionPilot | 2.39 ±1.63 | 1.11 ±1.39 | 0.05 ±0.13 | **1.49** | 86.0% |
 | Baseline (Constant Velocity) § | 0.95 ±1.11 | 0.33 ±0.42 | 0.17 ±0.71 | **0.60** | 97.0% |
 
@@ -796,6 +797,13 @@ while the selection stage was off by default: 5.00 / 2.51 / 4.01, overall 4.13, 
 run. The camera-blind run (`20260905T220225-f11ac0`) scored 4.23 / 2.42 / 3.39, overall 3.57,
 with 45.5% collisions. Paired over the 20 scenario-scene pairs the fix is worth
 +0.56 (SE 0.44, t 1.28), mostly stationary (+0.77, SE 0.30) and side.
+
+⊕ **SimLingo** (run `20261127T150658-2d979d`), trained only in CARLA, so zero-shot on these rendered nuScenes
+scenes. It is fed CAM_FRONT placed at its true scale in its 110 deg frame, through the intrinsics every request
+carries, and asked on every 0.1 s step, as every model here is; its 2.5 s plan is padded with its last position
+to the 3 s sent. Overall 1.91, between UniAD (2.21) and VisionPilot (1.49), with collisions in 68% of runs. The
+stationary column is its best (2.72); frontal and side (1.18 and 1.00) are where it goes, 80% of those runs
+ending in a collision ([docs/models/simlingo.md](../models/simlingo.md#neuroncap)).
 
 **Alpamayo 2 Edge** (run `20261111T231934-33adca`) plans 64 points 0.1 s apart; the engine is sent
 its own points at 0.5 ... 3.0 s, every fifth (`Trajectory.to_wire`), the six it drives

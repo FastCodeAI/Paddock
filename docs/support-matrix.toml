@@ -292,6 +292,7 @@ hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" } 
 # --
 # navhard: added by its own results PR
 # --
+neuroncap = { run = "neuroncap/simlingo/20261127T150658-2d979d", marks = "P" }  # its scenes are nuScenes val scenes
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
