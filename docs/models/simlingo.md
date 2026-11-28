@@ -99,6 +99,13 @@ Not in this pull request.
 
 Not in this pull request.
 
+### NAVSIM v2
+
+All 12,146 navtest scenarios (`navsim/simlingo/20261127T151159-59cab1`), `valid: true`: **EPDMS 0.471**, between
+UniAD (0.478) and VAD (0.428). Its 2.5 s plan is padded with its last position to the 4 s scored
+(`SIMLINGO_HORIZON_S = 4.0`, ranked with a note). Comfort is its weakest term (history comfort 0.346, extended
+comfort 0.041), then ego progress (0.504).
+
 ### Bench2Drive
 
 Not in this pull request.

@@ -601,6 +601,7 @@ so nothing below the full split can be averaged or ranked against a real one.
 | alpamayo15, 2 Hz OpenScene | **0.6081** | 0.941 | 0.788 | 0.596 | `20260903T183818-5879c1` |
 | alpamayo2edge, 2 Hz OpenScene | **0.6257** | 0.924 | 0.801 | 0.654 | `20261111T052918-f9f90a` |
 | visionpilot | **0.4539** | 0.757 | 0.802 | 0.441 | `20261111T173726-ff827e` |
+| simlingo | **0.4707** | 0.899 | 0.833 | 0.504 | `20261127T151159-59cab1` |
 | constant_velocity | **0.2385** | 0.681 | 0.578 | 0.209 | `20260902T175923-feba73` |
 
 ## Comparison figures
@@ -908,4 +909,12 @@ was first run on, for reference only.
 | AutoE2E, 10 Hz nuPlan history ☉ | 0.500 | 0.824 | 0.777 | 0.865 | 0.990 | 0.491 | 0.814 | 0.830 | 0.984 | 0.812 | — |
 | UniAD ⊟ | 0.478 | 0.826 | 0.729 | 0.919 | 0.984 | 0.517 | 0.792 | 0.842 | 0.877 | 0.389 | — |
 | VAD ⊟ | 0.428 | 0.814 | 0.722 | 0.848 | 0.981 | 0.443 | 0.787 | 0.833 | 0.895 | 0.456 | — |
+| SimLingo ⊕ | 0.471 | 0.899 | 0.833 | 0.937 | 0.996 | 0.504 | 0.846 | 0.797 | 0.346 | 0.041 | — |
 | Baseline (Constant Velocity) | 0.239 | 0.681 | 0.578 | 0.805 | 0.981 | 0.209 | 0.669 | 0.827 | 0.979 | 0.567 | 0.257 |
+
+⊕ **SimLingo plans 2.5 s, and is padded with its last position to the 4 s scored** (`20261127T151159-59cab1`;
+`SIMLINGO_HORIZON_S = 4.0`, which its model.yaml lists as ranked with a note). Trained only in CARLA, it sees
+real footage here: CAM_FRONT placed at its true scale in its 110 deg frame, the rest black, and the command as
+its own sentence ([docs/models/simlingo.md](../models/simlingo.md#navsim-v2)). EPDMS 0.471, between UniAD
+(0.478) and VAD (0.428). Comfort is its weakest term (history comfort 0.346, extended comfort 0.041, the
+lowest in the table), then ego progress (0.504): what a plan that stops at 2.5 s scores as.

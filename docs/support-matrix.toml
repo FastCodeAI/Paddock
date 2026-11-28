@@ -292,6 +292,7 @@ hugsim = { run = "hugsim/vad/fullplan-f7d8f9d4b9736ddd-9d698c", note = "2 Hz" } 
 # --
 # navhard: added by its own results PR
 # --
+navsim = { run = "navsim/simlingo/20261127T151159-59cab1", marks = "P" }
 
 [cells.constant_velocity]
 nuscenes = { run = "nuscenes/constant_velocity/20260914T225156-e5170c" }
